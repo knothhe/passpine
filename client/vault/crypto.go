@@ -293,10 +293,10 @@ func resolveRecipients(names []string, keys openpgp.EntityList) ([]*openpgp.Enti
 		var matched *openpgp.Entity
 		for _, e := range keys {
 			fp := fingerprint(e)
-			matches := lookup == fp || (len(lookup) == 16 && strings.HasSuffix(fp, lookup))
+			matches := lookup == fp || ((len(lookup) == 8 || len(lookup) == 16) && strings.HasSuffix(fp, lookup))
 			for _, s := range e.Subkeys {
 				sub := strings.ToUpper(hex.EncodeToString(s.PublicKey.Fingerprint))
-				matches = matches || lookup == sub || (len(lookup) == 16 && strings.HasSuffix(sub, lookup))
+				matches = matches || lookup == sub || ((len(lookup) == 8 || len(lookup) == 16) && strings.HasSuffix(sub, lookup))
 			}
 			for id, identity := range e.Identities {
 				matches = matches || id == name || strings.EqualFold(identity.UserId.Email, name)

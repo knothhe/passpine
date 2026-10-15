@@ -4,3 +4,6 @@ browser/.wxt/
 browser/.output/
 dist/
 *.log
+/.install-local.json
+
+.codex/

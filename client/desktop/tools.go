@@ -2,7 +2,7 @@ package desktop
 
 import (
 	"fmt"
-	"strings"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -26,41 +26,6 @@ func (a *application) generate(done func(string)) {
 		}
 	})
 }
-func (a *application) generatorView(c *ui.Context) {
-	components.ScrollView(c, components.ScrollViewOptions{}).Fill().Children(func() {
-		ui.Column(c).FillWidth().Padding(32).Gap(26).Children(func() {
-			section(c, "密码生成器", "", nil)
-			ui.Column(c).FillWidth().Padding(24).Gap(20).Background(c.Theme().Surface).Radius(12).Border(1, c.Theme().Border).Children(func() {
-				password := a.generator.password
-				if password == "" {
-					password = "点击下方按钮，生成新密码"
-				}
-				components.Text(c, password).Wrap().FontSize(22).TextColor(c.Theme().Accent)
-				ui.Row(c).Gap(8).Children(func() {
-					if components.Button(c, "生成密码", components.ButtonPrimary).Disabled(a.busy).Clicked() {
-						a.generate(nil)
-					}
-					if iconButton(c, lucide.Copy(), "复制生成的密码", components.ButtonOutline).Disabled(a.generator.password == "").Clicked() {
-						a.copy(a.generator.password, "密码")
-					}
-				})
-			})
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-				components.Text(c, "密码长度").Bold()
-				ui.Spacer(c)
-				components.NumberInput(c, &a.generator.length, 8, 128, 1).Label("密码长度")
-			})
-			ui.Column(c).FillWidth().Gap(16).Children(func() {
-				components.Switch(c, &a.generator.lower, "小写字母  a–z")
-				components.Switch(c, &a.generator.upper, "大写字母  A–Z")
-				components.Switch(c, &a.generator.numbers, "数字  0–9")
-				components.Switch(c, &a.generator.symbols, "特殊符号  !@#$")
-				components.Switch(c, &a.generator.exclude, "排除易混淆字符  I l 1 O 0")
-			})
-			muted(c, "生成的密码不会自动保存。复制后会按你的安全设置清理剪贴板。")
-		})
-	})
-}
 func (a *application) recoveryType() string {
 	if a.recoveryKind == 1 {
 		return "draft"
@@ -75,7 +40,7 @@ func (a *application) loadRecovery() {
 }
 func (a *application) recoveryView(c *ui.Context) {
 	ui.Column(c).Fill().Padding(30).Gap(20).Children(func() {
-		section(c, "恢复中心", "恢复副本仅保存在本机，不随 Git 同步。", nil)
+		section(c, "恢复中心", "", nil)
 		old := a.recoveryKind
 		ui.Column(c).FillWidth().Disabled(a.busy).Children(func() {
 			components.Tabs(c, &a.recoveryKind, "回收站", "加密草稿")
@@ -97,7 +62,7 @@ func (a *application) recoveryView(c *ui.Context) {
 					item := item
 					ui.Row(c).FillWidth().Padding(14).Gap(10).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(8).AlignItems(ui.Center).Children(func() {
 						components.Icon(c, lucide.FileKey).Size(22, 22).TextColor(c.Theme().Accent)
-						ui.Column(c).Grow(1).Gap(5).Children(func() {
+						ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
 							components.Text(c, item.Path).Bold().Wrap()
 							components.Text(c, item.CreatedAt).FontSize(11).TextColor(c.Theme().TextMuted)
 						})
@@ -131,12 +96,17 @@ func (a *application) recoveryView(c *ui.Context) {
 }
 
 func (a *application) settingsView(c *ui.Context) {
+	a.shortcut.visible = false
 	if !a.settingsLoaded {
 		a.settings = a.state.Settings
+		a.settingsSaved = a.state.Settings
+		a.settingsObserved = a.state.Settings
 		a.settingsLoaded = true
 	}
 	width, _ := c.Size()
-	if a.shell != nil && a.shell.LeftExpanded() {
+	if a.shell == nil {
+		width -= 310
+	} else if a.shell.LeftExpanded() {
 		width -= a.shell.LeftWidth()
 	}
 	selectValue := func(c *ui.Context, value *string, label string, values, labels []string) {
@@ -147,7 +117,7 @@ func (a *application) settingsView(c *ui.Context) {
 				display = labels[i]
 			}
 		}
-		selectBox.Trigger.Label(label).MinWidth(155).Children(func() { components.Text(c, display) })
+		selectBox.Trigger.Label(label).MinWidth(155).AlignSelf(ui.Center).Children(func() { components.Text(c, display) })
 		selectBox.Popup(func(ui.Element) {
 			for i, v := range values {
 				v, label := v, labels[i]
@@ -155,15 +125,12 @@ func (a *application) settingsView(c *ui.Context) {
 			}
 		})
 	}
-	number := func(c *ui.Context, value *int, label string, lo, hi float64) {
-		v := float64(*value)
-		input := components.NumberInput(c, &v, lo, hi, 1).Label(label)
-		if input.Changed() {
-			*value = int(v)
-		}
-	}
 	button := func(c *ui.Context, label, action string) {
-		if components.Button(c, label, components.ButtonOutline).Disabled(a.busy).Clicked() {
+		disabled := a.busy
+		if action == "git-sync" || action == "git-init" {
+			disabled = a.gitActionPending || a.state.GitSyncing
+		}
+		if components.Button(c, label, components.ButtonOutline).AlignSelf(ui.Center).Disabled(disabled).Clicked() {
 			a.call(app.Request{Action: action}, func(app.Data) { a.notice = label + "完成" })
 		}
 	}
@@ -171,79 +138,120 @@ func (a *application) settingsView(c *ui.Context) {
 		{ID: "theme", Title: "外观", Build: func(c *ui.Context) {
 			selectValue(c, &a.settings.Theme, "外观", []string{"system", "light", "dark"}, []string{"跟随系统", "浅色", "深色"})
 		}},
-		{ID: "close", Title: "关闭窗口后继续运行", Description: "保留菜单栏图标和浏览器连接。使用菜单中的退出可完全关闭。", Build: func(c *ui.Context) {
-			components.Switch(c, &a.settings.CloseToTray, "关闭窗口后继续运行", components.SwitchOptions{HideLabel: true})
+		{ID: "close", Title: "关闭窗口后继续运行", Build: func(c *ui.Context) {
+			settingSwitch(c, &a.settings.CloseToTray, "关闭后继续运行")
 		}},
-		{ID: "shortcut", Title: "全局搜索快捷键", Description: "Control + Option + Space 唤出密码搜索。演示模式不注册全局快捷键。"},
+		{ID: "shortcut", Title: "全局搜索快捷键", Description: "点击录制后按下组合键，Esc 取消。保存后立即生效。", Build: a.shortcutControls},
 	}
 	security := []components.SettingsItem{
-		{ID: "idle", Title: "空闲自动锁定", Description: "1–240 分钟。锁屏和休眠时始终锁定。", Build: func(c *ui.Context) { number(c, &a.settings.IdleMinutes, "空闲自动锁定", 1, 240) }},
-		{ID: "max", Title: "最长解锁时间", Description: "1–1440 分钟。到期后重新验证私钥口令。", Build: func(c *ui.Context) { number(c, &a.settings.MaxSessionMinutes, "最长解锁时间", 1, 1440) }},
-		{ID: "clipboard", Title: "清理剪贴板", Description: "5–300 秒；只清除仍由 Passpine 持有的内容。", Build: func(c *ui.Context) { number(c, &a.settings.ClipboardSeconds, "清理剪贴板", 5, 300) }},
-		{ID: "locked", Title: "锁定时允许列出名称", Description: "浏览器只能看到条目名称，仍无法读取密码。", Build: func(c *ui.Context) {
-			components.Switch(c, &a.settings.BrowseWhileLocked, "锁定时允许列出名称", components.SwitchOptions{HideLabel: true})
+		{ID: "device", Title: "使用 Touch ID 或 Mac 登录密码解锁", Description: a.deviceUnlockDescription(), Build: func(c *ui.Context) {
+			ui.Column(c).AlignSelf(ui.Center).Disabled(!a.state.DeviceUnlockAvailable && !a.state.DeviceUnlockEnrolled).Children(func() {
+				settingSwitch(c, &a.settings.DeviceUnlock, "使用 Touch ID 或 Mac 登录密码解锁")
+			})
+		}},
+		{ID: "idle", Title: "空闲自动锁定", Build: func(c *ui.Context) {
+			durationSegments(c, &a.settings.IdleMinutes, "空闲自动锁定", []int{1, 5, 10, 15, 30, 60}, "分钟")
+		}},
+		{ID: "max", Title: "最长解锁时间", Build: func(c *ui.Context) {
+			durationSegments(c, &a.settings.MaxSessionMinutes, "最长解锁时间", []int{15, 30, 60, 120, 480}, "分钟")
+		}},
+		{ID: "clipboard", Title: "清理剪贴板", Build: func(c *ui.Context) {
+			durationSegments(c, &a.settings.ClipboardSeconds, "清理剪贴板", []int{15, 30, 60, 120}, "秒")
+		}},
+		{ID: "locked", Title: "锁定时允许列出名称", Build: func(c *ui.Context) {
+			settingSwitch(c, &a.settings.BrowseWhileLocked, "锁定时允许列出名称")
 		}},
 	}
 	vaultItems := []components.SettingsItem{
-		{ID: "directory", Title: a.state.VaultName, Description: a.state.Directory, Build: func(c *ui.Context) {
-			if components.Button(c, "切换密码库", components.ButtonOutline).Clicked() {
-				a.setup = true
+		{ID: "recovery", Title: "恢复中心", Build: func(c *ui.Context) {
+			if components.Button(c, "打开恢复中心", components.ButtonOutline).AlignSelf(ui.Center).Clicked() {
+				a.navigate("recovery", "")
 			}
 		}},
-		{ID: "export", Title: "导出恢复私钥", Description: "恢复需要密码库、受口令保护的私钥和口令，请分别备份。", Build: func(c *ui.Context) {
-			if components.Button(c, "导出…", components.ButtonOutline).Clicked() {
+		{ID: "directory", Title: a.state.VaultName, Description: a.state.Directory, Build: func(c *ui.Context) {
+			if components.Button(c, "切换密码库", components.ButtonOutline).AlignSelf(ui.Center).Clicked() {
+				a.openSetup()
+			}
+		}},
+		{ID: "export", Title: "导出恢复私钥", Build: func(c *ui.Context) {
+			if components.Button(c, "导出…", components.ButtonOutline).AlignSelf(ui.Center).Clicked() {
 				a.exportKey()
 			}
 		}},
 		{ID: "verify", Title: "验证恢复备份", Build: func(c *ui.Context) {
-			if components.Button(c, "选择并验证…", components.ButtonOutline).Clicked() {
+			if components.Button(c, "选择并验证…", components.ButtonOutline).AlignSelf(ui.Center).Clicked() {
 				a.verifyBackup()
 			}
 		}},
 	}
 	syncItems := []components.SettingsItem{
-		{ID: "remote", Title: "Git 远端地址", Description: "设置 origin；使用本机 SSH 或 HTTPS 凭据认证。", Build: func(c *ui.Context) {
-			ui.Column(c).Width(220).Gap(8).Children(func() {
-				components.TextBox(c, &a.gitRemote, components.TextBoxOptions{}).FillWidth().Label("Git 远端地址").Placeholder("git@github.com:you/store.git")
-				if components.Button(c, "保存远端", components.ButtonOutline).Disabled(a.busy).Clicked() {
-					a.call(app.Request{Action: "git-remote", URL: a.gitRemote}, func(d app.Data) { a.gitRemote = d.GitRemote; a.notice = "Git 远端地址已保存" })
+		{ID: "remote", Title: "Git 远端地址", Build: func(c *ui.Context) {
+			ui.Column(c).Width(320).MaxWidth(420).AlignSelf(ui.Center).Gap(8).Children(func() {
+				components.TextBox(c, &a.gitRemote, components.TextBoxOptions{}).FillWidth().Disabled(!a.state.GitInitialized || a.state.GitSyncing).Label("Git 远端地址").Placeholder("git@github.com:you/store.git")
+			})
+		}},
+		{ID: "auto", Title: "自动同步", Build: func(c *ui.Context) {
+			settingSwitch(c, &a.settings.AutoSync, "自动同步")
+		}},
+		{ID: "interval", Title: "定时同步间隔", Build: func(c *ui.Context) {
+			durationSegments(c, &a.settings.SyncMinutes, "定时同步间隔", []int{0, 5, 15, 30, 60}, "分钟")
+		}},
+		{ID: "git", Title: "Git 同步状态", Description: a.gitStatusDescription(), Build: func(c *ui.Context) {
+			ui.Row(c).Gap(8).AlignSelf(ui.Center).AlignItems(ui.Center).Children(func() {
+				if a.state.GitInitialized {
+					button(c, "立即同步", "git-sync")
+				} else {
+					button(c, "初始化 Git", "git-init")
+				}
+				if iconButton(c, lucide.RefreshCw(), "刷新 Git 状态", components.ButtonGhost).Disabled(a.state.GitRefreshing || a.state.GitSyncing).Clicked() {
+					a.callBackground(app.Request{Action: "git-status"}, nil)
 				}
 			})
 		}},
-		{ID: "auto", Title: "变更后自动同步", Description: "只同步加密条目与收件人文件。Git 远端认证由系统 Git 处理。", Build: func(c *ui.Context) {
-			components.Switch(c, &a.settings.AutoSync, "自动同步", components.SwitchOptions{HideLabel: true})
-		}},
-		{ID: "interval", Title: "定时同步间隔", Description: "分钟；0 表示不定时同步。", Build: func(c *ui.Context) { number(c, &a.settings.SyncMinutes, "定时同步间隔", 0, 1440) }},
-		{ID: "git", Title: "Git 同步状态", Description: strings.TrimSpace(a.state.GitSummary + " " + a.state.GitError), Build: func(c *ui.Context) {
-			if a.state.GitInitialized {
-				button(c, "立即同步", "git-sync")
-			} else {
-				button(c, "初始化 Git", "git-init")
-			}
-		}},
 	}
 	browserItems := []components.SettingsItem{
-		{ID: "browser", Title: "连接浏览器扩展", Description: "安装或更新应用后重新注册。", Build: func(c *ui.Context) { button(c, "注册浏览器连接", "browser-install") }},
-		{ID: "activity", Title: "本机操作记录", Description: "记录操作类型与结果，不记录密码、网址和条目名称。", Build: func(c *ui.Context) {
-			components.Switch(c, &a.settings.RecordActivity, "本机操作记录", components.SwitchOptions{HideLabel: true})
+		{ID: "browser", Title: "连接浏览器扩展", Build: func(c *ui.Context) { button(c, "注册浏览器连接", "browser-install") }},
+	}
+	activityItems := []components.SettingsItem{
+		{ID: "activity", Title: "本机操作记录", Build: func(c *ui.Context) {
+			settingSwitch(c, &a.settings.RecordActivity, "本机操作记录")
+		}},
+		{ID: "history", Title: "查看操作记录", Build: func(c *ui.Context) {
+			if components.Button(c, "打开操作记录", components.ButtonOutline).AlignSelf(ui.Center).Clicked() {
+				a.navigate("activity", "")
+			}
 		}},
 	}
 	ui.Column(c).Fill().Children(func() {
 		components.Settings(c, &a.settingsState, []components.SettingsCategory{
-			{ID: "general", Title: "通用", Groups: []components.SettingsGroup{{ID: "appearance", Items: general}}},
+			{ID: "general", Title: "通用", Groups: []components.SettingsGroup{{ID: "appearance", Items: general}, {ID: "activity", Title: "操作记录", Items: activityItems}}},
 			{ID: "security", Title: "安全", Groups: []components.SettingsGroup{{ID: "session", Items: security}}},
 			{ID: "vault", Title: "密码库", Groups: []components.SettingsGroup{{ID: "backup", Items: vaultItems}, {ID: "sync", Title: "Git 同步", Items: syncItems}}},
 			{ID: "browser", Title: "浏览器", Groups: []components.SettingsGroup{{ID: "integration", Items: browserItems}}},
 		}, components.SettingsOptions{Narrow: width < 700, Title: "设置", SearchLabel: "搜索设置", SearchPlaceholder: "搜索设置…", CategoryLabel: "设置分类", ResultsTitle: "搜索结果", EmptyText: "没有找到相关设置"})
-		ui.Row(c).FillWidth().Padding(16, 24).Gap(10).AlignItems(ui.Center).Children(func() {
-			muted(c, "修改后点击保存生效")
-			ui.Spacer(c)
-			if components.Button(c, "保存设置", components.ButtonPrimary).Disabled(a.busy).Clicked() {
-				settings := a.settings
-				a.call(app.Request{Action: "settings", Settings: &settings}, func(d app.Data) { a.settings = d.Settings; a.applyTheme(); a.notice = "设置已保存" })
-			}
-		})
+		if a.settingsSaving || a.gitRemoteSaving || time.Now().Before(a.settingsSavedUntil) {
+			ui.Row(c).FillWidth().Padding(8, 24).Children(func() {
+				label := "已保存"
+				if a.settingsSaving || a.gitRemoteSaving {
+					label = "正在保存…"
+				}
+				muted(c, label)
+			})
+		}
 	})
+	if a.shortcut.recording && !a.shortcut.visible {
+		a.setShortcutRecording(false)
+	}
+	if a.settings != a.settingsObserved {
+		a.settingsObserved = a.settings
+		a.settingsDirty = true
+		a.saveSettingsAutomatically()
+	}
+	if a.gitRemote != a.gitRemoteObserved {
+		a.gitRemoteObserved = a.gitRemote
+		a.gitRemoteVaultID = a.state.VaultID
+		a.gitRemoteSaveAt = time.Now().Add(700 * time.Millisecond)
+	}
 }
 
 func (a *application) exportKey() {
@@ -295,7 +303,7 @@ func (a *application) activityView(c *ui.Context) {
 				for _, entry := range a.activity {
 					ui.Row(c).FillWidth().Padding(12).Gap(12).Background(c.Theme().Surface).Radius(8).Children(func() {
 						components.Text(c, entry.Time).FontSize(11).TextColor(c.Theme().TextMuted)
-						components.Text(c, entry.Action).Grow(1).Bold()
+						components.Text(c, entry.Action).Grow(1).MinWidth(0).Wrap().Bold()
 						components.Badge(c, entry.Source)
 						components.Text(c, fmt.Sprint(entry.Outcome)).FontSize(12)
 					})

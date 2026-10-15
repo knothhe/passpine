@@ -1,0 +1,9 @@
+{
+  "browser": "chrome",
+  "name": "passpine-neo",
+  "directories": {
+    "chrome": "~/ChromeExtensions",
+    "firefox": "~/FirefoxExtensions",
+    "edge": "~/EdgeExtensions"
+  }
+}

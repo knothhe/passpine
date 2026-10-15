@@ -36,6 +36,5 @@ func (s *Service) createPreview() error {
 			return e
 		}
 	}
-	s.prefs.Favorites[s.prefs.Current] = map[string]bool{"工作/GitHub": true, "工作/Figma": true, "个人/Proton Mail": true}
 	return s.savePreferences()
 }

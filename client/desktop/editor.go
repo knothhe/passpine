@@ -18,6 +18,8 @@ type editorState struct {
 	showRaw                                                           bool
 	password, username, website, notes                                string
 	custom                                                            string
+	folderQuery                                                       string
+	folder, name, pathFieldsPath                                      string
 }
 
 func (a *application) newEntry() {
@@ -32,7 +34,7 @@ func (a *application) newEntry() {
 		return
 	}
 	if !a.state.Configured {
-		a.setup = true
+		a.openSetup()
 		return
 	}
 	if a.state.Locked {
@@ -214,11 +216,17 @@ func (a *application) dialogs(c *ui.Context) {
 		}
 		components.ScrollView(c, components.ScrollViewOptions{}).FillWidth().MaxHeight(420).Children(func() {
 			ui.Column(c).FillWidth().Gap(14).Disabled(a.busy).Children(func() {
-				if field(c, "名称与文件夹", &a.editor.path, "例如：工作/GitHub", false).Changed() {
-					a.editor.draftSaved = false
-					a.editor.draftAttempted = false
+				a.editor.syncPathFields()
+				if field(c, "名称", &a.editor.name, "例如：GitHub", false).Label("账号名称").Changed() {
+					a.editor.setPath(a.editor.folder, a.editor.name)
 					a.lastInput = time.Now()
 				}
+				ui.Column(c).FillWidth().Gap(6).Children(func() {
+					components.Text(c, "文件夹").FontSize(12).Bold()
+					if a.folderSelect(c, &a.editor.folder, &a.editor.folderQuery, "选择文件夹", "密码库根目录", true).Changed() {
+						a.editor.setPath(a.editor.folder, a.editor.name)
+					}
+				})
 				if a.editor.showRaw {
 					components.Text(c, "完整内容").FontSize(12).Bold()
 					if components.TextBox(c, &a.editor.contents, components.TextBoxOptions{Multiline: true}).FillWidth().Height(230).Label("完整条目内容").Changed() {
@@ -226,7 +234,7 @@ func (a *application) dialogs(c *ui.Context) {
 						a.editor.draftAttempted = false
 						a.lastInput = time.Now()
 					}
-					muted(c, "第一行是密码，其余行按原样保存。原文模式保留重复字段、未知字段与空行。")
+					muted(c, "第一行是密码，其余行按原样保存。")
 				} else {
 					changed := false
 					ui.Row(c).FillWidth().Gap(8).AlignItems(ui.End).Children(func() {
@@ -291,7 +299,7 @@ func (a *application) dialogs(c *ui.Context) {
 	})
 	components.Dialog(c, &a.backupOpen, components.DialogOptions{Label: "验证恢复私钥", DisableBackdropClose: true}, func(panel ui.Element) {
 		panel.Width(460).Padding(24).Gap(18)
-		section(c, "验证恢复私钥", "输入这份备份私钥的口令。应用会实际尝试解密当前密码库。", nil)
+		section(c, "验证恢复私钥", "", nil)
 		muted(c, a.backupPath)
 		input := field(c, "备份私钥口令", &a.backupPassphrase, "输入口令", true)
 		if a.errorText != "" {

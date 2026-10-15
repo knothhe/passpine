@@ -512,12 +512,13 @@ func TestVerifyBackupChecksEntriesAndNestedPolicies(t *testing.T) {
 	}
 }
 
-func TestGitNetworkDoesNotBlockReadsAndLockCancelsProcess(t *testing.T) {
+func TestGitNetworkDoesNotBlockReadsAndOnlyCloseCancelsProcess(t *testing.T) {
 	git, e := exec.LookPath("git")
 	if e != nil {
 		t.Skip("git unavailable")
 	}
 	v := newFixture(t)
+	defer v.Close()
 	ctx := context.Background()
 	if e = v.GitInitialize(ctx); e != nil {
 		t.Fatal(e)
@@ -567,11 +568,17 @@ func TestGitNetworkDoesNotBlockReadsAndLockCancelsProcess(t *testing.T) {
 	v.Lock()
 	select {
 	case e = <-done:
+		t.Fatal("locking the secret session interrupted Git sync", e)
+	case <-time.After(100 * time.Millisecond):
+	}
+	v.Close()
+	select {
+	case e = <-done:
 		if e == nil {
-			t.Fatal("lock did not cancel network sync")
+			t.Fatal("close did not cancel network sync")
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("Git child process remained blocked after lock")
+		t.Fatal("Git child process remained blocked after close")
 	}
 }
 

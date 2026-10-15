@@ -3,6 +3,13 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$root_dir/dist"
 cd "$root_dir/client"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  xcrun swiftc -O -parse-as-library -swift-version 5 \
+    -target "$(uname -m)-apple-macosx13.0" \
+    -module-cache-path "$root_dir/dist/swift-module-cache" \
+    native/macos/DeviceUnlockEnvelope.swift native/macos/DeviceUnlockMain.swift \
+    -o "$root_dir/dist/passpine-device-unlock"
+fi
 go build -trimpath -ldflags='-s -w' -o "$root_dir/dist/passpine" ./cmd/passpine
 go build -trimpath -ldflags='-s -w' -o "$root_dir/dist/passpine-host" ./cmd/passpine-host
 if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -10,6 +17,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
   cp "$root_dir/dist/passpine" "$bundle/Contents/MacOS/passpine"
   cp "$root_dir/dist/passpine-host" "$bundle/Contents/MacOS/passpine-host"
+  cp "$root_dir/dist/passpine-device-unlock" "$bundle/Contents/MacOS/passpine-device-unlock"
   cp "$root_dir/client/assets/Passpine.icns" "$bundle/Contents/Resources/Passpine.icns"
   cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

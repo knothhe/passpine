@@ -1,7 +1,6 @@
 package desktop
 
 import (
-	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -14,24 +13,45 @@ import (
 )
 
 func (a *application) vaultView(c *ui.Context) {
-	a.filtered = a.entries()
-	components.Split(c, &a.listWidth, func() { a.listView(c) }, func() { a.detailView(c) }, components.SplitOptions{FirstMin: 250, SecondMin: 320}).Label("调整条目列表宽度").Fill()
+	if a.state.Locked {
+		a.unlockView(c)
+	} else {
+		a.detailView(c)
+	}
 }
 func (a *application) listView(c *ui.Context) {
+	a.filtered = a.entries()
+	if a.folderSelectionFilter != a.filter {
+		a.folderSelection = ""
+		if strings.HasPrefix(a.filter, "folder:") {
+			a.folderSelection = strings.TrimPrefix(a.filter, "folder:")
+		}
+		a.folderSelectionFilter = a.filter
+	}
 	ui.Column(c).Fill().Padding(16, 12, 12, 12).Gap(14).Children(func() {
 		input := components.TextBox(c, &a.query, components.TextBoxOptions{LeadingIcon: lucide.Search()}).Ref(&a.searchRef).FillWidth().Label("搜索条目").Placeholder("搜索名称或文件夹…")
 		if input.Changed() {
 			a.lastInput = time.Now()
 			a.selectedIndex = -1
+			a.filtered = a.entries()
 		}
 		if input.Submitted() && len(a.filtered) > 0 {
 			a.selectedIndex = 0
 			a.selectEntry(a.filtered[0].Path)
 		}
-		ui.Row(c).FillWidth().Padding(0, 4).Children(func() {
+		ui.Row(c).FillWidth().Padding(0, 4).Gap(8).Children(func() {
+			folder := a.folderSelect(c, &a.folderSelection, &a.folderQuery, "筛选文件夹", "所有文件夹", false).Grow(1).MinWidth(0)
+			if folder.Changed() {
+				a.filter = "all"
+				if a.folderSelection != "" {
+					a.filter = "folder:" + a.folderSelection
+				}
+				a.folderSelectionFilter = a.filter
+				a.selectedIndex = -1
+				a.filtered = a.entries()
+			}
+
 			components.Text(c, countLabel(len(a.filtered))).FontSize(11).TextColor(c.Theme().TextMuted)
-			ui.Spacer(c)
-			components.Text(c, "⌘ F").FontSize(11).TextColor(c.Theme().TextMuted)
 		})
 		if len(a.filtered) == 0 {
 			ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Gap(12).Children(func() {
@@ -46,38 +66,50 @@ func (a *application) listView(c *ui.Context) {
 		} else {
 			components.List(c, &a.list, len(a.filtered), func(i int) {
 				e := a.filtered[i]
-				ui.Row(c).FillWidth().Padding(12, 10).AlignItems(ui.Center).Gap(10).Children(func() {
-					components.Icon(c, lucide.KeyRound).Size(19, 19).TextColor(c.Theme().Accent)
-					ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
-						components.Text(c, e.Name).SingleLine().Bold().FontSize(13)
-						subtitle := e.Folder
-						if subtitle == "" {
-							subtitle = "密码库"
+				row := ui.Row(c).FillWidth().MinHeight(56).Padding(7, 7).AlignItems(ui.Center).Gap(3).Radius(c.Theme().Radius).Label("账号 " + e.Path)
+				showCopy := row.Hovered() || row.FocusWithin() || i == a.selectedIndex && a.list.Focused(c)
+				if row.Hovered() && i != a.selectedIndex {
+					row.Background(c.Theme().Text.Alpha(.04))
+				}
+				row.Children(func() {
+					ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
+						folder := e.Folder
+						if folder == "" {
+							folder = "密码库"
 						}
-						components.Text(c, subtitle).SingleLine().FontSize(11).TextColor(c.Theme().TextMuted)
+						components.Text(c, folder).SingleLine().FontSize(10).TextColor(c.Theme().TextMuted)
+						components.Text(c, e.Name).SingleLine().FontSize(13)
 					})
-					if e.Favorite {
-						components.Icon(c, lucide.Star).Size(13, 13).TextColor(c.Theme().Accent)
+					copy := iconButton(c, lucide.Copy(), "复制密码 "+e.Name, components.ButtonGhost).Size(30, 30).Disabled(a.busy)
+					if !showCopy {
+						copy.Opacity(0)
+					}
+					if copy.Clicked() {
+						a.copyEntry(e.Path)
 					}
 				})
 			}).Grow(1).FillWidth()
 		}
-		ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
-			components.Icon(c, lucide.GitBranch).Size(12, 12).TextColor(c.Theme().TextMuted)
-			label := "本地密码库"
-			if a.state.GitInitialized {
-				label = a.state.GitBranch
-				if a.state.GitChanges > 0 {
-					label += fmt.Sprintf(" · %d 项变更", a.state.GitChanges)
-				}
-			}
-			components.Text(c, label).FontSize(10).TextColor(c.Theme().TextMuted).SingleLine()
-		})
 	})
 }
 
 func (a *application) detailView(c *ui.Context) {
 	if a.detail.Entry == "" {
+		if a.selected != "" && a.busy {
+			ui.Column(c).Fill().Padding(30).Gap(12).Children(func() {
+				components.Text(c, entryName(a.selected)).FontSize(26).Bold().Wrap()
+				components.Text(c, a.selected).FontSize(11).TextColor(c.Theme().TextMuted).Wrap()
+				remaining := 180*time.Millisecond - c.Now().Sub(a.detailLoadingStarted)
+				if remaining > 0 {
+					// A scheduled frame has no state callback and cannot revive a
+					// completed or invalidated request. Fast reads finish silently.
+					c.After(remaining)
+				} else {
+					muted(c, "正在读取账号…")
+				}
+			})
+			return
+		}
 		ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Padding(30).Gap(16).Children(func() {
 			components.Icon(c, lucide.ShieldCheck).Size(48, 48).TextColor(c.Theme().Accent)
 			components.Text(c, "选择一个条目").FontSize(23).Bold()
@@ -95,19 +127,6 @@ func (a *application) detailView(c *ui.Context) {
 					components.Text(c, entryName(d.Entry)).FontSize(26).Bold().Wrap()
 					components.Text(c, d.Entry).FontSize(11).TextColor(c.Theme().TextMuted).Wrap()
 				})
-				favorite := false
-				for _, e := range a.state.Entries {
-					if e.Path == d.Entry {
-						favorite = e.Favorite
-					}
-				}
-				star := iconButton(c, lucide.Star(), "切换收藏", components.ButtonOutline)
-				if favorite {
-					star.TextColor(c.Theme().Accent)
-				}
-				if star.Clicked() {
-					a.call(app.Request{Action: "favorite", Entry: d.Entry}, nil)
-				}
 				if iconButton(c, lucide.Pencil(), "编辑条目", components.ButtonOutline).Clicked() {
 					a.editEntry()
 				}
@@ -121,7 +140,7 @@ func (a *application) detailView(c *ui.Context) {
 					a.secretField(c, "网址", d.URL, false)
 				}
 				if d.OTP != "" {
-					a.secretField(c, fmt.Sprintf("一次性密码 · %d 秒", d.OTPSeconds), d.OTP, true)
+					a.secretField(c, "一次性密码", d.OTP, true)
 				}
 				if d.Notes != "" {
 					ui.Column(c).FillWidth().Gap(7).Children(func() {
@@ -156,6 +175,19 @@ func (a *application) detailView(c *ui.Context) {
 			})
 		})
 	})
+}
+
+func (a *application) copyEntry(path string) {
+	if a.busy {
+		return
+	}
+	if a.state.Locked {
+		a.selectEntry(path)
+		a.pendingCopyEntry, a.pendingCopyVaultID = path, a.state.VaultID
+		a.invalidate()
+		return
+	}
+	a.call(app.Request{Action: "copy", Entry: path, Field: "password"}, func(app.Data) { a.notice = "已复制密码" })
 }
 
 func (a *application) secretField(c *ui.Context, label, value string, secret bool) {

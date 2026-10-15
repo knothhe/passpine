@@ -1,36 +1,62 @@
-import { useEffect, useState } from 'react';
-import { Badge, Box, Button, Callout, Card, Flex, Heading, Separator, Text } from '@radix-ui/themes';
-import { Check, ClipboardCopy, Command, Globe2, RefreshCw } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Badge, Button, Callout, Card, Heading, Text } from '@radix-ui/themes';
+import { Check, ClipboardCopy, Globe2, RefreshCw } from 'lucide-react';
 import { Brand } from './Primitives';
+import { ShortcutSettings } from './ShortcutSettings';
 import { errorMessage } from '../lib/errors';
 import { HOST, type Client, type Snapshot } from '../lib/types';
 
 export function Options({ client, extensionId, firefox = false }: { client: Client; extensionId: string; firefox?: boolean }) {
-  const [snapshot, setSnapshot] = useState<Snapshot>(), [error, setError] = useState(''), [copied, setCopied] = useState(false);
-  const refresh = async () => { try { setSnapshot(await client.request<Snapshot>({ action: 'snapshot' })); setError(''); } catch (error) { setSnapshot(undefined); setError(errorMessage(error)); } };
-  useEffect(() => { void refresh(); }, []);
+  const [snapshot, setSnapshot] = useState<Snapshot>();
+  const [error, setError] = useState('');
+  const [checking, setChecking] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const refreshSequence = useRef(0);
+  const refresh = async () => {
+    const sequence = ++refreshSequence.current;
+    setChecking(true);
+    try {
+      const state = await client.request<Snapshot>({ action: 'snapshot' });
+      if (sequence !== refreshSequence.current) return;
+      setSnapshot(state); setError('');
+    } catch (error) {
+      if (sequence !== refreshSequence.current) return;
+      setSnapshot(undefined); setError(errorMessage(error));
+    } finally {
+      if (sequence === refreshSequence.current) setChecking(false);
+    }
+  };
+  useEffect(() => { void refresh(); return () => { refreshSequence.current++; }; }, [client]);
+  useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(false), 2000); return () => clearTimeout(timer); }, [copied]);
+  const copyId = async () => {
+    try { await client.copy(extensionId); setCopied(true); }
+    catch (error) { setError(errorMessage(error)); }
+  };
   return <main className="options-page">
-    <header className="options-header"><Brand/><Heading size="3">浏览器设置</Heading>{client.demo && <Badge color="gray">示例数据</Badge>}</header>
-    <Card size="3">
-      <Flex gap="3" align="center"><Box className="grow"><Heading size="3">{snapshot ? snapshot.locked ? '已连接 · 已锁定' : '已连接' : '未连接客户端'}</Heading>{snapshot?.vaultName && <Text size="2" color="gray">{snapshot.vaultName}</Text>}</Box><Button variant="soft" onClick={() => void refresh()}><RefreshCw size={15}/>检查连接</Button></Flex>
-      {error && <Callout.Root mt="4" size="1" color="amber"><Callout.Text>{error}</Callout.Text></Callout.Root>}
-      {!snapshot && <><Separator size="4" my="4"/><div className="setup-steps"><SetupStep number="1">打开客户端，创建或导入密码库。</SetupStep><SetupStep number="2">在客户端设置中安装「浏览器连接」。</SetupStep><SetupStep number="3">解锁密码库，点击浏览器工具栏的 PassPine。</SetupStep></div></>}
-    </Card>
-    <Card size="3" mt="4">
-      <Flex gap="2" align="center"><Command size={17}/><Heading size="3">快捷键</Heading></Flex>
-      <div className="shortcut-row"><Text size="2">打开 PassPine</Text><kbd>⌘ / Ctrl ⇧ L</kbd></div>
-      <div className="shortcut-row"><Text size="2">填充匹配账号</Text><kbd>⌘ / Ctrl ⇧ F</kbd></div>
-      <Text as="p" size="1" color="gray" mt="3">{firefox ? '修改：about:addons → 管理扩展快捷键' : '修改：chrome://extensions/shortcuts'}</Text>
-    </Card>
-    <Card size="3" mt="4">
-      <Flex gap="2" align="center"><Globe2 size={17}/><Heading size="3">连接信息</Heading></Flex>
-      <div className="diagnostic-row"><Text color="gray" size="2">Native Host</Text><code>{HOST}</code></div>
-      <div className="diagnostic-row"><Text color="gray" size="2">扩展 ID</Text><code>{extensionId}</code></div>
-      <Flex justify="end" mt="3"><Button variant="ghost" size="1" onClick={() => { void client.copy(extensionId).then(() => setCopied(true)); }}>{copied ? <Check size={14}/> : <ClipboardCopy size={14}/>}复制扩展 ID</Button></Flex>
-    </Card>
+    <header className="options-header"><Brand/>{client.demo && <Badge color="gray">示例数据</Badge>}</header>
+    <div className="options-content"><div className="options-title"><Heading as="h1" size="6">浏览器设置</Heading><Text as="p" size="2" color="gray">管理客户端连接和浏览器快捷键。</Text></div>
+    <div className="options-sections">
+      <Card size="3" className="options-card options-card-connection">
+        <div className="options-connection">
+          <div className="options-connection-summary"><span className={`connection-dot ${!snapshot || snapshot.locked ? 'locked' : ''}`} aria-hidden="true"/><div><Heading as="h2" size="3">{checking ? '正在检查连接…' : snapshot ? snapshot.locked ? '已连接 · 已锁定' : '已连接' : '未连接客户端'}</Heading><Text as="p" size="2" color="gray">{snapshot?.vaultName || (snapshot ? '请在客户端打开密码库' : '连接本机 Passpine Neo')}</Text></div></div>
+          <Button variant="soft" disabled={checking} onClick={() => void refresh()}><RefreshCw size={15} className={checking ? 'connection-checking' : undefined}/>{checking ? '检查中' : '检查连接'}</Button>
+        </div>
+        {error && <Callout.Root mt="4" size="1" color="amber"><Callout.Text>{error}</Callout.Text></Callout.Root>}
+        {!snapshot && !checking && <ol className="setup-steps"><SetupStep number="1">打开客户端，创建或导入密码库。</SetupStep><SetupStep number="2">打开客户端设置 → 浏览器，点击“注册浏览器连接”。</SetupStep><SetupStep number="3">点击浏览器工具栏中的 Passpine Neo。</SetupStep></ol>}
+      </Card>
+      <Card size="3" className="options-card">
+        <ShortcutSettings firefox={firefox} demo={client.demo}/>
+      </Card>
+      <Card size="3" className="options-card">
+        <div className="options-section-heading"><Globe2 size={18}/><Heading as="h2" size="3">连接信息</Heading></div>
+        <dl className="diagnostic-list"><div><dt>Native Host</dt><dd><code>{HOST}</code></dd></div><div><dt>扩展 ID</dt><dd><code>{extensionId}</code></dd></div></dl>
+        <div className="options-card-actions"><Button variant="soft" color="gray" size="1" onClick={() => void copyId()}>{copied ? <Check size={14}/> : <ClipboardCopy size={14}/>} {copied ? '已复制' : '复制扩展 ID'}</Button></div>
+      </Card>
+    </div>
+    </div>
   </main>;
 }
 
 function SetupStep({ number, children }: { number: string; children: React.ReactNode }) {
-  return <div className="setup-step"><span>{number}</span><Text size="2">{children}</Text></div>;
+  return <li className="setup-step"><span aria-hidden="true">{number}</span><Text size="2">{children}</Text></li>;
 }

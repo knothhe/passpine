@@ -16,17 +16,31 @@ export class NativeConnection {
   private port?: NativePort;
   private pending = new Map<string, Pending>();
   private configuring?: Promise<unknown>;
+  private interactions = new Set<Promise<unknown>>();
   constructor(private connect: () => NativePort, private timeoutMs = 125_000) {}
 
   request<T>(request: NativeRequest): Promise<T> {
     if (request.action === 'configure' && this.configuring) return this.configuring as Promise<T>;
-    const operation = this.send<T>(request);
+    const operation = this.sendWhenReady<T>(request);
+    if (request.interactive && ['fetch', 'copy', 'unlock'].includes(request.action)) {
+      this.interactions.add(operation);
+      const clear = () => { this.interactions.delete(operation); };
+      operation.then(clear, clear);
+    }
     if (request.action === 'configure') {
       this.configuring = operation;
       const clear = () => { if (this.configuring === operation) this.configuring = undefined; };
       operation.then(clear, clear);
     }
     return operation;
+  }
+  private async sendWhenReady<T>(request: NativeRequest): Promise<T> {
+    if (request.action === 'status' || request.action === 'configure') {
+      // The native host processes requests in order. Start short metadata
+      // deadlines only after any system authentication dialog has finished.
+      while (this.interactions.size) await Promise.allSettled([...this.interactions]);
+    }
+    return this.send<T>(request);
   }
   private ensurePort(): NativePort {
     if (this.port) return this.port;

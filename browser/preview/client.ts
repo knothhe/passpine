@@ -15,12 +15,23 @@ let revision = 1;
 const matches = new Set(Object.keys(examples).filter(path => path.startsWith('github.com/')));
 export function setPreviewState(state: 'connected' | 'locked' | 'disconnected') { locked = state === 'locked'; disconnected = state === 'disconnected'; }
 let disconnected = false;
-const snapshot = (): Snapshot => ({ configured: true, vaultId: 'demo-vault', vaultName: '个人密码库', locked, entriesVersion: revision, capabilities: ['fetch', 'save', 'delete', 'copy', 'generate'], entries: Object.keys(examples).map(path => ({ path, name: path.split('/').at(-1)!, folder: path.split('/').slice(0, -1).join('/'), favorite: false })), tab: { id: 1, url: 'https://github.com/login', hostname: 'github.com', secure: true }, matches: [...matches] });
+const snapshot = (): Snapshot => {
+  const fixture = new URLSearchParams(location.search).get('fixture');
+  const configured = fixture !== 'unconfigured';
+  const paths = configured && fixture !== 'empty' ? Object.keys(examples) : [];
+  if (fixture === 'long') for (let index = 1; index <= 24; index++) paths.push(`工作/开发工具/示例 ${index}/用于检查省略与滚动的较长账号名称 ${index}`);
+  return { configured, vaultId: 'demo-vault', vaultName: configured ? '个人密码库' : '', locked, entriesVersion: revision, capabilities: ['fetch', 'save', 'delete', 'copy', 'generate'], entries: paths.map(path => ({ path, name: path.split('/').at(-1)!, folder: path.split('/').slice(0, -1).join('/') })), tab: { id: 1, url: 'https://github.com/login', hostname: 'github.com', secure: true }, matches: paths.filter(path => matches.has(path)) };
+};
 
 export const demoClient: Client = {
   demo: true,
   async request<T>(request: UIRequest): Promise<T> {
     if (disconnected) throw new PassPineError('app_unavailable');
+    if (request.action === 'fetch') {
+      const delay = Number(new URLSearchParams(location.search).get('delay'));
+      if (Number.isFinite(delay) && delay > 0) await new Promise(resolve => setTimeout(resolve, Math.min(delay, 5000)));
+      if (disconnected) throw new PassPineError('app_unavailable');
+    }
     let result: unknown = {};
     if (request.action === 'snapshot' || request.action === 'status') result = snapshot();
     else if (request.action === 'lock') locked = true;

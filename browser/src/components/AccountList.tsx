@@ -1,8 +1,17 @@
-import { IconButton, Text, Tooltip } from '@radix-ui/themes';
-import { ArrowDownToLine, ChevronRight } from 'lucide-react';
+import { DropdownMenu, IconButton, Text, Tooltip } from '@radix-ui/themes';
+import { ChevronRight, KeyRound, MoreHorizontal, UserRound } from 'lucide-react';
 import type { Entry } from '../lib/types';
-import { ActionIcon, EntryAvatar } from './Primitives';
 
-export function AccountList({ title, entries, onOpen, onFill, busy }: { title: string; entries: Entry[]; onOpen(entry: Entry): void; onFill(entry: Entry): void; busy: boolean }) {
-  return <section className="entry-group"><div className="group-heading"><Text size="1" weight="medium">{title}</Text><Text size="1">{entries.length}</Text></div>{entries.map(entry => <div key={entry.path} className="entry-row"><button className="entry-open" onClick={() => onOpen(entry)} disabled={busy}><EntryAvatar entry={entry}/><span className="entry-text"><Text as="span" size="2" weight="medium">{entry.title}</Text>{entry.folder && <Text as="span" size="1" color="gray">{entry.folder}</Text>}</span></button>{entry.matched ? <Tooltip content="填充到当前网站"><IconButton aria-label={`填充 ${entry.title}`} variant="soft" size="2" disabled={busy} onClick={() => onFill(entry)}><ArrowDownToLine size={16}/></IconButton></Tooltip> : <ActionIcon label={`查看 ${entry.title}`} onClick={() => onOpen(entry)} disabled={busy}><ChevronRight size={16}/></ActionIcon>}</div>)}</section>;
+function EntryAction({ label, icon, disabled, onClick }: { label: string; icon: 'user' | 'password' | 'details'; disabled: boolean; onClick(): void }) {
+  const Icon = { user: UserRound, password: KeyRound, details: ChevronRight }[icon];
+  return <Tooltip content={label}><IconButton className="account-action" aria-label={label} variant="ghost" size="1" disabled={disabled} onClick={onClick}><Icon size={17}/></IconButton></Tooltip>;
+}
+
+export function AccountList({ entries, onOpen, onFill, onCopy, onAssociate, website, busy }: { entries: Entry[]; onOpen(entry: Entry): void; onFill(entry: Entry): void; onCopy(entry: Entry, field: 'username' | 'password'): void; onAssociate(entry: Entry): void; website?: string; busy: boolean }) {
+  return <section className="account-list" aria-label="账号">{entries.map(entry => <div key={entry.path} className="entry-row"><button className="entry-open" data-entry-path={entry.path} title={entry.path} onClick={() => entry.matched ? onFill(entry) : onOpen(entry)} disabled={busy}><span className="entry-text"><span className="entry-path"><Text as="span" size="1" color="gray">{entry.folder || '密码库'}</Text>{entry.matched && website && <span className="site-account-badge" title={`可用于 ${website}`}>当前网站</span>}</span><Text as="span" size="2" weight="medium">{entry.title}</Text></span></button><div className="account-actions">
+    <EntryAction label={`复制用户名 ${entry.title}`} icon="user" onClick={() => onCopy(entry, 'username')} disabled={busy}/>
+    <EntryAction label={`复制密码 ${entry.title}`} icon="password" onClick={() => onCopy(entry, 'password')} disabled={busy}/>
+    <EntryAction label={`查看 ${entry.title}`} icon="details" onClick={() => onOpen(entry)} disabled={busy}/>
+    <DropdownMenu.Root><DropdownMenu.Trigger><IconButton className="account-action account-more" aria-label={`更多操作 ${entry.title}`} variant="ghost" size="1" disabled={busy}><MoreHorizontal size={18}/></IconButton></DropdownMenu.Trigger><DropdownMenu.Content align="end" size="1"><DropdownMenu.Label>{website || '当前没有网站'}</DropdownMenu.Label><DropdownMenu.Item disabled={!website || entry.matched} onSelect={() => onAssociate(entry)}>{entry.matched ? '已关联当前网站' : '关联到当前网站'}</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Root>
+  </div></div>)}</section>;
 }

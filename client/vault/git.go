@@ -20,6 +20,7 @@ type GitInfo struct {
 	Initialized bool   `json:"initialized"`
 	Branch      string `json:"branch"`
 	Remote      string `json:"remote"`
+	Upstream    string `json:"upstream"`
 	Changes     int    `json:"changes"`
 	Conflict    bool   `json:"conflict"`
 	Ahead       int    `json:"ahead"`
@@ -34,10 +35,10 @@ type GitResult struct {
 func gitCommand(ctx context.Context, directory string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
-	base := []string{"--literal-pathspecs", "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false", "-c", "protocol.ext.allow=never", "-c", "protocol.file.allow=user", "-C", directory}
+	base := []string{"--literal-pathspecs", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "commit.gpgSign=false", "-c", "protocol.ext.allow=never", "-c", "protocol.file.allow=user", "-C", directory}
 	base = append(base, args...)
 	command := exec.CommandContext(ctx, "git", base...)
-	command.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never", "GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=15", "LC_ALL=C")
+	command.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never", "GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=15", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	command.Cancel = func() error {
 		if command.Process == nil {
@@ -96,6 +97,11 @@ func pendingGitOperation(ctx context.Context, directory string) bool {
 }
 
 func (v *Vault) GitStatus(ctx context.Context) (GitInfo, error) {
+	ctx, cancel, e := v.beginGit(ctx)
+	if e != nil {
+		return GitInfo{}, e
+	}
+	defer cancel()
 	return v.gitStatus(ctx)
 }
 
@@ -106,6 +112,9 @@ func (v *Vault) gitStatus(ctx context.Context) (GitInfo, error) {
 		return info, nil
 	}
 	if !managedStore(ctx, v.config.Directory) {
+		if ctx.Err() != nil {
+			return info, ctx.Err()
+		}
 		return info, nil
 	}
 	info.Initialized = true
@@ -126,19 +135,29 @@ func (v *Vault) gitStatus(ctx context.Context) (GitInfo, error) {
 			info.Changes++
 		}
 	}
-	counts, e := gitCommand(ctx, v.config.Directory, "rev-list", "--left-right", "--count", "HEAD...@{upstream}")
-	if e == nil {
-		_, _ = fmt.Sscanf(counts, "%d %d", &info.Ahead, &info.Behind)
+	info.Upstream, _ = gitCommand(ctx, v.config.Directory, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	if info.Upstream != "" {
+		counts, countError := gitCommand(ctx, v.config.Directory, "rev-list", "--left-right", "--count", "HEAD...@{upstream}")
+		if countError == nil {
+			_, _ = fmt.Sscanf(counts, "%d %d", &info.Ahead, &info.Behind)
+		}
 	}
 	info.Conflict = pendingGitOperation(ctx, v.config.Directory)
+	if ctx.Err() != nil {
+		return info, ctx.Err()
+	}
 	return info, nil
 }
 
 func (v *Vault) GitInitialize(ctx context.Context) error {
+	ctx, cancel, e := v.beginGit(ctx)
+	if e != nil {
+		return e
+	}
+	defer cancel()
 	v.gitOperations.Lock()
 	defer v.gitOperations.Unlock()
-	_, token, e := v.token()
-	if e != nil {
+	if e = ctx.Err(); e != nil {
 		return e
 	}
 	unlock, e := lockStore(v.config.Directory)
@@ -152,7 +171,7 @@ func (v *Vault) GitInitialize(ctx context.Context) error {
 	if _, e = safeRead(v.config.Directory, ".gpg-id"); e != nil {
 		return e
 	}
-	if e = v.validate(token); e != nil {
+	if e = ctx.Err(); e != nil {
 		return e
 	}
 	_, e = gitCommand(ctx, v.config.Directory, "init", "-b", "main")
@@ -195,8 +214,12 @@ func (v *Vault) GitSetRemote(ctx context.Context, remote string) error {
 	}
 	v.gitOperations.Lock()
 	defer v.gitOperations.Unlock()
-	_, token, e := v.token()
+	ctx, cancel, e := v.beginGit(ctx)
 	if e != nil {
+		return e
+	}
+	defer cancel()
+	if e = ctx.Err(); e != nil {
 		return e
 	}
 	unlock, e := lockStore(v.config.Directory)
@@ -207,7 +230,7 @@ func (v *Vault) GitSetRemote(ctx context.Context, remote string) error {
 	if !managedStore(ctx, v.config.Directory) {
 		return errors.New("initialize Git first")
 	}
-	if e = v.validate(token); e != nil {
+	if e = ctx.Err(); e != nil {
 		return e
 	}
 	_, e = gitCommand(ctx, v.config.Directory, "remote", "get-url", "origin")
@@ -228,22 +251,16 @@ func isStoreFile(name string) bool {
 }
 
 func (v *Vault) GitSync(ctx context.Context) (GitResult, error) {
-	v.gitOperations.Lock()
-	defer v.gitOperations.Unlock()
-	_, token, e := v.token()
+	ctx, cancel, e := v.beginGit(ctx)
 	if e != nil {
 		return GitResult{}, e
 	}
-	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	v.session.Lock()
-	if !v.checkSession() || token != v.generation {
-		v.session.Unlock()
-		return GitResult{}, ErrCancelled
+	v.gitOperations.Lock()
+	defer v.gitOperations.Unlock()
+	if e = ctx.Err(); e != nil {
+		return GitResult{}, e
 	}
-	v.gitCancel = cancel
-	v.session.Unlock()
-	defer func() { v.session.Lock(); v.gitCancel = nil; v.session.Unlock() }()
 	unlock, e := lockStore(v.config.Directory)
 	if e != nil {
 		return GitResult{}, e
@@ -278,7 +295,7 @@ func (v *Vault) GitSync(ctx context.Context) (GitResult, error) {
 		}
 		args = append(args, file)
 	}
-	if e = v.validate(token); e != nil {
+	if e = ctx.Err(); e != nil {
 		return GitResult{}, e
 	}
 	if len(args) > 3 {
@@ -297,7 +314,7 @@ func (v *Vault) GitSync(ctx context.Context) (GitResult, error) {
 	}
 	remote, e := gitCommand(ctx, v.config.Directory, "remote", "get-url", "origin")
 	if e != nil || remote == "" {
-		if e = v.validate(token); e != nil {
+		if e = ctx.Err(); e != nil {
 			return GitResult{}, e
 		}
 		return GitResult{State: "local", Message: "Changes committed locally. Add a remote to synchronize."}, nil
@@ -305,7 +322,7 @@ func (v *Vault) GitSync(ctx context.Context) (GitResult, error) {
 	if e = ValidateRemote(remote); e != nil {
 		return GitResult{}, e
 	}
-	if e = v.validate(token); e != nil {
+	if e = ctx.Err(); e != nil {
 		return GitResult{}, e
 	}
 	upstream, upstreamErr := gitCommand(ctx, v.config.Directory, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
@@ -314,7 +331,7 @@ func (v *Vault) GitSync(ctx context.Context) (GitResult, error) {
 			return GitResult{}, e
 		}
 	}
-	if e = v.validate(token); e != nil {
+	if e = ctx.Err(); e != nil {
 		return GitResult{}, e
 	}
 	if upstreamErr != nil {
@@ -325,7 +342,7 @@ func (v *Vault) GitSync(ctx context.Context) (GitResult, error) {
 	if e != nil {
 		return GitResult{}, e
 	}
-	if e = v.validate(token); e != nil {
+	if e = ctx.Err(); e != nil {
 		return GitResult{}, e
 	}
 	return GitResult{State: "synced", Message: "Encrypted password store synchronized."}, nil

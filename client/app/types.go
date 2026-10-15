@@ -1,11 +1,14 @@
 package app
 
+import "github.com/knothhe/passpine-neo/client/deviceunlock"
+
 // Request is shared by the native UI and the browser native-messaging boundary.
 // The browser boundary separately restricts which actions and arguments it accepts.
 type Request struct {
 	RequestID        string    `json:"requestId,omitempty"`
 	Protocol         int       `json:"protocol,omitempty"`
 	Action           string    `json:"action"`
+	Interactive      bool      `json:"interactive,omitempty"`
 	VaultID          string    `json:"vaultId,omitempty"`
 	Entry            string    `json:"entry,omitempty"`
 	Contents         string    `json:"contents,omitempty"`
@@ -40,10 +43,9 @@ type Response struct {
 	Message   string `json:"message,omitempty"`
 }
 type Entry struct {
-	Path     string `json:"path"`
-	Name     string `json:"name"`
-	Folder   string `json:"folder"`
-	Favorite bool   `json:"favorite"`
+	Path   string `json:"path"`
+	Name   string `json:"name"`
+	Folder string `json:"folder"`
 }
 type VaultInfo struct {
 	ID        string `json:"id"`
@@ -70,47 +72,63 @@ type Settings struct {
 	MaxSessionMinutes int    `json:"maxSessionMinutes"`
 	ClipboardSeconds  int    `json:"clipboardSeconds"`
 	BrowseWhileLocked bool   `json:"browseWhileLocked"`
+	DeviceUnlock      bool   `json:"deviceUnlock"`
 	AutoSync          bool   `json:"autoSync"`
 	SyncMinutes       int    `json:"syncMinutes"`
 	RecordActivity    bool   `json:"recordActivity"`
+	GlobalShortcut    string `json:"globalShortcut"`
 }
 type Data struct {
-	EntriesVersion   uint64         `json:"entriesVersion"`
-	Destination      string         `json:"destination,omitempty"`
-	OriginalEntry    string         `json:"originalEntry,omitempty"`
-	Configured       bool           `json:"configured"`
-	Locked           bool           `json:"locked"`
-	Preview          bool           `json:"preview"`
-	VaultID          string         `json:"vaultId"`
-	VaultName        string         `json:"vaultName"`
-	Directory        string         `json:"directory,omitempty"`
-	Vaults           []VaultInfo    `json:"vaults"`
-	Entries          []Entry        `json:"entries"`
-	Capabilities     []string       `json:"capabilities"`
-	Settings         Settings       `json:"settings"`
-	Entry            string         `json:"entry,omitempty"`
-	Contents         string         `json:"contents,omitempty"`
-	Revision         string         `json:"revision,omitempty"`
-	Password         string         `json:"password,omitempty"`
-	Username         string         `json:"username,omitempty"`
-	URL              string         `json:"url,omitempty"`
-	Notes            string         `json:"notes,omitempty"`
-	OTP              string         `json:"otp,omitempty"`
-	OTPSeconds       int            `json:"otpSeconds,omitempty"`
-	Recovery         []RecoveryItem `json:"recovery,omitempty"`
-	TrashID          string         `json:"trashId,omitempty"`
-	ID               string         `json:"id,omitempty"`
-	Fingerprint      string         `json:"fingerprint,omitempty"`
-	GitRemote        string         `json:"gitRemote,omitempty"`
-	GitBranch        string         `json:"gitBranch,omitempty"`
-	GitChanges       int            `json:"gitChanges"`
-	GitSummary       string         `json:"gitSummary,omitempty"`
-	GitError         string         `json:"gitError,omitempty"`
-	GitInitialized   bool           `json:"gitInitialized"`
-	BrowserInstalled bool           `json:"browserInstalled"`
-	Activity         []Activity     `json:"activity,omitempty"`
+	EntriesVersion        uint64         `json:"entriesVersion"`
+	Destination           string         `json:"destination,omitempty"`
+	OriginalEntry         string         `json:"originalEntry,omitempty"`
+	Configured            bool           `json:"configured"`
+	Locked                bool           `json:"locked"`
+	Preview               bool           `json:"preview"`
+	VaultID               string         `json:"vaultId"`
+	VaultName             string         `json:"vaultName"`
+	Directory             string         `json:"directory,omitempty"`
+	Vaults                []VaultInfo    `json:"vaults"`
+	Entries               []Entry        `json:"entries"`
+	Capabilities          []string       `json:"capabilities"`
+	Settings              Settings       `json:"settings"`
+	Entry                 string         `json:"entry,omitempty"`
+	Contents              string         `json:"contents,omitempty"`
+	Revision              string         `json:"revision,omitempty"`
+	Password              string         `json:"password,omitempty"`
+	Username              string         `json:"username,omitempty"`
+	URL                   string         `json:"url,omitempty"`
+	Notes                 string         `json:"notes,omitempty"`
+	OTP                   string         `json:"otp,omitempty"`
+	OTPSeconds            int            `json:"otpSeconds,omitempty"`
+	Recovery              []RecoveryItem `json:"recovery,omitempty"`
+	TrashID               string         `json:"trashId,omitempty"`
+	ID                    string         `json:"id,omitempty"`
+	Fingerprint           string         `json:"fingerprint,omitempty"`
+	GitRemote             string         `json:"gitRemote,omitempty"`
+	GitUpstream           string         `json:"gitUpstream,omitempty"`
+	GitBranch             string         `json:"gitBranch,omitempty"`
+	GitChanges            int            `json:"gitChanges"`
+	GitAvailable          bool           `json:"gitAvailable"`
+	GitAhead              int            `json:"gitAhead"`
+	GitBehind             int            `json:"gitBehind"`
+	GitConflict           bool           `json:"gitConflict"`
+	GitSyncing            bool           `json:"gitSyncing"`
+	GitRefreshing         bool           `json:"gitRefreshing"`
+	GitLastResult         string         `json:"gitLastResult,omitempty"`
+	GitLastSync           string         `json:"gitLastSync,omitempty"`
+	GitStatusAt           string         `json:"gitStatusAt,omitempty"`
+	GitSummary            string         `json:"gitSummary,omitempty"`
+	GitError              string         `json:"gitError,omitempty"`
+	GitInitialized        bool           `json:"gitInitialized"`
+	BrowserInstalled      bool           `json:"browserInstalled"`
+	DeviceUnlockAvailable bool           `json:"deviceUnlockAvailable"`
+	DeviceUnlockEnrolled  bool           `json:"deviceUnlockEnrolled"`
+	DeviceUnlockNotice    string         `json:"deviceUnlockNotice,omitempty"`
+	Activity              []Activity     `json:"activity,omitempty"`
 }
 type Options struct {
-	DataDir string
-	Preview bool
+	DataDir      string
+	Preview      bool
+	DeviceUnlock deviceunlock.Provider
 }

@@ -1,7 +1,11 @@
 const messages: Record<string, string> = {
   app_unavailable: '请先打开 PassPine 客户端，再重新连接。',
   native_connection_failed: '尚未连接客户端。请在客户端的「浏览器连接」中安装 Native Messaging Host。',
+  background_unavailable: '扩展后台未响应，请重新打开扩展或在扩展管理页重新加载。',
+  invalid_response: '客户端返回了无法识别的响应，请重新连接客户端。',
   locked: '密码库已锁定。请在客户端解锁后重试。',
+  system_unlock_required: '请先在客户端使用私钥口令解锁，并启用系统解锁。',
+  authentication_cancelled: '系统验证已取消或未完成，密码库仍保持锁定。',
   unauthorized: '浏览器扩展尚未获得客户端授权，请检查扩展 ID。',
   protocol_mismatch: '客户端与扩展的协议版本不同，请同时更新两端。',
   vault_changed: '当前密码库已切换，请刷新列表后重试。',

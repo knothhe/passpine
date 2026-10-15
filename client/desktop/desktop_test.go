@@ -32,8 +32,8 @@ func awaitMain(t *testing.T, callbacks <-chan func()) {
 func fixture() *application {
 	a := newApplication(nil)
 	a.state = app.Data{Configured: true, VaultName: "个人密码库", Preview: true, Settings: app.DefaultSettings(), Entries: []app.Entry{
-		{Path: "开发/GitHub", Name: "GitHub", Folder: "开发", Favorite: true},
-		{Path: "工作/Figma", Name: "Figma", Folder: "工作", Favorite: true},
+		{Path: "开发/GitHub", Name: "GitHub", Folder: "开发"},
+		{Path: "工作/Figma", Name: "Figma", Folder: "工作"},
 		{Path: "生活/Apple", Name: "Apple", Folder: "生活"},
 		{Path: "开发/Cloudflare", Name: "Cloudflare", Folder: "开发"},
 	}}
@@ -46,9 +46,13 @@ func testView(a *application) func(*ui.Context) {
 	return func(c *ui.Context) {
 		c.SetTheme(theme.Onevra(c))
 		ui.Row(c).Fill().Children(func() {
-			ui.Column(c).Width(204).FillHeight().Background(c.Theme().Surface).Children(func() { a.sidebarView(c) })
+			ui.Column(c).Width(310).FillHeight().Background(c.Theme().Surface).Children(func() {
+				a.sidebarView(c)
+				ui.Row(c).FillWidth().Height(44).Padding(6, 12).AlignItems(ui.Center).Children(func() { a.sidebarToolbar(c) })
+			})
 			ui.Column(c).Grow(1).FillHeight().Children(func() { a.contentView(c) })
 		})
+		ui.Row(c).Absolute().Top(0).Left(310).Right(0).Height(48).Padding(8, 16).Children(func() { a.header(c) })
 	}
 }
 
@@ -315,38 +319,207 @@ func TestActivitySurvivesMetadataRefresh(t *testing.T) {
 }
 
 func TestScreensRender(t *testing.T) {
-	for _, screen := range []string{"entries", "generator", "settings", "recovery", "setup", "locked", "editor"} {
-		t.Run(screen, func(t *testing.T) {
-			a := fixture()
-			a.page = screen
-			switch screen {
-			case "setup":
-				a.state.Configured = false
-			case "locked":
-				a.state.Locked = true
-			case "editor":
-				a.page = "entries"
-				a.editEntry()
+	screens := []string{"entries", "settings", "recovery", "setup", "locked", "editor"}
+	directory := os.Getenv("PASSPINE_SNAPSHOT_DIR")
+	if directory != "" {
+		screens = append(screens, "settings-security", "settings-vault", "settings-browser", "activity", "recovery-items", "drafts", "setup-import", "setup-git", "locked-device", "editor-raw", "empty", "git-locked", "git-syncing", "confirm-delete", "confirm-discard", "confirm-purge", "backup")
+	}
+	type viewport struct {
+		name          string
+		width, height int
+		dark          bool
+	}
+	sizes := []viewport{{"", 1120, 760, false}}
+	if directory != "" {
+		sizes = append(sizes, viewport{"-narrow", 860, 620, false}, viewport{"-dark", 1120, 760, true})
+	}
+	for _, screen := range screens {
+		for _, size := range sizes {
+			t.Run(screen+size.name, func(t *testing.T) {
+				a := fixture()
+				a.page = screen
+				switch screen {
+				case "settings-security", "settings-vault", "settings-browser":
+					a.page = "settings"
+					a.settingsState.Category = strings.TrimPrefix(screen, "settings-")
+					a.state.DeviceUnlockAvailable, a.state.DeviceUnlockEnrolled = true, true
+				case "setup", "setup-import", "setup-git":
+					a.state.Configured = false
+					if screen == "setup-import" {
+						a.setupMode = 1
+						a.setupDirectory = "/Users/example/.password-store"
+					}
+					if screen == "setup-git" {
+						a.setupMode = 2
+					}
+				case "locked", "locked-device":
+					a.page = "entries"
+					a.state.Locked = true
+					if screen == "locked-device" {
+						a.state.DeviceUnlockAvailable, a.state.DeviceUnlockEnrolled = true, true
+					}
+				case "confirm-delete", "confirm-discard", "confirm-purge", "backup":
+					a.page = "entries"
+					a.deleteOpen = screen == "confirm-delete"
+					a.discardOpen = screen == "confirm-discard"
+					a.purgeOpen = screen == "confirm-purge"
+					a.backupOpen = screen == "backup"
+					a.backupPath = "/tmp/example-recovery.asc"
+				case "editor", "editor-raw":
+					a.page = "entries"
+					a.editEntry()
+					a.editor.showRaw = screen == "editor-raw"
+				case "empty":
+					a.page = "entries"
+					a.state.Entries = nil
+					a.detail = app.Data{}
+				case "recovery-items", "drafts":
+					a.page = "recovery"
+					if screen == "drafts" {
+						a.recoveryKind = 1
+					}
+					a.recovery = []app.RecoveryItem{{ID: "fixture", Path: "工作/演示条目", CreatedAt: "2026-10-15 16:00"}}
+				case "activity":
+					a.activity = []app.Activity{{Time: "2026-10-15T08:00:00Z", Action: "copy", Source: "browser", Outcome: "ok"}}
+				case "git-locked", "git-syncing":
+					a.page = "entries"
+					a.state.GitAvailable, a.state.GitInitialized = true, true
+					a.state.GitBranch, a.state.GitSummary = "main", "已同步"
+					a.state.Locked = screen == "git-locked"
+					a.state.GitSyncing = screen == "git-syncing"
+				}
+				v := ui.NewTester(testView(a), size.width, size.height)
+				v.SetDark(size.dark)
+				v.Frame()
+				if v.Image().Bounds().Empty() {
+					t.Fatal("empty rendered frame")
+				}
+				if directory != "" {
+					if err := os.MkdirAll(directory, 0755); err != nil {
+						t.Fatal(err)
+					}
+					file, err := os.Create(filepath.Join(directory, screen+size.name+".png"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer file.Close()
+					if err = png.Encode(file, v.Image()); err != nil {
+						t.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestDefaultVaultDiscovery(t *testing.T) {
+	for _, scenario := range []string{"existing", "missing", "empty", "file", "symlink", "configured", "preview", "manual"} {
+		t.Run(scenario, func(t *testing.T) {
+			home := t.TempDir()
+			directory := filepath.Join(home, ".password-store")
+			if scenario == "file" {
+				if err := os.WriteFile(directory, []byte("not a directory"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			} else if scenario != "missing" {
+				store := directory
+				if scenario == "symlink" {
+					store = filepath.Join(home, "real-store")
+				}
+				if err := os.Mkdir(store, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if scenario != "empty" {
+					if err := os.WriteFile(filepath.Join(store, ".gpg-id"), []byte("fixture-recipient\n"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if scenario == "symlink" {
+					if err := os.Symlink(store, directory); err != nil {
+						t.Fatal(err)
+					}
+				}
 			}
-			v := ui.NewTester(testView(a), 1120, 760)
-			v.Frame()
-			if v.Image().Bounds().Empty() {
-				t.Fatal("empty rendered frame")
+			a := newApplication(nil)
+			a.state.Configured = scenario == "configured"
+			a.state.Preview = scenario == "preview"
+			if scenario == "manual" {
+				a.setupDirectory = filepath.Join(home, "chosen-store")
 			}
-			if dir := os.Getenv("PASSPINE_SNAPSHOT_DIR"); dir != "" {
-				if err := os.MkdirAll(dir, 0755); err != nil {
-					t.Fatal(err)
+			before := a.setupDirectory
+			a.useDefaultVault(home)
+			if scenario == "existing" {
+				if a.setupMode != 1 || a.setupDirectory != directory {
+					t.Fatalf("default store was not selected for import: mode=%d directory=%q", a.setupMode, a.setupDirectory)
 				}
-				file, err := os.Create(filepath.Join(dir, screen+".png"))
-				if err != nil {
-					t.Fatal(err)
+				view := ui.NewTester(testView(a), 1120, 760)
+				if !view.HasText("已找到默认密码库 ~/.password-store。输入私钥口令即可继续。") {
+					t.Fatal("import screen did not explain the detected store")
 				}
-				defer file.Close()
-				if err = png.Encode(file, v.Image()); err != nil {
-					t.Fatal(err)
+				files, err := os.ReadDir(directory)
+				if err != nil || len(files) != 1 || files[0].Name() != ".gpg-id" {
+					t.Fatal("discovery modified the existing store", err)
 				}
+			} else if a.setupMode != 0 || a.setupDirectory != before || a.defaultVaultDirectory != "" {
+				t.Fatal("discovery changed an unrelated setup")
 			}
 		})
+	}
+}
+
+func TestDefaultVaultIsOnlyPrefilledForImport(t *testing.T) {
+	a := newApplication(nil)
+	a.defaultVaultDirectory = filepath.Join(t.TempDir(), ".password-store")
+	a.setupDirectory = a.defaultVaultDirectory
+	a.setupMode = 1
+	view := ui.NewTester(testView(a), 1120, 760)
+	for _, tab := range []string{"创建密码库", "从 Git 下载"} {
+		if err := view.Click(tab); err != nil {
+			t.Fatal(err)
+		}
+		if a.setupDirectory != "" {
+			t.Fatal("existing default store was reused as a new store destination")
+		}
+		if err := view.Click("导入密码库"); err != nil {
+			t.Fatal(err)
+		}
+		if a.setupDirectory != a.defaultVaultDirectory {
+			t.Fatal("returning to import did not restore the default store")
+		}
+	}
+	a.setupDirectory = filepath.Join(t.TempDir(), "chosen-store")
+	chosen := a.setupDirectory
+	if err := view.Click("创建密码库"); err != nil {
+		t.Fatal(err)
+	}
+	if a.setupDirectory != chosen {
+		t.Fatal("tab change replaced a manually selected directory")
+	}
+}
+
+func TestOpenVaultUsesSystemGPGWithoutKeyFile(t *testing.T) {
+	a := newApplication(nil)
+	a.setupMode = 1
+	a.setupDirectory = filepath.Join(t.TempDir(), ".password-store")
+	a.passphrase = "fixture-system-gpg-passphrase"
+	callbacks := make(chan func(), 1)
+	requests := make(chan app.Request, 1)
+	a.runOnMain = func(callback func()) { callbacks <- callback }
+	a.service = backendFunc(func(req app.Request) app.Response {
+		requests <- req
+		return app.Response{Status: "error", Message: "fixture response"}
+	})
+	view := ui.NewTester(testView(a), 1120, 760)
+	if view.HasText("OpenPGP 私钥文件") || view.HasText("选择私钥文件") {
+		t.Fatal("opening a system GPG store still asks for a recovery key file")
+	}
+	if err := view.Click("打开并解锁"); err != nil {
+		t.Fatal(err)
+	}
+	awaitMain(t, callbacks)
+	req := <-requests
+	if req.Action != "open" || req.Mode != "system-gpg" || req.KeyFile != "" || req.Directory != a.setupDirectory || req.Passphrase != a.passphrase {
+		t.Fatalf("unexpected system GPG open request: action=%s mode=%s", req.Action, req.Mode)
 	}
 }
 

@@ -1,13 +1,71 @@
 package app
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestOpenExistingVaultAutomaticallyUsesSystemGPG(t *testing.T) {
+	gpg, err := exec.LookPath("gpg")
+	if err != nil {
+		t.Skip("GnuPG is not installed")
+	}
+	home, err := os.MkdirTemp("/tmp", "passpine-app-gpg-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GNUPGHOME", home)
+	t.Cleanup(func() {
+		if tool, err := exec.LookPath("gpgconf"); err == nil {
+			_ = exec.Command(tool, "--homedir", home, "--kill", "gpg-agent").Run()
+		}
+		_ = os.RemoveAll(home)
+	})
+	source := testService(t)
+	saved := must(t, source, Request{Action: "save", Entry: "system-gpg", Contents: "fixture-system-secret", Mode: "create"})
+	backup, err := source.active.ExportSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(backup)
+	cmd := exec.Command(gpg, "--homedir", home, "--batch", "--import")
+	cmd.Stdin = bytes.NewReader(backup)
+	if err = cmd.Run(); err != nil {
+		t.Fatal("cannot initialize isolated GPG fixture", err)
+	}
+	directory := must(t, source, Request{Action: "status"}).Directory
+	if err = os.WriteFile(filepath.Join(directory, ".gpg-id"), []byte("test@example.invalid\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	opened, err := New(Options{DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { opened.Close() })
+	data := must(t, opened, Request{Action: "open", Directory: directory, Mode: "system-gpg", Passphrase: "test-passphrase-123"})
+	if !data.Configured || data.Locked || data.Fingerprint == "" || data.Directory != directory {
+		t.Fatal("system GPG open did not configure and unlock the store")
+	}
+	if got := must(t, opened, Request{Action: "fetch", Entry: saved.Entry}); got.Contents != saved.Contents {
+		t.Fatal("system GPG session cannot read the existing ciphertext")
+	}
+	must(t, opened, Request{Action: "lock"})
+	must(t, opened, Request{Action: "unlock", Passphrase: "test-passphrase-123"})
+	preview, err := New(Options{DataDir: t.TempDir(), Preview: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { preview.Close() })
+	if result := preview.Execute(Request{Action: "open", Directory: directory, Mode: "system-gpg", Passphrase: "test-passphrase-123"}); result.Status != "error" || !strings.Contains(result.Message, "演示模式") {
+		t.Fatal("preview accessed the system GPG keyring")
+	}
+}
 
 func testService(t *testing.T) *Service {
 	t.Helper()
@@ -37,7 +95,6 @@ func TestSharedSessionLifecycle(t *testing.T) {
 		t.Fatal(initial)
 	}
 	saved := must(t, s, Request{Action: "save", Entry: "work/example.com", Contents: "secret\nusername: alex\nurl: https://example.com\n", Mode: "create"})
-	must(t, s, Request{Action: "favorite", Entry: saved.Entry})
 	var copied string
 	s.SetClipboard(func(v string, _ int) error { copied = v; return nil })
 	request := func(r Request) Response {
@@ -70,7 +127,7 @@ func TestSharedSessionLifecycle(t *testing.T) {
 	must(t, s, Request{Action: "unlock", Passphrase: "test-passphrase-123"})
 	moved := must(t, s, Request{Action: "save", Entry: saved.Entry, Destination: "work/new.example.com", Contents: saved.Contents, Revision: saved.Revision, Mode: "edit"})
 	list := must(t, s, Request{Action: "list"})
-	if len(list.Entries) != 1 || list.Entries[0].Path != moved.Entry || !list.Entries[0].Favorite {
+	if len(list.Entries) != 1 || list.Entries[0].Path != moved.Entry {
 		t.Fatal(list.Entries)
 	}
 	deleted := must(t, s, Request{Action: "delete", Entry: moved.Entry, Revision: moved.Revision})
@@ -163,15 +220,11 @@ func TestMetadataVersionsAndClipboardRevocation(t *testing.T) {
 	s := testService(t)
 	saved := must(t, s, Request{Action: "save", Entry: "first", Contents: "one", Mode: "create"})
 	initial := must(t, s, Request{Action: "configure"})
-	favorite := must(t, s, Request{Action: "favorite", Entry: saved.Entry})
-	if favorite.EntriesVersion <= initial.EntriesVersion || !favorite.Entries[0].Favorite {
-		t.Fatal("favorite did not invalidate UI metadata")
-	}
 	if _, e := s.active.SaveRename(saved.Entry, "second", "two", saved.Revision); e != nil {
 		t.Fatal(e)
 	}
 	external := must(t, s, Request{Action: "configure"})
-	if external.EntriesVersion <= favorite.EntriesVersion || external.Entries[0].Path != "second" {
+	if external.EntriesVersion <= initial.EntriesVersion || external.Entries[0].Path != "second" {
 		t.Fatal("external changes not observed")
 	}
 	lease := s.ClipboardLease()

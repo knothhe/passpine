@@ -1,0 +1,15 @@
+.shortcut-settings-list>div { grid-template-columns:minmax(110px,.7fr) minmax(0,1fr); }
+.shortcut-settings-list dd { width:100%; text-align:right; }
+.shortcut-binding { display:flex; align-items:center; justify-content:flex-end; gap:12px; min-height:30px; }
+.shortcut-binding>.rt-Button { flex:none; margin:0; }
+.shortcut-editor { display:flex; flex-direction:column; gap:12px; }
+.shortcut-editor .rt-TextFieldRoot { min-width:0; width:100%; background:var(--pine-surface); }
+.shortcut-editor-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:8px; }
+.shortcut-editor-actions>.rt-Button { margin:0; }
+.shortcut-settings-list .shortcut-reset { margin:10px 0 0; font-size:11px; }
+.shortcut-recording-help { margin:12px 0 0; line-height:1.7; }
+@media(max-width:520px) {
+  .shortcut-settings-list>div { grid-template-columns:minmax(0,1fr); gap:8px; }
+  .shortcut-settings-list dd { text-align:left; }
+  .shortcut-binding,.shortcut-editor-actions { justify-content:flex-start; }
+}

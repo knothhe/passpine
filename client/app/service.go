@@ -16,18 +16,22 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/knothhe/passpine-neo/client/deviceunlock"
 	"github.com/knothhe/passpine-neo/client/nativehost"
 	"github.com/knothhe/passpine-neo/client/vault"
 )
 
 type preferences struct {
-	Current   string                     `json:"current"`
-	Vaults    []VaultInfo                `json:"vaults"`
-	Favorites map[string]map[string]bool `json:"favorites"`
-	Settings  Settings                   `json:"settings"`
+	Current  string      `json:"current"`
+	Vaults   []VaultInfo `json:"vaults"`
+	Settings Settings    `json:"settings"`
 }
 type Service struct {
+	device         deviceunlock.Provider
+	deviceMu       sync.Mutex
+	deviceCancel   context.CancelFunc
 	onChange       func()
+	onGitChange    func()
 	entriesVersion uint64
 	cloneCancel    context.CancelFunc
 	mu             sync.Mutex
@@ -43,6 +47,12 @@ type Service struct {
 	closed         bool
 	activity       []Activity
 	gitError       string
+	gitStatusError string
+	gitData        Data
+	gitVault       *vault.Vault
+	gitRefreshAt   time.Time
+	gitOperation   bool
+	gitEpoch       uint64
 	lastSync       time.Time
 	cancellation   atomic.Uint64
 	cancelVault    atomic.Pointer[vault.Vault]
@@ -51,7 +61,7 @@ type Service struct {
 }
 
 func DefaultSettings() Settings {
-	return Settings{Theme: "system", Language: "zh-CN", IdleMinutes: 10, MaxSessionMinutes: 60, ClipboardSeconds: 30, CloseToTray: true, AutoSync: false, SyncMinutes: 0, RecordActivity: true}
+	return Settings{Theme: "system", Language: "zh-CN", IdleMinutes: 10, MaxSessionMinutes: 60, ClipboardSeconds: 30, CloseToTray: true, BrowseWhileLocked: true, DeviceUnlock: true, AutoSync: false, SyncMinutes: 0, RecordActivity: true, GlobalShortcut: DefaultGlobalShortcut}
 }
 func New(o Options) (*Service, error) {
 	var err error
@@ -80,7 +90,13 @@ func New(o Options) (*Service, error) {
 	if err = os.Chmod(dir, 0700); err != nil {
 		return nil, err
 	}
-	s := &Service{directory: dir, preview: o.Preview, done: make(chan struct{}), prefs: preferences{Vaults: []VaultInfo{}, Favorites: map[string]map[string]bool{}, Settings: DefaultSettings()}}
+	s := &Service{directory: dir, preview: o.Preview, done: make(chan struct{}), prefs: preferences{Vaults: []VaultInfo{}, Settings: DefaultSettings()}}
+	if !o.Preview {
+		s.device = o.DeviceUnlock
+		if s.device == nil {
+			s.device = deviceunlock.New()
+		}
+	}
 	p := filepath.Join(dir, "preferences.json")
 	if b, e := readPrivate(p, 1<<20); e == nil {
 		if e = json.Unmarshal(b, &s.prefs); e != nil {
@@ -89,12 +105,15 @@ func New(o Options) (*Service, error) {
 	} else if !os.IsNotExist(e) {
 		return nil, e
 	}
-	if s.prefs.Favorites == nil {
-		s.prefs.Favorites = map[string]map[string]bool{}
-	}
+
 	if e := validateSettings(s.prefs.Settings); e != nil {
 		s.prefs.Settings = DefaultSettings()
 	}
+	shortcut, shortcutErr := NormalizeGlobalShortcut(s.prefs.Settings.GlobalShortcut)
+	if shortcutErr != nil {
+		shortcut = DefaultGlobalShortcut
+	}
+	s.prefs.Settings.GlobalShortcut = shortcut
 	for _, v := range s.prefs.Vaults {
 		if v.ID == s.prefs.Current {
 			s.active, err = s.newVault(v.Directory)
@@ -138,9 +157,10 @@ func (s *Service) Touch() {
 		current.Activity()
 	}
 }
-func (s *Service) SetOnChange(f func()) { s.mu.Lock(); s.onChange = f; s.mu.Unlock() }
-func (s *Service) SetOnOpen(f func())   { s.mu.Lock(); s.onOpen = f; s.mu.Unlock() }
-func (s *Service) SetOnLock(f func())   { s.mu.Lock(); s.onLock = f; s.mu.Unlock() }
+func (s *Service) SetOnChange(f func())    { s.mu.Lock(); s.onChange = f; s.mu.Unlock() }
+func (s *Service) SetOnGitChange(f func()) { s.mu.Lock(); s.onGitChange = f; s.mu.Unlock() }
+func (s *Service) SetOnOpen(f func())      { s.mu.Lock(); s.onOpen = f; s.mu.Unlock() }
+func (s *Service) SetOnLock(f func())      { s.mu.Lock(); s.onLock = f; s.mu.Unlock() }
 func (s *Service) SetClipboard(f func(string, int) error) {
 	s.mu.Lock()
 	s.clipboard = f
@@ -148,8 +168,9 @@ func (s *Service) SetClipboard(f func(string, int) error) {
 }
 func (s *Service) Close() error {
 	s.cancellation.Add(1)
+	s.cancelDeviceAuthentication()
 	if current := s.cancelVault.Load(); current != nil {
-		current.Lock()
+		current.Close()
 	}
 	s.mu.Lock()
 	if s.closed {
@@ -158,7 +179,12 @@ func (s *Service) Close() error {
 	}
 	s.closed = true
 	close(s.done)
-	s.lock()
+	if s.cloneCancel != nil {
+		s.cloneCancel()
+	}
+	if s.active != nil {
+		s.active.Close()
+	}
 	server := s.server
 	s.mu.Unlock()
 	if server != nil {
@@ -167,9 +193,6 @@ func (s *Service) Close() error {
 	return nil
 }
 func (s *Service) lock() {
-	if s.cloneCancel != nil {
-		s.cloneCancel()
-	}
 	if s.active != nil {
 		s.active.Lock()
 	}
@@ -196,10 +219,15 @@ func (s *Service) watch() {
 				go s.onLock()
 			}
 			wasUnlocked = unlocked
-			syncNow := unlocked && s.prefs.Settings.AutoSync && s.prefs.Settings.SyncMinutes > 0 && time.Since(s.lastSync) >= time.Duration(s.prefs.Settings.SyncMinutes)*time.Minute
+			s.ensureGitRefreshLocked(false)
+			syncNow := s.active != nil && s.gitData.GitInitialized && !s.gitOperation && s.prefs.Settings.AutoSync && s.prefs.Settings.SyncMinutes > 0 && time.Since(s.lastSync) >= time.Duration(s.prefs.Settings.SyncMinutes)*time.Minute
+			syncVaultID := s.prefs.Current
+			if syncNow {
+				s.lastSync = time.Now()
+			}
 			s.mu.Unlock()
 			if syncNow {
-				_ = s.Execute(Request{Action: "git-sync"})
+				go func() { _ = s.Execute(Request{Action: "git-sync", VaultID: syncVaultID}) }()
 			}
 		}
 	}
@@ -240,7 +268,9 @@ func (s *Service) savePreferences() error {
 }
 func (s *Service) snapshot() Data { return s.snapshotWithEntries(true) }
 func (s *Service) snapshotWithEntries(includeEntries bool) Data {
-	d := Data{EntriesVersion: s.entriesVersion, Configured: s.active != nil, Locked: true, Preview: s.preview, Vaults: append([]VaultInfo{}, s.prefs.Vaults...), Entries: []Entry{}, Settings: s.prefs.Settings, Capabilities: []string{"rename", "revision", "trash", "generate", "copy", "otp", "favorites"}, VaultID: s.prefs.Current}
+	d := Data{EntriesVersion: s.entriesVersion, Configured: s.active != nil, Locked: true, Preview: s.preview, Vaults: append([]VaultInfo{}, s.prefs.Vaults...), Entries: []Entry{}, Settings: s.prefs.Settings, Capabilities: []string{"rename", "revision", "trash", "generate", "copy", "otp", "interactive_fetch", "interactive_copy"}, VaultID: s.prefs.Current}
+	d.DeviceUnlockAvailable = !s.preview && s.device != nil && s.device.Available()
+	d.DeviceUnlockEnrolled = s.deviceEnrolled()
 	for _, v := range s.prefs.Vaults {
 		if v.ID == s.prefs.Current {
 			d.Directory = v.Directory
@@ -263,25 +293,33 @@ func (s *Service) snapshotWithEntries(includeEntries bool) Data {
 				}
 			}
 			for _, v := range s.cachedEntries {
-				d.Entries = append(d.Entries, Entry{Path: v.Path, Name: v.Name, Folder: v.Folder, Favorite: s.prefs.Favorites[s.prefs.Current][v.Path]})
+				d.Entries = append(d.Entries, Entry{Path: v.Path, Name: v.Name, Folder: v.Folder})
 			}
-			{
-				sort.SliceStable(d.Entries, func(i, j int) bool {
-					if d.Entries[i].Favorite != d.Entries[j].Favorite {
-						return d.Entries[i].Favorite
-					}
-					return d.Entries[i].Path < d.Entries[j].Path
-				})
-			}
+			sort.SliceStable(d.Entries, func(i, j int) bool {
+				return d.Entries[i].Path < d.Entries[j].Path
+			})
 		}
 	}
 	d.BrowserInstalled = !s.preview && nativehost.CheckRegistration(nativehost.HelperPath())
-	d.GitError = s.gitError
+	s.ensureGitRefreshLocked(false)
+	copyGitData(&d, s.gitData)
+	d.GitError = strings.TrimSpace(strings.Join([]string{s.gitError, s.gitStatusError}, " "))
 	d.EntriesVersion = s.entriesVersion
 	return d
 }
 func (s *Service) Execute(r Request) Response { return s.execute(r, "desktop") }
 func (s *Service) execute(r Request, source string) Response {
+	return s.executeWithBrowserLease(r, source, nil)
+}
+
+// A locked interactive browser operation receives a new response lease only
+// after its own authentication succeeds, before reading any credential.
+type browserResponseLease struct {
+	epoch   uint64
+	session func(func()) error
+}
+
+func (s *Service) executeWithBrowserLease(r Request, source string, browserLease *browserResponseLease) Response {
 	if r.Action == "clone" {
 		return s.executeClone(r)
 	}
@@ -289,13 +327,17 @@ func (s *Service) execute(r Request, source string) Response {
 		return s.executeGit(r, source)
 	}
 
-	if r.Action == "lock" {
+	if r.Action == "lock" || r.Action == "switch" || r.Action == "create" || r.Action == "open" {
 		s.cancellation.Add(1)
+		s.cancelDeviceAuthentication()
 		if current := s.cancelVault.Load(); current != nil {
 			current.Lock()
 		}
 	}
 	epoch := s.cancellation.Load()
+	if browserLease != nil && r.Interactive {
+		epoch = browserLease.epoch
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -310,11 +352,24 @@ func (s *Service) execute(r Request, source string) Response {
 	var extra Data
 	if r.VaultID != "" && r.VaultID != s.prefs.Current {
 		err = errors.New("vault_changed")
+	} else if epoch != s.cancellation.Load() {
+		err = vault.ErrCancelled
 	} else {
-		extra, err = s.dispatch(r, source)
+		if source == "browser" && r.Interactive && (r.Action == "fetch" || r.Action == "copy") && s.active != nil && !s.active.Status().Unlocked {
+			err = s.unlockForBrowser(epoch)
+			if err == nil && browserLease != nil {
+				browserLease.session = s.ClipboardLease()
+			}
+		}
+		if err == nil {
+			extra, err = s.dispatch(r, source, epoch)
+		}
+	}
+	if err == nil && source == "desktop" && r.Passphrase != "" && (r.Action == "create" || r.Action == "open" || r.Action == "unlock") {
+		extra.DeviceUnlockNotice = s.enrollDevice(r.Passphrase, epoch)
 	}
 	switch r.Action {
-	case "save", "delete", "restore", "switch", "create", "open", "git-sync", "unlock", "favorite":
+	case "save", "delete", "restore", "switch", "create", "open", "git-sync", "unlock":
 		s.entriesVersion++
 		s.cachedAt = time.Time{}
 	}
@@ -334,7 +389,7 @@ func (s *Service) execute(r Request, source string) Response {
 	}
 	if err == nil && s.active != nil {
 		switch r.Action {
-		case "fetch", "copy", "save", "delete", "draft", "favorite", "generate", "recovery", "restore":
+		case "fetch", "copy", "save", "delete", "draft", "generate", "recovery", "restore":
 			s.active.Activity()
 		}
 	}
@@ -348,7 +403,7 @@ func (s *Service) execute(r Request, source string) Response {
 	}
 	if source == "browser" && err == nil && s.onChange != nil {
 		switch r.Action {
-		case "save", "delete", "favorite":
+		case "save", "delete":
 			callback := s.onChange
 			go callback()
 		}
@@ -382,11 +437,7 @@ func mergeData(out *Data, v Data) {
 	out.ID = v.ID
 	out.TrashID = v.TrashID
 	out.Fingerprint = v.Fingerprint
-	out.GitBranch = v.GitBranch
-	out.GitRemote = v.GitRemote
-	out.GitChanges = v.GitChanges
-	out.GitSummary = v.GitSummary
-	out.GitInitialized = v.GitInitialized
+	out.DeviceUnlockNotice = v.DeviceUnlockNotice
 	out.Activity = v.Activity
 	if v.Entries != nil {
 		out.Entries = v.Entries
@@ -408,7 +459,7 @@ func (s *Service) requireVault() error {
 	}
 	return nil
 }
-func (s *Service) dispatch(r Request, source string) (Data, error) {
+func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error) {
 	switch r.Action {
 	case "configure", "status":
 		return Data{}, nil
@@ -429,6 +480,9 @@ func (s *Service) dispatch(r Request, source string) (Data, error) {
 		return Data{}, nil
 	case "unlock":
 		if source == "browser" {
+			if r.Interactive {
+				return Data{}, s.unlockForBrowser(epoch)
+			}
 			if s.onOpen != nil {
 				go s.onOpen()
 			}
@@ -443,10 +497,16 @@ func (s *Service) dispatch(r Request, source string) (Data, error) {
 		if e := s.requireVault(); e != nil {
 			return Data{}, e
 		}
+		if r.Mode == "device" {
+			return Data{}, s.unlockDevice(epoch)
+		}
 		return Data{}, s.active.Unlock(r.Passphrase)
 	case "create", "open":
 		return s.setup(r)
 	case "switch":
+		if s.cloneCancel != nil {
+			s.cloneCancel()
+		}
 		for _, v := range s.prefs.Vaults {
 			if v.ID == r.ID {
 				next, e := s.newVault(v.Directory)
@@ -454,7 +514,7 @@ func (s *Service) dispatch(r Request, source string) (Data, error) {
 					return Data{}, e
 				}
 				if s.active != nil {
-					s.active.Lock()
+					s.active.Close()
 				}
 				s.active = next
 				s.cancelVault.Store(next)
@@ -474,14 +534,30 @@ func (s *Service) dispatch(r Request, source string) (Data, error) {
 		if r.Settings == nil {
 			return Data{}, nil
 		}
-		if e := validateSettings(*r.Settings); e != nil {
+		settings := *r.Settings
+		shortcut, err := NormalizeGlobalShortcut(settings.GlobalShortcut)
+		if err != nil {
+			return Data{}, err
+		}
+		settings.GlobalShortcut = shortcut
+		if e := validateSettings(settings); e != nil {
 			return Data{}, e
 		}
-		s.prefs.Settings = *r.Settings
-		if s.active != nil {
-			s.active.SetTimeouts(time.Duration(r.Settings.IdleMinutes)*time.Minute, time.Duration(r.Settings.MaxSessionMinutes)*time.Minute)
+		previous := s.prefs.Settings
+		if previous.DeviceUnlock && !settings.DeviceUnlock {
+			if e := s.removeDeviceEnvelopes(); e != nil {
+				return Data{}, e
+			}
 		}
-		return Data{}, s.savePreferences()
+		s.prefs.Settings = settings
+		if e := s.savePreferences(); e != nil {
+			s.prefs.Settings = previous
+			return Data{}, e
+		}
+		if s.active != nil {
+			s.active.SetTimeouts(time.Duration(settings.IdleMinutes)*time.Minute, time.Duration(settings.MaxSessionMinutes)*time.Minute)
+		}
+		return Data{}, nil
 	case "browser-install":
 		if s.preview {
 			return Data{}, errors.New("演示模式不注册浏览器连接")
@@ -559,9 +635,6 @@ func (s *Service) dispatch(r Request, source string) (Data, error) {
 			doc, e = s.active.Save(r.Entry, r.Contents, r.Revision)
 		}
 		if e == nil {
-			if r.Destination != "" && r.Destination != r.Entry {
-				s.moveFavorite(r.Entry, r.Destination)
-			}
 			if r.ID != "" {
 				_ = s.active.RemoveRecovery(r.ID)
 			}
@@ -571,25 +644,9 @@ func (s *Service) dispatch(r Request, source string) (Data, error) {
 	case "delete":
 		rec, e := s.active.Trash(r.Entry, r.Revision)
 		if e == nil {
-			s.moveFavorite(r.Entry, "")
 			s.autoSync()
 		}
 		return Data{TrashID: rec.ID}, e
-	case "favorite":
-		if e := vault.ValidatePath(r.Entry); e != nil {
-			return Data{}, e
-		}
-		f := s.prefs.Favorites[s.prefs.Current]
-		if f == nil {
-			f = map[string]bool{}
-			s.prefs.Favorites[s.prefs.Current] = f
-		}
-		if f[r.Entry] {
-			delete(f, r.Entry)
-		} else {
-			f[r.Entry] = true
-		}
-		return Data{}, s.savePreferences()
 	case "draft":
 		rec, e := s.active.SaveDraftRecord(r.ID, r.Entry, r.Destination, r.Contents, r.Revision)
 		return Data{ID: rec.ID}, e
@@ -676,13 +733,29 @@ func (s *Service) setup(r Request) (Data, error) {
 				fingerprint = ids[0].Fingerprint
 			}
 		} else {
-			if e = next.Unlock(r.Passphrase); e != nil {
-				return Data{}, e
+			if next.Status().Configured && r.Mode != "system-gpg" {
+				if e = next.Unlock(r.Passphrase); e != nil {
+					return Data{}, e
+				}
+			} else {
+				if s.preview {
+					return Data{}, errors.New("演示模式不读取系统 GPG 私钥")
+				}
+				ids, e := next.ImportSystemGPG(r.Passphrase)
+				if e != nil {
+					return Data{}, e
+				}
+				for _, identity := range ids {
+					if identity.HasSecret {
+						fingerprint = identity.Fingerprint
+						break
+					}
+				}
 			}
 		}
 	}
 	if s.active != nil {
-		s.active.Lock()
+		s.active.Close()
 	}
 	s.active = next
 	s.cancelVault.Store(next)
@@ -690,16 +763,6 @@ func (s *Service) setup(r Request) (Data, error) {
 		return Data{}, e
 	}
 	return Data{Fingerprint: fingerprint}, nil
-}
-func (s *Service) moveFavorite(from, to string) {
-	f := s.prefs.Favorites[s.prefs.Current]
-	if f[from] {
-		delete(f, from)
-		if to != "" {
-			f[to] = true
-		}
-		_ = s.savePreferences()
-	}
 }
 func (s *Service) autoSync() {
 	if !s.prefs.Settings.AutoSync {
@@ -721,6 +784,10 @@ func validateSettings(v Settings) error {
 	return nil
 }
 func classify(e error) (string, string) {
+	var authentication *browserUnlockError
+	if errors.As(e, &authentication) {
+		return authentication.code, authentication.message
+	}
 	switch {
 	case errors.Is(e, vault.ErrCancelled):
 		return "locked", "会话已失效，请重新解锁"
@@ -794,13 +861,14 @@ func writePrivate(path string, data []byte, noReplace bool) error {
 	return os.Rename(name, path)
 }
 func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
+	lease := browserResponseLease{epoch: s.cancellation.Load()}
 	var r Request
 	if len(raw) > nativehost.MaxFrame || json.Unmarshal(raw, &r) != nil || r.Protocol != 1 {
 		return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})
 	}
 	switch r.Action {
 	case "configure", "status", "list", "unlock", "lock", "generate":
-	case "fetch", "copy", "save", "delete", "favorite":
+	case "fetch", "copy", "save", "delete":
 		if r.VaultID == "" {
 			return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "vault_changed"})
 		}
@@ -810,16 +878,22 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 	if r.Kind != "" || r.Directory != "" || r.KeyFile != "" || r.Passphrase != "" || r.Settings != nil || r.ID != "" {
 		return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})
 	}
-	var lease func(func()) error
-	if needsUnlock(r.Action) {
-		lease = s.ClipboardLease()
+	if r.Interactive && r.Action != "fetch" && r.Action != "copy" && r.Action != "unlock" {
+		return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})
 	}
-	out := s.execute(r, "browser")
+	if needsUnlock(r.Action) {
+		lease.session = s.ClipboardLease()
+	}
+	out := s.executeWithBrowserLease(r, "browser", &lease)
 	out.Data.Directory = ""
 	out.Data.Vaults = nil
+	// Git remotes and filesystem errors can contain local checkout paths.
+	// The extension does not need the desktop's repository diagnostics.
+	copyGitData(&out.Data, Data{})
+	out.Data.GitError = ""
 	out.RequestID = r.RequestID
 	// A browser response is never allowed to include preferences or a local path.
-	encoded := encodeBrowserResponse(out, lease)
+	encoded := encodeBrowserResponse(out, lease.session)
 	if r.Action != "configure" && r.Action != "list" {
 		var lean map[string]any
 		if json.Unmarshal(encoded, &lean) == nil {
@@ -836,8 +910,8 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 	return encoded
 }
 
-// Keep response serialization inside the same session generation that began
-// the request; an intervening lock/unlock must not revive a stale credential.
+// Keep response serialization inside the generation that read the credential;
+// an intervening lock/unlock must not revive a stale credential.
 func encodeBrowserResponse(out Response, lease func(func()) error) json.RawMessage {
 	if lease == nil || out.Status != "ok" {
 		return encode(out)

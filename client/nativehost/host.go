@@ -26,6 +26,10 @@ const FirefoxID = "passpine-neo@knothhe.com"
 const ChromiumID = "obnlebeedcbbchadakacilopfdaifgjh"
 const MaxFrame = 1024 * 1024
 
+// Native authentication may wait up to two minutes for a user to respond.
+// Keep the relay alive until the client finishes or cancels that interaction.
+const relayTimeout = 130 * time.Second
+
 var ErrAlreadyRunning = errors.New("Passpine Neo is already running")
 
 type Endpoint struct {
@@ -155,7 +159,7 @@ func Start(dir string, handler Handler) (*Server, error) {
 func (s *Server) serve(c net.Conn, h Handler) {
 	defer func() { c.Close(); s.mu.Lock(); delete(s.connections, c); s.mu.Unlock() }()
 	for {
-		_ = c.SetDeadline(time.Now().Add(90 * time.Second))
+		_ = c.SetDeadline(time.Now().Add(relayTimeout))
 		frame, e := ReadFrame(c)
 		if e != nil {
 			return
@@ -167,6 +171,9 @@ func (s *Server) serve(c net.Conn, h Handler) {
 			_ = WriteFrame(c, failure("unauthorized"))
 			return
 		}
+		// Time spent idle before reading this request must not consume the
+		// authentication window for the newly received operation.
+		_ = c.SetDeadline(time.Now().Add(relayTimeout))
 		response := h(v.Request)
 		if len(response) > MaxFrame {
 			clear(response)
@@ -270,7 +277,7 @@ func (c *RelayClient) Send(request []byte) json.RawMessage {
 		}
 		c.endpoint = ep
 	}
-	_ = c.conn.SetDeadline(time.Now().Add(90 * time.Second))
+	_ = c.conn.SetDeadline(time.Now().Add(relayTimeout))
 	b, _ := json.Marshal(envelope{Token: ep.Token, Request: request})
 	e = WriteFrame(c.conn, b)
 	clear(b)

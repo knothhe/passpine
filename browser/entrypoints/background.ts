@@ -4,7 +4,8 @@ import { associationKey, credentialMatchesHost, parseDocument, pathMatchesHost, 
 import { fillPage } from '../src/lib/fill';
 import { nativeRequest, trustedSender, validUIRequest } from '../src/lib/protocol';
 import { NativeConnection } from '../src/lib/native';
-import { HOST, PROTOCOL, type EntryDocument, type NativeRequest, type Snapshot, type TabContext, type UIRequest, type VaultState } from '../src/lib/types';
+import { FILL_COMMAND } from '../src/lib/shortcuts';
+import { HOST, PROTOCOL, type EntryDocument, type NativeRequest, type SessionStatus, type Snapshot, type TabContext, type UIRequest, type VaultState } from '../src/lib/types';
 
 export default defineBackground(() => {
   const connection = new NativeConnection(() => browser.runtime.connectNative(HOST));
@@ -29,7 +30,13 @@ export default defineBackground(() => {
   let pendingAssociation: Promise<unknown> = Promise.resolve();
   const dispatch = async (request: UIRequest): Promise<unknown> => {
     if (request.action === 'snapshot') return snapshot();
-    if (request.action === 'status' || request.action === 'lock' || request.action === 'unlock') return native({ protocol: PROTOCOL, action: request.action });
+    if (request.action === 'status' || request.action === 'lock') return native({ protocol: PROTOCOL, action: request.action });
+    if (request.action === 'unlock') return native({ protocol: PROTOCOL, action: 'unlock', interactive: true });
+    if (request.action === 'fetch') {
+      const detail = await native<EntryDocument & SessionStatus>(nativeRequest(request));
+      const { configured, locked, vaultId, vaultName, entriesVersion } = detail;
+      return { ...detail, session: { configured, locked, vaultId, vaultName, entriesVersion } };
+    }
     if (request.action === 'associate') {
       const context = await currentTab(request.tab);
       const state = await native<VaultState>({ protocol: PROTOCOL, action: 'list', vaultId: request.vaultId });
@@ -48,7 +55,7 @@ export default defineBackground(() => {
     if (request.action === 'fill') {
       const context = await currentTab(request.tab);
       const links = await associations();
-      const detail = await native<EntryDocument>({ protocol: PROTOCOL, action: 'fetch', vaultId: request.vaultId, entry: request.entry, purpose: 'fill' });
+      const detail = await native<EntryDocument>({ protocol: PROTOCOL, action: 'fetch', vaultId: request.vaultId, entry: request.entry, purpose: 'fill', interactive: true });
       const credentials = parseDocument(detail.contents);
       const linked = links[await associationKey(request.vaultId, request.entry, context.hostname)];
       if (!linked && !pathMatchesHost(request.entry, context.hostname) && !credentialMatchesHost(credentials, context.hostname)) throw new PassPineError('domain_mismatch');
@@ -67,11 +74,11 @@ export default defineBackground(() => {
     return true;
   });
   browser.commands.onCommand.addListener(async command => {
-    if (command !== 'fill-best') return;
+    if (command !== FILL_COMMAND) return;
     try {
       const state = await snapshot();
       // Ambiguous matches always go through the user's account selection.
-      if (!state.locked && state.matches.length === 1 && state.tab) await dispatch({ action: 'fill', vaultId: state.vaultId, entry: state.matches[0]!, tab: state.tab });
+      if (state.matches.length === 1 && state.tab) await dispatch({ action: 'fill', vaultId: state.vaultId, entry: state.matches[0]!, tab: state.tab });
       else await browser.action.openPopup();
     } catch { await browser.action.openPopup().catch(() => {}); }
   });

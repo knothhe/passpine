@@ -23,12 +23,15 @@ type Vault struct {
 	config          Config
 	operations      sync.Mutex
 	gitOperations   sync.Mutex
+	gitLifecycle    sync.Mutex
+	gitClosed       bool
+	gitNext         uint64
+	gitContexts     map[uint64]context.CancelFunc
 	session         sync.Mutex
 	keys            openpgp.EntityList
 	generation      uint64
 	opened, touched time.Time
 	timer           *time.Timer
-	gitCancel       context.CancelFunc
 	clock           func() time.Time
 }
 
@@ -88,10 +91,6 @@ func (v *Vault) SetTimeouts(idle, maximum time.Duration) {
 }
 
 func (v *Vault) lockSession() {
-	if v.gitCancel != nil {
-		v.gitCancel()
-		v.gitCancel = nil
-	}
 	v.keys = nil
 	v.generation++
 	if v.timer != nil {
@@ -101,6 +100,39 @@ func (v *Vault) lockSession() {
 }
 
 func (v *Vault) Lock() { v.session.Lock(); defer v.session.Unlock(); v.lockSession() }
+
+// Close ends this checkout's lifecycle. Lock only clears decrypted keys;
+// encrypted Git work stays available until the vault is switched or closed.
+func (v *Vault) Close() {
+	v.gitLifecycle.Lock()
+	v.gitClosed = true
+	for _, cancel := range v.gitContexts {
+		cancel()
+	}
+	v.gitLifecycle.Unlock()
+	v.Lock()
+}
+
+func (v *Vault) beginGit(parent context.Context) (context.Context, func(), error) {
+	v.gitLifecycle.Lock()
+	defer v.gitLifecycle.Unlock()
+	if v.gitClosed {
+		return nil, nil, ErrCancelled
+	}
+	ctx, cancel := context.WithCancel(parent)
+	if v.gitContexts == nil {
+		v.gitContexts = make(map[uint64]context.CancelFunc)
+	}
+	v.gitNext++
+	id := v.gitNext
+	v.gitContexts[id] = cancel
+	return ctx, func() {
+		cancel()
+		v.gitLifecycle.Lock()
+		delete(v.gitContexts, id)
+		v.gitLifecycle.Unlock()
+	}, nil
+}
 
 func (v *Vault) checkSession() bool {
 	if len(v.keys) == 0 {
@@ -269,7 +301,20 @@ func (v *Vault) Create(name, email, passphrase string) (Identity, error) {
 }
 
 func (v *Vault) Unlock(passphrase string) error {
+	return v.unlock(passphrase, v.generationToken())
+}
+
+// UnlockWithProvider binds system authentication to the generation before its prompt.
+func (v *Vault) UnlockWithProvider(load func() ([]byte, error)) error {
 	token := v.generationToken()
+	secret, err := load()
+	defer wipe(secret)
+	if err != nil {
+		return err
+	}
+	return v.unlock(string(secret), token)
+}
+func (v *Vault) unlock(passphrase string, token uint64) error {
 	v.operations.Lock()
 	defer v.operations.Unlock()
 	data, e := safeRead(filepath.Dir(v.config.KeyFile), filepath.Base(v.config.KeyFile))
@@ -292,7 +337,10 @@ func (v *Vault) Unlock(passphrase string) error {
 // ImportKeys accepts binary or ASCII armored OpenPGP exports, including legacy
 // combined public/private exports. Imported private keys are protected on disk.
 func (v *Vault) ImportKeys(data []byte, passphrase string) ([]Identity, error) {
-	token := v.generationToken()
+	return v.importKeys(data, passphrase, v.generationToken())
+}
+
+func (v *Vault) importKeys(data []byte, passphrase string, token uint64) ([]Identity, error) {
 	v.operations.Lock()
 	defer v.operations.Unlock()
 	unlock, e := lockStore(v.config.Directory)
