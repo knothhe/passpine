@@ -1,0 +1,19 @@
+{
+  "name": "passpine-neo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "cd client && go run ./cmd/passpine",
+    "preview": "cd client && go run ./cmd/passpine --preview",
+    "build:client": "bash scripts/build-client.sh",
+    "build:browser": "npm --prefix browser run build && npm --prefix browser run build:firefox",
+    "build": "npm run build:client && npm run build:browser",
+    "test:client": "cd client && go test -race ./...",
+    "test:browser": "npm --prefix browser run typecheck && npm --prefix browser test",
+    "test": "bash scripts/check.sh",
+    "preview:browser": "npm --prefix browser run preview",
+    "package:browser": "npm --prefix browser run zip"
+  },
+  "engines": {"node": ">=22.12.0"}
+}

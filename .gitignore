@@ -1,0 +1,6 @@
+.DS_Store
+node_modules/
+browser/.wxt/
+browser/.output/
+dist/
+*.log

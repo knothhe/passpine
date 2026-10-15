@@ -1,0 +1,35 @@
+{
+  "name": "@passpine/browser",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt --no-open",
+    "build": "wxt build && node scripts/check-manifest.mjs .output/chrome-mv3/manifest.json",
+    "build:firefox": "wxt build -b firefox --mv3 && node scripts/check-manifest.mjs .output/firefox-mv3/manifest.json",
+    "zip": "wxt zip && node scripts/check-manifest.mjs .output/chrome-mv3/manifest.json && wxt zip -b firefox --mv3 && node scripts/check-manifest.mjs .output/firefox-mv3/manifest.json",
+    "typecheck": "wxt prepare && tsc --noEmit",
+    "test": "vitest run",
+    "preview": "vite --config vite.preview.config.ts",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "@radix-ui/themes": "3.3.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^30.0.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "@wxt-dev/module-react": "1.2.2",
+    "jsdom": "^30.1.2",
+    "typescript": "^5.9.0",
+    "vite": "^8.0.0",
+    "vitest": "5.0.4",
+    "wxt": "0.21.4"
+  }
+}
