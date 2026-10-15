@@ -14,11 +14,10 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine-neo/client/app"
+	sidebar "github.com/knothhe/passpine-neo/client/internal/clientshell"
 	"github.com/knothhe/passpine-neo/client/vault"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
-	"github.com/oneo-me/onevra/source/shells/sidebar"
-	"github.com/oneo-me/onevra/source/theme"
 )
 
 type Backend interface {
@@ -40,26 +39,32 @@ type application struct {
 	pendingSelection, pendingSelectionVaultID                            string
 	pendingSelectionGeneration                                           uint64
 	pendingCopyEntry, pendingCopyVaultID                                 string
-	errorText, notice, page, filter, query, selected, folderQuery        string
-	folderSelection, folderSelectionFilter                               string
+	pendingUnlock                                                        unlockAction
+	pendingNewEntry                                                      unlockAction
+	errorText, notice, page, filter, query, selected                     string
 	searchRef                                                            ui.Ref
 	list                                                                 components.ListState
 	selectedIndex                                                        int
 	filtered                                                             []app.Entry
 	vaultSelection                                                       string
 	settings                                                             app.Settings
+	preferences                                                          preferencesState
+	history                                                              navigationState
+	vaultNameDraft, vaultNameID                                          string
 	shortcut                                                             shortcutState
+	quick                                                                quickSearchState
+	notifications                                                        notificationState
 	settingsState                                                        components.SettingsState
 	settingsLoaded                                                       bool
 	settingsSaved                                                        app.Settings
 	settingsObserved                                                     app.Settings
 	settingsDirty, settingsSaving                                        bool
-	settingsSavedUntil                                                   time.Time
 	setup                                                                bool
 	setupMode                                                            int
 	defaultVaultDirectory                                                string
 	setupDirectory, setupName, setupEmail, passphrase, confirmPassphrase string
 	reveal                                                               bool
+	revealedFields                                                       map[string]bool
 	editor                                                               editorState
 	deleteOpen, discardOpen, purgeOpen                                   bool
 	purgeID                                                              string
@@ -109,7 +114,13 @@ func Run(service *app.Service) error {
 	}
 	mygo.App.OnSecondInstance(func([]string, string) { a.show() })
 	mygo.App.OnActivate(func(bool) { a.show() })
-	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.closing = true; close(a.stop); a.clearSecrets(); go service.Close() })
+	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
+		a.saveQuickSearchPosition()
+		a.closing = true
+		close(a.stop)
+		a.clearSecrets()
+		go service.Close()
+	})
 	mygo.App.OnWindowAllClosed(func() { mygo.App.Quit() })
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
 		mygo.GlobalShortcut.UnregisterAll()
@@ -157,22 +168,20 @@ func Run(service *app.Service) error {
 		a.shell = sidebar.NewShell(sidebar.ShellOptions{
 			Hidden: true, Title: "Passpine Neo", Width: 1120, Height: 760, MinWidth: 860, MinHeight: 620,
 			StateKey: "passpine-main", LeftWidth: 310, LeftMinWidth: 260, LeftMaxWidth: 440,
-			Theme: theme.Onevra, Left: a.sidebarView, Content: a.contentView,
+			Theme: clientTheme, Left: a.sidebarView, Content: a.contentView,
 			ContentTitle: a.header, LeftToolbar: a.sidebarToolbar,
+			LeadingHeader: a.historyControls, LeadingHeaderWidth: 64,
 			LeftToggleLabel: "切换侧栏", LeftResizeLabel: "调整侧栏宽度", CloseToastLabel: "关闭提示",
 		})
 		a.window = a.shell.Window()
+		a.window.SetVibrancy(mygo.VibrancyNone)
 		a.window.OnFocus(func() {
 			if a.state.Configured {
 				a.queueMetadataRefresh(false)
 			}
 		})
-		a.window.OnClose(func(event *mygo.CloseEvent) {
-			if !a.closing && a.tray != nil && a.state.Settings.CloseToTray {
-				event.PreventDefault()
-				a.window.Hide()
-			}
-		})
+		a.window.OnClose(a.handleMainWindowClose)
+		a.window.OnClosed(a.closeQuickSearch)
 		a.installMenu()
 		a.callBackground(app.Request{Action: "configure"}, func(d app.Data) {
 			if home, err := os.UserHomeDir(); err == nil {
@@ -183,6 +192,7 @@ func Run(service *app.Service) error {
 			a.settingsObserved = d.Settings
 			a.settingsLoaded = true
 			a.applyTheme()
+			a.applyLanguage()
 			a.startNativeIntegrations()
 		})
 		go a.clock()
@@ -191,7 +201,7 @@ func Run(service *app.Service) error {
 }
 
 func newApplication(service Backend) *application {
-	a := &application{service: service, runOnMain: mygo.RunOnMain, page: "entries", filter: "all", selectedIndex: -1, setupName: "我的密码库", generator: generatorState{length: 24, lower: true, upper: true, numbers: true, symbols: true, exclude: true}, lastInput: time.Now(), stop: make(chan struct{})}
+	a := &application{service: service, runOnMain: mygo.RunOnMain, page: "entries", filter: "all", selectedIndex: -1, generator: generatorState{length: 24, lower: true, upper: true, numbers: true, symbols: true, exclude: true}, lastInput: time.Now(), stop: make(chan struct{})}
 	a.list = components.ListState{Selected: &a.selectedIndex, Key: func(i int) any { return a.filtered[i].Path }, Label: func(i int) string { return a.filtered[i].Name }, OnChange: func() {
 		if a.selectedIndex >= 0 && a.selectedIndex < len(a.filtered) {
 			a.selectEntry(a.filtered[a.selectedIndex].Path)
@@ -214,6 +224,7 @@ func (a *application) show() {
 	}
 }
 func (a *application) invalidate() {
+	a.invalidateQuickSearch()
 	if a.window != nil && !a.closing {
 		a.window.Invalidate()
 	}
@@ -252,7 +263,7 @@ func (a *application) startCall(req app.Request, done func(app.Data), userAction
 	a.backgroundBusy = !userAction
 	a.activeRequestAction = req.Action
 	if userAction {
-		a.errorText = ""
+		a.beginOperationFeedback()
 		a.lastInput = time.Now()
 	}
 	generation := a.generation
@@ -260,13 +271,16 @@ func (a *application) startCall(req app.Request, done func(app.Data), userAction
 		r := a.service.Execute(req)
 		a.runOnMain(func() { a.receiveResponse(generation, r, done) })
 	}()
-	a.invalidate()
+	if userAction {
+		a.invalidate()
+	}
 }
 
 func (a *application) receiveResponse(generation uint64, r app.Response, done func(app.Data)) {
 	if a.closing || generation != a.generation {
 		return
 	}
+	background, pendingCreation := a.backgroundBusy, a.pendingNewEntry
 	defer func() {
 		// First paint follows configuration and theme setup, so reopening an
 		// existing vault never briefly displays onboarding or the wrong theme.
@@ -277,6 +291,8 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 		if a.pendingChanged {
 			a.dropDetail()
 		}
+		a.flushPendingNewEntry()
+		a.flushPreferencesRead()
 		a.flushMetadataRefresh()
 		a.flushPendingSelection()
 	}()
@@ -296,9 +312,16 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 	if a.state.Locked {
 		if !wasLocked {
 			a.clearSecrets()
+			// A metadata read may be the first to discover an expired session.
+			// Preserve the explicit creation click queued behind that same read;
+			// active locks and navigation already cancel or invalidate its lease.
+			if background && r.Status == "ok" && pendingCreation.valid(a) {
+				a.pendingNewEntry = pendingCreation
+			}
 		} else {
 			a.detail = app.Data{}
 			a.reveal = false
+			a.revealedFields = nil
 		}
 	}
 	if r.Status != "ok" {
@@ -329,7 +352,9 @@ func (a *application) queueMetadataRefresh(changed bool) {
 		a.dropDetail()
 	}
 	a.flushMetadataRefresh()
-	a.invalidate()
+	if changed {
+		a.invalidate()
+	}
 }
 
 func (a *application) dropDetail() {
@@ -338,6 +363,7 @@ func (a *application) dropDetail() {
 	a.detailLoadingStarted = time.Time{}
 	a.pendingSelection, a.pendingSelectionVaultID = "", ""
 	a.reveal = false
+	a.revealedFields = nil
 	a.selected = ""
 	a.selectedIndex = -1
 	a.deleteOpen = false
@@ -376,6 +402,10 @@ func (a *application) lock() {
 }
 
 func (a *application) clearSecrets() {
+	a.cancelUnlockAction()
+	a.preferences.pendingRead = nil
+	a.clearQuickSearchSecrets()
+	a.clearNotifications()
 	a.setShortcutRecording(false)
 	a.detail = app.Data{}
 	a.detailLoadingStarted = time.Time{}
@@ -393,7 +423,9 @@ func (a *application) clearSecrets() {
 	}
 	a.editor = editorState{}
 	a.reveal = false
-	a.passphrase, a.confirmPassphrase, a.generator.password = "", "", ""
+	a.revealedFields = nil
+	a.passphrase, a.confirmPassphrase = "", ""
+	a.closeGenerator()
 	a.backupOpen, a.backupPassphrase = false, ""
 	a.recovery = nil
 	if a.clipboardTimer != nil {
@@ -418,10 +450,6 @@ func (a *application) clock() {
 		mygo.RunOnMain(func() {
 			if a.closing {
 				return
-			}
-			if !a.settingsSavedUntil.IsZero() && time.Now().After(a.settingsSavedUntil) {
-				a.settingsSavedUntil = time.Time{}
-				a.invalidate()
 			}
 			if !a.gitRemoteSaveAt.IsZero() && time.Now().After(a.gitRemoteSaveAt) {
 				a.saveGitRemoteAutomatically()
@@ -476,7 +504,7 @@ func (a *application) copy(value, label string) {
 		}
 	}
 	if field != "" {
-		a.call(app.Request{Action: "copy", Entry: a.detail.Entry, Revision: a.detail.Revision, Field: field}, func(app.Data) { a.notice = "已复制" + label })
+		a.call(app.Request{Action: "copy", Entry: a.detail.Entry, Revision: a.detail.Revision, Field: field}, func(app.Data) { a.notice = a.t("已复制%s", a.t(label)) })
 		return
 	}
 	service, ok := a.service.(interface{ ClipboardLease() func(func()) error })
@@ -495,7 +523,7 @@ func (a *application) copy(value, label string) {
 			if err := lease(func() { a.writeClipboard(value, seconds) }); err != nil {
 				a.errorText = err.Error()
 			} else {
-				a.notice = "已复制" + label
+				a.notice = a.t("已复制%s", a.t(label))
 			}
 			a.invalidate()
 		})
@@ -523,30 +551,47 @@ func (a *application) writeClipboard(value string, seconds int) {
 }
 
 func (a *application) selectEntry(path string) {
+	if a.editor.open && path != a.editor.originalPath {
+		a.requestEditorClose(func() { a.selectEntry(path) })
+		return
+	}
+	a.cancelUnlockAction()
 	if a.pendingCopyEntry != "" && a.pendingCopyEntry != path {
 		a.pendingCopyEntry, a.pendingCopyVaultID = "", ""
 	}
 	if a.busy {
 		// Keep the latest click through metadata refreshes and earlier reads.
 		// Other foreground operations retain their own navigation context.
-		if (a.backgroundBusy || a.activeRequestAction == "fetch") && !a.state.Locked {
+		if (a.backgroundBusy || a.activeRequestAction == "fetch") && !a.state.Locked || a.activeRequestAction == "unlock" {
+			if a.selected != path || a.page != "entries" || a.setup {
+				a.rememberNavigation()
+			}
 			a.pendingSelection, a.pendingSelectionVaultID = path, a.state.VaultID
 			a.pendingSelectionGeneration = a.generation
 			a.page, a.selected = "entries", path
+			a.setup = false
+			a.syncSelectedIndex()
 			a.detail, a.reveal = app.Data{}, false
+			a.revealedFields = nil
 			a.detailLoadingStarted = time.Now()
 		}
 		return
 	}
-	a.page = "entries"
+	if a.selected != path || a.page != "entries" || a.setup {
+		a.rememberNavigation()
+	}
+	a.page, a.setup = "entries", false
 	if a.selected == path && a.detail.Entry == path && !a.state.Locked {
 		a.lastInput = time.Now()
 		return
 	}
 	a.selected, a.reveal = path, false
+	a.syncSelectedIndex()
+	a.revealedFields = nil
 	a.detail = app.Data{}
 	a.detailLoadingStarted = time.Now()
 	if a.state.Locked {
+		a.beginUnlock("")
 		return
 	}
 	a.call(app.Request{Action: "fetch", Entry: path}, func(d app.Data) {
@@ -575,43 +620,42 @@ func (a *application) flushPendingSelection() {
 }
 
 func (a *application) navigate(page, filter string) {
+	if a.page != page || a.setup || filter != "" && filter != a.filter {
+		a.rememberNavigation()
+	}
+	a.cancelUnlockAction()
 	a.pendingCopyEntry, a.pendingCopyVaultID = "", ""
 	a.pendingSelection, a.pendingSelectionVaultID = "", ""
 	a.setShortcutRecording(false)
 	a.lastInput = time.Now()
-	a.page = page
+	a.hidePreferences()
+	if page != "entries" {
+		a.closeGenerator()
+	}
+	if a.setup {
+		a.passphrase, a.confirmPassphrase = "", ""
+	}
+	a.page, a.setup = page, false
 	if filter != "" {
 		a.filter = filter
 	}
-	a.errorText = ""
-	if page == "recovery" {
-		a.loadRecovery()
-	}
-	if page == "settings" {
-		if !a.settingsLoaded {
-			a.settings = a.state.Settings
-			a.settingsSaved = a.state.Settings
-			a.settingsObserved = a.state.Settings
-			a.settingsLoaded = true
-		}
-		if a.gitRemoteSaveAt.IsZero() && !a.gitRemoteSaving {
-			a.gitRemote = a.state.GitRemote
-			a.gitRemoteObserved = a.gitRemote
-		}
-		a.call(app.Request{Action: "git-status"}, func(d app.Data) {
-			if a.gitRemoteSaveAt.IsZero() && !a.gitRemoteSaving {
-				a.gitRemote = d.GitRemote
-				a.gitRemoteObserved = a.gitRemote
-			}
-		})
-	}
-	if page == "activity" {
-		a.call(app.Request{Action: "activity"}, func(d app.Data) { a.activity = d.Activity })
+	a.clearNotifications()
+	if isPreferencesPage(page) {
+		a.loadPreferencesPage(page)
 	}
 	a.invalidate()
 }
 
 func (a *application) openSetup() {
+	if a.editor.open {
+		a.requestEditorClose(a.openSetup)
+		return
+	}
+	if !a.setup {
+		a.rememberNavigation()
+	}
+	a.cancelUnlockAction()
+	a.hidePreferences()
 	a.pendingCopyEntry, a.pendingCopyVaultID = "", ""
 	a.pendingSelection, a.pendingSelectionVaultID = "", ""
 	a.setShortcutRecording(false)
@@ -684,46 +728,44 @@ func (a *application) entries() []app.Entry {
 
 func (a *application) sidebarView(c *ui.Context) {
 	ui.Column(c).Fill().Padding(sidebar.HeaderHeight(c), 0, 0, 0).Children(func() {
-		a.listView(c)
+		if isPreferencesPage(a.page) && !a.setup {
+			a.settingsSidebar(c)
+		} else {
+			a.listView(c)
+		}
 	})
 }
 
 func (a *application) sidebarToolbar(c *ui.Context) {
-	if a.page != "entries" || a.setup {
-		if iconButton(c, lucide.ChevronLeft(), "返回密码库", components.ButtonGhost).Clicked() {
-			a.setup = false
-			a.navigate("entries", "")
-		}
-	}
-	if iconButton(c, lucide.Settings(), "设置", components.ButtonGhost).Clicked() {
+	if iconButton(c, lucide.Settings(), a.t("设置"), components.ButtonGhost).Clicked() {
 		a.navigate("settings", "")
 	}
 	ui.Spacer(c)
-	iconButton(c, lucide.Ellipsis(), "更多操作", components.ButtonGhost).Menu(func(menu *ui.Menu) {
-		if menu.Item("恢复中心").Chosen() {
-			a.navigate("recovery", "")
+	if a.page == "entries" && !a.setup && a.state.Configured && (!a.state.Locked || a.state.Settings.BrowseWhileLocked) {
+		label := a.countLabel(len(a.filtered))
+		if strings.TrimSpace(a.query) != "" {
+			label = fmt.Sprintf(a.t("%d / %d 个条目"), len(a.filtered), len(a.state.Entries))
 		}
-		if menu.Item("操作记录").Chosen() {
-			a.navigate("activity", "")
-		}
-		menu.Separator()
-		if menu.Item("打开或创建密码库").Chosen() {
-			a.openSetup()
-		}
-	})
+		ui.Row(c).Label(a.t("条目数量")).Children(func() {
+			components.Text(c, label).FontSize(11).TextColor(c.Theme().TextMuted)
+		})
+	}
 }
 
 func (a *application) header(c *ui.Context) {
-	title := map[string]string{"entries": "密码库", "recovery": "恢复中心", "settings": "设置", "activity": "操作记录"}[a.page]
+	title := map[string]string{"entries": a.t("密码库"), "recovery": a.t("恢复中心"), "settings": a.t("设置"), "activity": a.t("操作记录")}[a.page]
+	if a.setup || !a.state.Configured {
+		title = a.t("打开密码库")
+	}
 	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 		components.Text(c, title).Bold()
 		ui.Spacer(c)
 		if a.state.Configured {
 			a.vaultSelector(c)
 			a.gitHeaderStatus(c)
-			lockIcon, lockLabel := lucide.LockKeyhole(), "锁定密码库"
+			lockIcon, lockLabel := lucide.LockKeyhole(), a.t("锁定密码库")
 			if a.state.Locked {
-				lockIcon, lockLabel = lucide.LockOpen(), "解锁密码库"
+				lockIcon, lockLabel = lucide.LockOpen(), a.t("解锁密码库")
 			}
 			if iconButton(c, lockIcon, lockLabel, components.ButtonGhost).Clicked() {
 				if a.state.Locked {
@@ -732,11 +774,11 @@ func (a *application) header(c *ui.Context) {
 					a.lock()
 				}
 			}
-			if iconButton(c, lucide.RefreshCw(), "同步密码库", components.ButtonOutline).Disabled(a.gitActionPending || a.state.GitSyncing || !a.state.GitInitialized).Clicked() {
-				a.call(app.Request{Action: "git-sync"}, func(app.Data) { a.notice = "同步完成" })
+			if iconButton(c, lucide.RefreshCw(), a.t("同步密码库"), components.ButtonOutline).Disabled(a.gitActionPending || a.state.GitSyncing || !a.state.GitInitialized).Clicked() {
+				a.call(app.Request{Action: "git-sync"}, func(app.Data) { a.notice = a.t("同步完成") })
 			}
 		}
-		if iconButton(c, lucide.Plus(), "新建条目", components.ButtonOutline).Clicked() {
+		if iconButton(c, lucide.Plus(), a.t("新建条目"), components.ButtonOutline).Clicked() {
 			a.newEntry()
 		}
 	})
@@ -747,25 +789,25 @@ func (a *application) vaultSelector(c *ui.Context) {
 		a.vaultSelection = a.state.VaultID
 	}
 	sel := components.Select(c, &a.vaultSelection)
-	sel.Trigger.Width(170).MinWidth(100).Disabled(a.busy || a.editor.open).Label("切换密码库").Gap(6).Children(func() {
+	sel.Trigger.Width(170).MinWidth(100).Border(0, c.Theme().Border).Background(c.Theme().Background).Disabled(a.busy || a.editor.open).Label(a.t("切换密码库")).Gap(6).Children(func() {
 		components.Icon(c, lucide.FolderKey()).Size(14, 14)
 		components.Text(c, a.state.VaultName).SingleLine()
 	})
 	sel.Popup(func(panel ui.Element) {
-		panel.Width(240).Label("密码库选项")
+		panel.Width(240).Label(a.t("密码库选项"))
 		components.ScrollView(c, components.ScrollViewOptions{}).FillWidth().MaxHeight(240).Children(func() {
 			found := false
 			for _, v := range a.state.Vaults {
 				v := v
 				found = found || v.ID == a.state.VaultID
-				sel.Item(v.ID).Label("切换到密码库 " + v.Name).Children(func() { components.Text(c, v.Name).SingleLine() })
+				sel.Item(v.ID).Label(a.t("切换到密码库 ") + v.Name).Children(func() { components.Text(c, v.Name).SingleLine() })
 			}
 			if !found {
-				sel.Item(a.state.VaultID).Label("当前密码库").Children(func() { components.Text(c, a.state.VaultName).SingleLine() })
+				sel.Item(a.state.VaultID).Label(a.t("当前密码库")).Children(func() { components.Text(c, a.state.VaultName).SingleLine() })
 			}
-			sel.Item("open-vault").Label("打开或创建密码库").Children(func() {
+			sel.Item("open-vault").Label(a.t("打开或创建密码库")).Children(func() {
 				components.Icon(c, lucide.FolderPlus()).Size(14, 14)
-				components.Text(c, "打开或创建密码库").SingleLine()
+				components.Text(c, a.t("打开或创建密码库")).SingleLine()
 			})
 		})
 	})
@@ -783,6 +825,8 @@ func (a *application) vaultSelector(c *ui.Context) {
 func (a *application) contentView(c *ui.Context) {
 	a.flushMetadataRefresh()
 	if !a.shortcut.recording {
+		c.OnShortcut(ui.Cmd, ui.KeyBracketLeft, func() { a.moveHistory(-1) })
+		c.OnShortcut(ui.Cmd, ui.KeyBracketRight, func() { a.moveHistory(1) })
 		c.OnShortcut(ui.Cmd, ui.KeyF, func() { a.navigate("entries", ""); a.searchRef.Focus() })
 		c.OnShortcut(ui.Cmd, ui.KeyN, a.newEntry)
 		c.OnShortcut(ui.Cmd|ui.Shift, ui.KeyL, a.lock)
@@ -790,14 +834,16 @@ func (a *application) contentView(c *ui.Context) {
 		c.OnShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
 	}
 	ui.Column(c).Fill().Padding(sidebar.HeaderHeight(c), 0, 0, 0).Children(func() {
-		if a.errorText != "" {
-			a.banner(c, a.errorText, true)
-		}
-		if a.notice != "" {
-			a.banner(c, a.notice, false)
-		}
 		if !a.state.Configured || a.setup {
 			a.setupView(c)
+			return
+		}
+		if a.state.Locked && a.pendingUnlock.action == "export" {
+			a.unlockView(c)
+			return
+		}
+		if a.page == "entries" && a.editor.open && !a.state.Locked {
+			a.editorView(c)
 			return
 		}
 		if a.page != "settings" && a.page != "recovery" && a.page != "activity" {
@@ -820,24 +866,11 @@ func (a *application) contentView(c *ui.Context) {
 		}
 	})
 	a.dialogs(c)
-	a.flushMetadataRefresh()
-}
-
-func (a *application) banner(c *ui.Context, text string, bad bool) {
-	color := c.Theme().Success
-	if bad {
-		color = c.Theme().Danger
+	if isPreferencesPage(a.page) {
+		a.preferencesDialogs(c)
 	}
-	ui.Row(c).FillWidth().Padding(10, 20).Gap(12).Background(color.Alpha(.08)).AlignItems(ui.Center).Children(func() {
-		components.Text(c, text).Wrap().Grow(1).FontSize(12).TextColor(color)
-		if iconButton(c, lucide.X(), "关闭消息", components.ButtonGhost).Clicked() {
-			if bad {
-				a.errorText = ""
-			} else {
-				a.notice = ""
-			}
-		}
-	})
+	a.flushNotifications(c)
+	a.flushMetadataRefresh()
 }
 
 func (a *application) installMenu() {
@@ -850,20 +883,28 @@ func (a *application) installMenu() {
 			fn()
 		}}
 	}
-	editMenu := &mygo.MenuItem{Role: mygo.RoleEditMenu}
-	windowMenu := &mygo.MenuItem{Role: mygo.RoleWindowMenu}
+	editMenu := a.localizedEditMenu()
+	windowMenu := a.localizedWindowMenu()
 	if a.shortcut.recording {
-		editMenu = &mygo.MenuItem{Label: "编辑", Disabled: true}
-		windowMenu = &mygo.MenuItem{Label: "窗口", Disabled: true}
+		editMenu = &mygo.MenuItem{Label: a.t("编辑"), Disabled: true}
+		windowMenu = &mygo.MenuItem{Label: a.t("窗口"), Disabled: true}
 	}
 	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
-		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{action("设置…", "CmdOrCtrl+,", func() { a.navigate("settings", "") }), mygo.Separator(), action("退出 Passpine Neo", "CmdOrCtrl+Q", mygo.App.Quit)}},
-		{Label: "文件", Submenu: []*mygo.MenuItem{action("新建条目", "CmdOrCtrl+N", a.newEntry), action("打开密码库…", "", a.openSetup), mygo.Separator(), action("锁定密码库", "CmdOrCtrl+Shift+L", a.lock)}},
+		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{action(a.t("设置…"), "CmdOrCtrl+,", func() { a.navigate("settings", "") }), mygo.Separator(), action(a.t("退出 Passpine Neo"), "CmdOrCtrl+Q", mygo.App.Quit)}},
+		{Label: a.t("文件"), Submenu: []*mygo.MenuItem{action(a.t("新建条目"), "CmdOrCtrl+N", a.newEntry), action(a.t("打开密码库…"), "", a.openSetup), mygo.Separator(), action(a.t("锁定密码库"), "CmdOrCtrl+Shift+L", a.lock)}},
 		editMenu,
-		{Label: "显示", Submenu: []*mygo.MenuItem{
-			action("搜索", "CmdOrCtrl+F", func() { a.navigate("entries", ""); a.searchRef.Focus() }),
-			action("恢复中心", "", func() { a.navigate("recovery", "") }),
-			action("操作记录", "", func() { a.navigate("activity", "") }),
+		{Label: a.t("显示"), Submenu: []*mygo.MenuItem{
+			action(a.t("搜索"), "CmdOrCtrl+F", func() {
+				if a.quick.visible {
+					a.quick.searchRef.Focus()
+					return
+				}
+				a.navigate("entries", "")
+				a.searchRef.Focus()
+			}),
+			action(a.t("快速搜索…"), "", a.quickSearch),
+			action(a.t("恢复中心"), "", func() { a.navigate("recovery", "") }),
+			action(a.t("操作记录"), "", func() { a.navigate("activity", "") }),
 		}},
 		windowMenu,
 	}))
@@ -872,7 +913,7 @@ func (a *application) installMenu() {
 func field(c *ui.Context, label string, value *string, placeholder string, password bool) ui.Element {
 	var input ui.Element
 	ui.Column(c).FillWidth().Gap(6).Children(func() {
-		components.Text(c, label).FontSize(12).Bold()
+		components.Text(c, label).FontSize(12).TextColor(c.Theme().TextMuted)
 		input = components.TextBox(c, value, components.TextBoxOptions{}).FillWidth().Label(label).Placeholder(placeholder)
 		if password {
 			input.Password()
@@ -897,9 +938,9 @@ func muted(c *ui.Context, text string) {
 
 // Released Onevra exposes Button and Icon independently. Compose them without
 // implementing a parallel hit target, focus behavior or painted control.
-func iconButton(c *ui.Context, icon *ui.SVG, label string, variant components.ButtonVariant) ui.Element {
-	button := components.Button(c, "", variant).Label(label).Size(32, 32).Padding(7)
-	button.Children(func() { components.Icon(c, icon).Size(17, 17) })
+func iconButton(c *ui.Context, icon *ui.SVG, label string, _ components.ButtonVariant) ui.Element {
+	button := components.Button(c, "", components.ButtonGhost).Label(label).Size(32, 32).Padding(8).Border(0, c.Theme().Border)
+	button.Children(func() { components.Icon(c, icon).Size(16, 16) })
 	return button
 }
 func entryName(path string) string { return strings.TrimSuffix(filepath.Base(path), ".gpg") }

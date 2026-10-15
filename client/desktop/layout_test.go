@@ -1,7 +1,6 @@
 package desktop
 
 import (
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -50,12 +49,14 @@ func TestClientManagerHasOnlyEntrySidebarAndDetail(t *testing.T) {
 	if view.HasText("全部账号") || view.HasText("恢复中心") || view.HasText("操作记录") {
 		t.Fatal("the removed navigation column is still visible")
 	}
-	if err := view.Click("更多操作"); err != nil {
-		t.Fatal(err)
+	for _, label := range []string{"更多操作", "筛选文件夹", "所有文件夹"} {
+		if _, found := view.Find(label); found {
+			t.Fatalf("removed sidebar control remains: %s", label)
+		}
 	}
-	menu := strings.Join(view.Menu(), ",")
-	if !strings.Contains(menu, "恢复中心") || !strings.Contains(menu, "操作记录") {
-		t.Fatalf("sidebar menu lost the recovery or activity entry: %s", menu)
+	count, ok := view.Find("条目数量")
+	if !ok || count.X+count.W > 310 || count.Y < 700 {
+		t.Fatalf("entry count is not in the sidebar footer: %v", count)
 	}
 }
 
@@ -85,6 +86,22 @@ func TestBackgroundRefreshKeepsLatestAccountClick(t *testing.T) {
 	first, second := <-requests, <-requests
 	if first.Action != "configure" || second.Action != "fetch" || second.Entry != "工作/Figma" || a.detail.Entry != "工作/Figma" || a.pendingSelection != "" {
 		t.Fatalf("latest click was not fetched after background refresh: %#v %#v", first, second)
+	}
+}
+
+func TestMetadataRefreshDoesNotPaintIntermediateBusyState(t *testing.T) {
+	a, window := quickSearchFixture()
+	callbacks := make(chan func(), 1)
+	state := a.state
+	a.runOnMain = func(callback func()) { callbacks <- callback }
+	a.service = backendFunc(func(app.Request) app.Response { return app.Response{Status: "ok", Data: state} })
+	a.queueMetadataRefresh(false)
+	if window.frames != 0 {
+		t.Fatal("background status refresh scheduled an intermediate disabled frame")
+	}
+	awaitMain(t, callbacks)
+	if a.busy || window.frames != 1 || a.detail.Entry != "开发/GitHub" {
+		t.Fatal("background refresh did not finish with one stable result frame")
 	}
 }
 
@@ -172,7 +189,7 @@ func TestExplicitNavigationCancelsQueuedAccountRead(t *testing.T) {
 				for range expectedResponses {
 					awaitMain(t, callbacks)
 				}
-				if target == "settings" && a.page != "settings" || target == "setup" && !a.setup || a.busy || a.pendingSelection != "" {
+				if target == "settings" && a.preferencesPage() != "settings" || target == "setup" && !a.setup || a.busy || a.pendingSelection != "" {
 					t.Fatal("old response navigated away from the user's new destination")
 				}
 				if len(requests) != expectedResponses {
@@ -321,33 +338,16 @@ func TestSelectingAnotherEntryShowsItsLoadingState(t *testing.T) {
 	}
 }
 
-func TestFolderFilterSearchSelectionPersistsAcrossFrames(t *testing.T) {
+func TestSidebarSearchStillMatchesFoldersWithoutFilter(t *testing.T) {
 	a := fixture()
-	for i := 0; i < 80; i++ {
-		folder := fmt.Sprintf("归档/Project-%02d", i)
-		a.state.Entries = append(a.state.Entries, app.Entry{Path: folder + "/account", Name: "account", Folder: folder})
-	}
 	view := ui.NewTester(testView(a), 1120, 760)
-	if err := view.Click("筛选文件夹"); err != nil {
+	if err := view.Click("搜索条目"); err != nil {
 		t.Fatal(err)
 	}
-	panel, ok := view.Find("筛选文件夹选项")
-	if !ok || panel.H > 310 {
-		t.Fatalf("folder dropdown has no bounded scroll panel: %v", panel)
-	}
-	if !view.Focused("搜索文件夹") {
-		t.Fatal("folder search did not receive keyboard focus")
-	}
-	view.Type("PROJECT-79")
-	if view.HasText("选择文件夹 归档/Project-00") || !view.HasText("选择文件夹 归档/Project-79") {
-		t.Fatalf("folder search did not filter case-insensitively: query=%q texts=%v", a.folderQuery, view.Texts())
-	}
-	if err := view.Click("选择文件夹 归档/Project-79"); err != nil {
-		t.Fatal(err)
-	}
+	view.Type("开发")
 	view.Frame()
-	if a.filter != "folder:归档/Project-79" || len(a.entries()) != 1 || view.HasText("搜索文件夹") {
-		t.Fatalf("folder selection did not persist: filter=%q results=%d", a.filter, len(a.entries()))
+	if len(a.entries()) != 2 || !view.HasText("2 / 4 个条目") || view.HasText("Figma") {
+		t.Fatalf("folder text search or result count is incorrect: %v", view.Texts())
 	}
 }
 
@@ -424,6 +424,10 @@ func TestLockedListCopyContinuesOnlyAfterUnlock(t *testing.T) {
 	}
 	if strings.Join(actions, ",") != "unlock,copy,fetch" || a.pendingCopyEntry != "" {
 		t.Fatalf("unexpected unlocked copy sequence: %v", actions)
+	}
+	view := ui.NewTester(testView(a), 1120, 760)
+	if !view.HasText("已复制密码") {
+		t.Fatal("follow-up fetch swallowed the copy confirmation")
 	}
 }
 

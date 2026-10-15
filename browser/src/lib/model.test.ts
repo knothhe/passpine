@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { associationKey, credentialMatchesHost, entriesFor, parseDocument, pathMatchesHost, sameTab, tabContext, updateDocument, validateEntry, website } from './model';
+import { additionalFields, associationKey, credentialMatchesHost, entriesFor, parseDocument, pathMatchesHost, sameTab, tabContext, updateDocument, validateEntry, website } from './model';
 import type { Snapshot } from './types';
 
 describe('site boundary', () => {
@@ -63,10 +63,10 @@ describe('password document', () => {
     const doc = parseDocument(original);
     expect(updateDocument(original, { password: doc.password, username: doc.username, url: doc.urls[0] ?? '', notes: doc.notes })).toBe(original);
   });
-  it('changes only the displayed field and preserves aliases, whitespace and line endings', () => {
+  it('changes only the displayed field and preserves other aliases, whitespace and line endings', () => {
     const original = 'secret\r\nlogin:\talice\r\nusername: alternate\nurl: https://example.com\r\n\r\n  note with spaces  \r\n';
     const doc = parseDocument(original);
-    expect(updateDocument(original, { password: doc.password, username: 'bob', url: doc.urls[0]!, notes: doc.notes })).toBe(original.replace('login:\talice', 'login:\tbob'));
+    expect(updateDocument(original, { password: doc.password, username: 'bob', url: doc.urls[0]!, notes: doc.notes })).toBe(original.replace('login:\talice', 'login: bob'));
     expect(updateDocument(original, { password: 'new', username: doc.username, url: doc.urls[0]!, notes: doc.notes })).toBe(original.replace('secret', 'new'));
   });
   it('preserves custom fields, OTP and secondary URLs during structured edits', () => {
@@ -74,6 +74,85 @@ describe('password document', () => {
     const next = updateDocument(original, { password: 'new', username: 'bob', url: 'https://new.test', notes: 'changed note' });
     expect(parseDocument(next)).toMatchObject({ password: 'new', username: 'bob', urls: ['https://new.test', 'https://accounts.example.com'], otp: 'otpauth://totp/example?secret=DEMO', notes: 'changed note' });
     expect(next).toContain('custom: keep:colon');
+  });
+  it('edits custom keys and values while retaining notes, aliases and original line endings', () => {
+    const original = 'secret\r\nlogin:\talice\r\nurl: https://example.com\r\nurl: https://alternate.test\ncustom:\tkeep:colon\r\ntotp: otpauth://totp/demo\r\nnotes:  untouched  \nbody note';
+    const doc = parseDocument(original);
+    const values = { password: doc.password, username: doc.username, url: doc.urls[0]!, notes: doc.notes, customFields: additionalFields(doc) };
+    expect(updateDocument(original, values)).toBe(original);
+    const next = updateDocument(original, { ...values, customFields: [{ key: 'url', value: 'https://alternate.test' }, { key: '项目', value: 'new:value' }, { key: 'environment', value: 'production' }] });
+    expect(next).toBe(original.replace('custom:\tkeep:colon', '项目: new:value').replace('totp: otpauth://totp/demo', 'environment: production'));
+    expect(parseDocument(next).notes).toBe(doc.notes);
+    expect(updateDocument(original, { ...values, customFields: [] })).toBe('secret\r\nlogin:\talice\r\nurl: https://example.com\r\nnotes:  untouched  \nbody note');
+  });
+  it.each([false, true])('preserves surviving custom lines exactly after deleting an earlier row (identities: %s)', identities => {
+    const original = 'secret\r\na:\tone\nb:  two\r\nc:\tthree';
+    const doc = parseDocument(original);
+    const customFields = additionalFields(doc).map((field, sourceIndex) => identities ? { ...field, sourceIndex } : field).slice(1);
+    const next = updateDocument(original, { password: doc.password, username: doc.username, url: '', notes: doc.notes, customFields });
+    expect(next).toBe(original.replace('a:\tone\n', ''));
+  });
+  it('keeps row identities through deletion and rename without transplanting separators', () => {
+    const original = 'secret\na:\tone\r\nb: two\nc:\tthree';
+    const doc = parseDocument(original);
+    const next = updateDocument(original, { password: doc.password, username: doc.username, url: '', notes: doc.notes, customFields: [{ key: 'renamed', value: 'new', sourceIndex: 1 }, { ...additionalFields(doc)[2]!, sourceIndex: 2 }] });
+    expect(next).toBe('secret\nrenamed: new\nc:\tthree');
+  });
+  it('does not reuse deleted source lines for newly added custom fields', () => {
+    const original = 'secret\na:\tone\r\nnotes: exact';
+    const doc = parseDocument(original);
+    const next = updateDocument(original, { password: doc.password, username: doc.username, url: '', notes: doc.notes, customFields: [{ key: 'new', value: 'two', sourceIndex: -1 }] });
+    expect(next).toBe('secret\nnotes: exact\nnew: two');
+  });
+  it('preserves the chosen duplicate source line after deleting an identical custom row', () => {
+    const original = 'secret\na: one\r\na:one';
+    const doc = parseDocument(original);
+    const next = updateDocument(original, { password: doc.password, username: doc.username, url: '', notes: doc.notes, customFields: [{ ...additionalFields(doc)[1]!, sourceIndex: 1 }] });
+    expect(next).toBe('secret\na:one');
+  });
+  it('treats tabs and extra spaces as values and writes changed primary and custom values exactly', () => {
+    const original = 'secret\r\nlogin:\talice  \r\nurl:\thttps://old.test  \r\ntoken:\told  \nnotes: exact';
+    const doc = parseDocument(original);
+    expect(doc.username).toBe('\talice  ');
+    expect(doc.urls).toEqual(['\thttps://old.test  ']);
+    expect(additionalFields(doc)).toEqual([{ key: 'token', value: '\told  ' }]);
+    const values = { password: doc.password, username: doc.username, url: doc.urls[0]!, notes: doc.notes, customFields: [{ ...additionalFields(doc)[0]!, sourceIndex: 0 }] };
+    expect(updateDocument(original, values)).toBe(original);
+    const next = updateDocument(original, { ...values, username: '\tnew  ', url: ' https://new.test ', customFields: [{ key: 'token', value: '\tnew  ', sourceIndex: 0 }] });
+    expect(next).toBe('secret\r\nlogin: \tnew  \r\nurl:  https://new.test \r\ntoken: \tnew  \nnotes: exact');
+    expect(parseDocument(next)).toMatchObject({ username: '\tnew  ', urls: [' https://new.test '], fields: expect.arrayContaining([{ key: 'token', value: '\tnew  ' }]) });
+  });
+  it('accepts only letters and decimal digits in field keys, matching the native parser', () => {
+    const doc = parseDocument('secret\n数字١: retained\n²: superscript\nⅣ: numeral');
+    expect(doc.fields).toEqual([{ key: '数字١', value: 'retained' }]);
+    expect(doc.notes).toBe('²: superscript\nⅣ: numeral');
+  });
+  it('keeps Unicode separators inside field values instead of exposing them as notes', () => {
+    const original = 'secret\ntoken: first\u2028second\u2029last';
+    const doc = parseDocument(original);
+    expect(doc.notes).toBe('');
+    expect(additionalFields(doc)).toEqual([{ key: 'token', value: 'first\u2028second\u2029last' }]);
+    const next = updateDocument(original, { password: doc.password, username: doc.username, url: '', notes: doc.notes, customFields: [{ key: 'token', value: 'new\u2028value', sourceIndex: 0 }] });
+    expect(next).toBe('secret\ntoken: new\u2028value');
+    expect(parseDocument(next).notes).toBe('');
+  });
+  it('keeps isolated carriage returns inside source lines so custom identities stay aligned', () => {
+    const original = 'secret\na: old\rb: embedded\nc: survive';
+    const doc = parseDocument(original);
+    expect(additionalFields(doc)).toEqual([{ key: 'a', value: 'old\rb: embedded' }, { key: 'c', value: 'survive' }]);
+    const customFields = additionalFields(doc).map((field, sourceIndex) => ({ ...field, sourceIndex }));
+    const values = { password: doc.password, username: doc.username, url: '', notes: doc.notes, customFields };
+    expect(updateDocument(original, { ...values, password: 'changed' })).toBe(original.replace('secret', 'changed'));
+    const next = updateDocument(original, { ...values, customFields: [{ key: 'a', value: 'new', sourceIndex: 0 }, customFields[1]!] });
+    expect(next).toBe('secret\na: new\nc: survive');
+    expect(additionalFields(parseDocument(next))).toEqual([{ key: 'a', value: 'new' }, { key: 'c', value: 'survive' }]);
+  });
+  it('appends fields without losing a missing final newline and retains dedicated empty aliases', () => {
+    const next = updateDocument('secret\nbody note', { password: 'secret', username: '', url: '', notes: 'body note', customFields: [{ key: 'email', value: 'additional@example.test' }, { key: 'custom', value: '' }] });
+    expect(next).toBe('secret\nusername: \nbody note\nemail: additional@example.test\ncustom: ');
+    const doc = parseDocument(next);
+    expect(doc.username).toBe('');
+    expect(additionalFields(doc)).toEqual([{ key: 'email', value: 'additional@example.test' }, { key: 'custom', value: '' }]);
   });
   it('rejects traversal, hidden entries and malformed entry names', () => {
     for (const value of ['../secret', '/absolute', 'a//b', 'a/..', 'a/.hidden', '-option', 'foo\\bar', 'foo\nbar', 'foo:bar']) expect(validateEntry(value)).toBe(false);

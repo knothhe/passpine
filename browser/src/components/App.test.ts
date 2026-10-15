@@ -9,6 +9,7 @@ import type { Client, EntryDocument, Snapshot, UIRequest } from '../lib/types';
 let container: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
+  localStorage.clear();
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   container = document.createElement('div');
@@ -40,6 +41,19 @@ async function render(client: Client) {
 }
 
 describe('create an account from a locked popup', () => {
+  it('places icon-only creation beside the domain and executes a stored custom shortcut through unlock', async () => {
+    localStorage.setItem('popupShortcuts', JSON.stringify([{ id: 'new', action: 'new', shortcut: 'Alt+N' }]));
+    const { client, actions } = fixture(state => { state.locked = false; });
+    await render(client);
+    expect(container.querySelector('.app-header')).toBeNull();
+    expect(container.querySelector('.site-context')?.textContent).not.toContain('当前网站');
+    const create = container.querySelector<HTMLButtonElement>('button[aria-label="新建账号"]')!;
+    expect(create.closest('.site-context-label')?.textContent).toBe('example.test');
+    expect(create.textContent).toBe('');
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', code: 'KeyN', altKey: true, bubbles: true, cancelable: true })));
+    expect(actions).toEqual(['snapshot', 'unlock', 'snapshot']);
+    expect(container.querySelector('form')).not.toBeNull();
+  });
   it('authenticates and refreshes before opening the editor', async () => {
     const { client, actions } = fixture(state => { state.locked = false; });
     await render(client);
@@ -72,6 +86,37 @@ function deferred<T>() {
   const promise = new Promise<T>((accept, decline) => { resolve = accept; reject = decline; });
   return { promise, resolve, reject };
 }
+describe('manual refresh feedback', () => {
+  it.each([true, false])('shows immediate progress and completion feedback (success=%s)', async success => {
+    const pending = deferred<Snapshot>();
+    const state: Snapshot = { configured: true, vaultId: 'first', vaultName: '测试密码库', locked: false, entriesVersion: 1, capabilities: [], entries: [], matches: [] };
+    let count = 0;
+    const client: Client = { demo: true, openOptions: async () => {}, copy: async () => {}, async request<T>(request: UIRequest) { return (request.action === 'snapshot' && count++ > 0 ? pending.promise : { ...state }) as Promise<T>; } };
+    await render(client);
+    const refresh = container.querySelector<HTMLButtonElement>('button[aria-label="刷新密码库"]')!;
+    await act(async () => refresh.click());
+    expect(refresh.disabled).toBe(true);
+    expect(refresh.getAttribute('aria-busy')).toBe('true');
+    expect(refresh.querySelector('.connection-checking')).not.toBeNull();
+    expect(container.textContent).not.toContain('正在连接…');
+    await act(async () => { if (success) pending.resolve(state); else pending.reject(new Error('刷新连接失败')); });
+    expect(refresh.disabled).toBe(false);
+    expect(refresh.getAttribute('aria-busy')).toBeNull();
+    expect(container.querySelector(success ? '[role="status"]' : '[role="alert"]')?.textContent).toContain(success ? '密码库已刷新' : '刷新连接失败');
+  });
+
+  it('keeps metadata refreshes quiet', async () => {
+    const state: Snapshot = { configured: true, vaultId: 'first', vaultName: '测试密码库', locked: false, entriesVersion: 1, capabilities: [], entries: [], matches: [] };
+    const actions: string[] = [];
+    const client: Client = { demo: true, openOptions: async () => {}, copy: async () => {}, async request<T>(request: UIRequest) { actions.push(request.action); return { ...state } as T; } };
+    await render(client);
+    state.entriesVersion = 2;
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')));
+    expect(actions).toEqual(['snapshot', 'status', 'snapshot']);
+    expect(container.querySelector('.notice')).toBeNull();
+    expect(container.querySelector('button[aria-label="刷新密码库"]')?.getAttribute('aria-busy')).toBeNull();
+  });
+});
 function detailFixture(locked = false) {
   const state: Snapshot = { configured: true, vaultId: 'first', vaultName: '测试密码库', locked, entriesVersion: 1, capabilities: [], entries: [{ path: 'example.test/Alex', name: 'Alex', folder: 'example.test' }], matches: [], tab: { id: 1, url: 'https://example.test', hostname: 'example.test', secure: true } };
   const fetch = deferred<EntryDocument>(), status = deferred<Snapshot>(), copy = deferred<unknown>();
@@ -149,10 +194,7 @@ describe('responsive detail navigation and session safety', () => {
     const fixture = detailFixture();
     await render(fixture.client); await clickAction('查看 Alex');
     await act(async () => fixture.fetch.resolve(credentials));
-    await act(async () => currentPage().querySelector<HTMLButtonElement>('button[aria-label="更多操作"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
-    const menuItem = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(item => item.textContent === '移入回收站')!;
-    expect(menuItem).not.toBeUndefined();
-    await act(async () => menuItem.click());
+    await clickAction('删除账号');
     const confirm = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')).find(button => button.textContent === '移入回收站')!;
     expect(confirm).not.toBeUndefined();
     await act(async () => confirm.click());
@@ -217,8 +259,7 @@ describe('responsive detail navigation and session safety', () => {
     const fixture = detailFixture();
     await render(fixture.client); await clickAction('查看 Alex');
     await act(async () => fixture.fetch.resolve(credentials));
-    const edit = Array.from(currentPage().querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '编辑')!;
-    await act(async () => edit.click());
+    await clickAction('编辑账号');
     expect(currentPage().dataset.popupPage).toBe('editor');
     expect(Array.from(container.querySelectorAll('input')).some(input => input.value === 'sensitive-password')).toBe(true);
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);

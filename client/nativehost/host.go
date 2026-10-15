@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 )
@@ -365,72 +364,6 @@ func writePrivate(path string, data []byte) error {
 		return ce
 	}
 	return os.Rename(name, path)
-}
-func Register(executable string) ([]string, error) {
-	path, e := filepath.Abs(executable)
-	if e != nil {
-		return nil, e
-	}
-	i, e := os.Stat(path)
-	if e != nil || !i.Mode().IsRegular() {
-		return nil, errors.New("native helper executable is missing")
-	}
-	home, e := os.UserHomeDir()
-	if e != nil {
-		return nil, e
-	}
-	var dirs []string
-	switch runtime.GOOS {
-	case "darwin":
-		for _, v := range []string{"Google/Chrome", "Google/Chrome Beta", "Chromium", "Microsoft Edge", "BraveSoftware/Brave-Browser", "Mozilla"} {
-			dirs = append(dirs, filepath.Join(home, "Library/Application Support", v, "NativeMessagingHosts"))
-		}
-	case "linux":
-		for _, v := range []string{".config/google-chrome/NativeMessagingHosts", ".config/chromium/NativeMessagingHosts", ".config/microsoft-edge/NativeMessagingHosts", ".config/BraveSoftware/Brave-Browser/NativeMessagingHosts", ".mozilla/native-messaging-hosts"} {
-			dirs = append(dirs, filepath.Join(home, v))
-		}
-	default:
-		return nil, errors.New("automatic host registration is supported on macOS and Linux")
-	}
-	installed := []string{}
-	for _, dir := range dirs {
-		m := map[string]any{"name": Name, "description": "Passpine Neo native password manager", "path": path, "type": "stdio"}
-		if strings.Contains(strings.ToLower(dir), "mozilla") {
-			m["allowed_extensions"] = []string{FirefoxID}
-		} else {
-			m["allowed_origins"] = []string{"chrome-extension://" + ChromiumID + "/"}
-		}
-		b, _ := json.MarshalIndent(m, "", "  ")
-		if e = os.MkdirAll(dir, 0700); e != nil {
-			return installed, e
-		}
-		target := filepath.Join(dir, Name+".json")
-		if e = writePrivate(target, b); e != nil {
-			return installed, e
-		}
-		installed = append(installed, target)
-	}
-	return installed, nil
-}
-
-// CheckRegistration only accepts manifests pointing at this exact helper.
-func CheckRegistration(executable string) bool {
-	home, e := os.UserHomeDir()
-	if e != nil {
-		return false
-	}
-	dir := filepath.Join(home, "Library/Application Support/Google/Chrome/NativeMessagingHosts")
-	if runtime.GOOS == "linux" {
-		dir = filepath.Join(home, ".config/google-chrome/NativeMessagingHosts")
-	}
-	b, e := os.ReadFile(filepath.Join(dir, Name+".json"))
-	if e != nil {
-		return false
-	}
-	var m struct {
-		Path string `json:"path"`
-	}
-	return json.Unmarshal(b, &m) == nil && m.Path == executable
 }
 func HelperPath() string {
 	p, e := os.Executable()

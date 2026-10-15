@@ -16,7 +16,7 @@ func (a *application) startGitCall(req app.Request, done func(app.Data), userAct
 	}
 	if userAction {
 		a.lastInput = time.Now()
-		a.errorText = ""
+		a.beginOperationFeedback()
 	}
 	if mutating {
 		a.gitActionPending = true
@@ -41,7 +41,7 @@ func (a *application) startGitCall(req app.Request, done func(app.Data), userAct
 			if result.Status != "ok" {
 				a.errorText = result.Message
 				if a.errorText == "" {
-					a.errorText = "Git 操作未完成，请重试"
+					a.errorText = a.t("Git 操作未完成，请重试")
 				}
 			} else if done != nil {
 				done(result.Data)

@@ -37,11 +37,11 @@ func (a *application) setupView(c *ui.Context) {
 		ui.Column(c).FillWidth().AlignItems(ui.Center).Padding(38, 32).Children(func() {
 			ui.Column(c).Width(440).MaxWidth(580).Gap(22).Children(func() {
 				components.Icon(c, lucide.FolderKey).Size(42, 42).TextColor(c.Theme().Accent)
-				section(c, "打开密码库", "", nil)
+				section(c, a.t("打开密码库"), "", nil)
 				previousMode := a.setupMode
-				components.Tabs(c, &a.setupMode, "创建密码库", "导入密码库", "从 Git 下载")
+				components.Tabs(c, &a.setupMode, a.t("创建密码库"), a.t("导入密码库"), a.t("从 Git 下载"))
 				if a.setupMode == 1 && a.setupDirectory == a.defaultVaultDirectory && a.defaultVaultDirectory != "" {
-					muted(c, "已找到默认密码库 ~/.password-store。输入私钥口令即可继续。")
+					muted(c, a.t("已找到默认密码库 ~/.password-store。输入私钥口令即可继续。"))
 				}
 				if previousMode != a.setupMode && a.defaultVaultDirectory != "" {
 					if a.setupMode == 1 && a.setupDirectory == "" {
@@ -52,26 +52,28 @@ func (a *application) setupView(c *ui.Context) {
 				}
 				if a.setupMode == 2 {
 					ui.Column(c).FillWidth().Gap(14).Disabled(a.busy).Children(func() {
-						field(c, "Git 仓库地址", &a.setupRemote, "git@github.com:you/password-store.git", false)
+						field(c, a.t("Git 仓库地址"), &a.setupRemote, "git@github.com:you/password-store.git", false)
 						ui.Row(c).FillWidth().Gap(8).AlignItems(ui.End).Children(func() {
-							ui.Column(c).Grow(1).Children(func() { field(c, "下载到新目录", &a.setupDirectory, "例如：/Users/you/password-store", false) })
-							if iconButton(c, lucide.FolderOpen(), "选择下载位置", components.ButtonOutline).Clicked() {
+							ui.Column(c).Grow(1).Children(func() {
+								field(c, a.t("下载到新目录"), &a.setupDirectory, a.t("例如：/Users/you/password-store"), false)
+							})
+							if iconButton(c, lucide.FolderOpen(), a.t("选择下载位置"), components.ButtonOutline).Clicked() {
 								a.chooseDirectory()
 							}
 						})
-						muted(c, "目标目录必须不存在。")
-						if components.Button(c, "下载密码库", components.ButtonPrimary).Clicked() {
+						muted(c, a.t("目标目录必须不存在。"))
+						if components.Button(c, a.t("下载密码库"), components.ButtonPrimary).Clicked() {
 							a.submitSetup()
 						}
 					})
 					if a.busy {
-						if components.Button(c, "取消下载", components.ButtonOutline).Clicked() {
+						if components.Button(c, a.t("取消下载"), components.ButtonOutline).Clicked() {
 							a.lock()
-							a.notice = "下载已取消，可以修改后重试。"
+							a.inform(a.t("下载已取消，可以修改后重试。"))
 						}
 					}
 					if a.state.Configured && !a.busy {
-						if components.Button(c, "返回密码库", components.ButtonGhost).Clicked() {
+						if components.Button(c, a.t("返回密码库"), components.ButtonGhost).Clicked() {
 							a.setup = false
 						}
 					}
@@ -79,27 +81,27 @@ func (a *application) setupView(c *ui.Context) {
 				}
 				ui.Column(c).FillWidth().Gap(14).Disabled(a.busy).Children(func() {
 					ui.Row(c).FillWidth().Gap(8).AlignItems(ui.End).Children(func() {
-						ui.Column(c).Grow(1).Children(func() { field(c, "密码库目录", &a.setupDirectory, "选择一个本机目录", false) })
-						if iconButton(c, lucide.FolderOpen(), "选择密码库目录", components.ButtonOutline).Clicked() {
+						ui.Column(c).Grow(1).Children(func() { field(c, a.t("密码库目录"), &a.setupDirectory, a.t("选择一个本机目录"), false) })
+						if iconButton(c, lucide.FolderOpen(), a.t("选择密码库目录"), components.ButtonOutline).Clicked() {
 							a.chooseDirectory()
 						}
 					})
+					field(c, a.t("密码库名称"), &a.setupName, a.vaultNamePlaceholder(), false)
 					if a.setupMode == 0 {
-						field(c, "密码库名称", &a.setupName, "我的密码库", false)
-						field(c, "密钥邮箱（可选）", &a.setupEmail, "you@example.com", false)
+						field(c, a.t("密钥邮箱（可选）"), &a.setupEmail, "you@example.com", false)
 					}
-					input := field(c, "私钥口令", &a.passphrase, "输入你的私钥口令", true)
+					input := field(c, a.t("私钥口令"), &a.passphrase, a.t("输入你的私钥口令"), true)
 					if a.setupMode == 0 {
-						field(c, "确认口令", &a.confirmPassphrase, "再次输入口令", true)
-						muted(c, "口令至少需要 12 个字符。")
+						field(c, a.t("确认口令"), &a.confirmPassphrase, a.t("再次输入口令"), true)
+						muted(c, a.t("口令至少需要 12 个字符。"))
 					}
-					label := "创建并解锁"
+					label := a.t("创建并解锁")
 					if a.setupMode == 1 {
-						label = "打开并解锁"
+						label = a.t("打开并解锁")
 					}
 					ui.Row(c).FillWidth().Gap(8).Children(func() {
 						if a.state.Configured {
-							if components.Button(c, "返回", components.ButtonGhost).Clicked() {
+							if components.Button(c, a.t("返回"), components.ButtonGhost).Clicked() {
 								a.setup = false
 								a.passphrase = ""
 								a.confirmPassphrase = ""
@@ -112,7 +114,7 @@ func (a *application) setupView(c *ui.Context) {
 					})
 				})
 				if len(a.state.Vaults) > 0 {
-					components.Text(c, "最近打开").Bold().FontSize(12)
+					components.Text(c, a.t("最近打开")).Bold().FontSize(12)
 					for _, v := range a.state.Vaults {
 						v := v
 						if components.Button(c, v.Name, components.ButtonOutline).FillWidth().Clicked() {
@@ -127,12 +129,12 @@ func (a *application) setupView(c *ui.Context) {
 
 func (a *application) submitSetup() {
 	if strings.TrimSpace(a.setupDirectory) == "" {
-		a.errorText = "请先选择密码库目录。"
+		a.errorText = a.t("请先选择密码库目录。")
 		return
 	}
 	if a.setupMode == 2 {
 		if strings.TrimSpace(a.setupRemote) == "" {
-			a.errorText = "请输入 Git 仓库地址。"
+			a.errorText = a.t("请输入 Git 仓库地址。")
 			return
 		}
 		a.call(app.Request{Action: "clone", URL: a.setupRemote, Directory: a.setupDirectory}, func(d app.Data) {
@@ -140,12 +142,12 @@ func (a *application) submitSetup() {
 				a.setupDirectory = d.Destination
 			}
 			a.setupMode = 1
-			a.notice = "下载完成。输入系统 GPG 私钥口令即可继续。"
+			a.inform(a.t("下载完成。输入系统 GPG 私钥口令即可继续。"))
 		})
 		return
 	}
 	if a.setupMode == 0 && (len([]rune(a.passphrase)) < 12 || a.passphrase != a.confirmPassphrase) {
-		a.errorText = "口令至少需要 12 个字符，且两次输入必须一致。"
+		a.errorText = a.t("口令至少需要 12 个字符，且两次输入必须一致。")
 		return
 	}
 	req := app.Request{Directory: a.setupDirectory, Name: a.setupName, Email: a.setupEmail, Passphrase: a.passphrase}
@@ -156,6 +158,7 @@ func (a *application) submitSetup() {
 		req.Mode = "system-gpg"
 	}
 	a.call(req, func(d app.Data) {
+		a.history = navigationState{}
 		a.setup = false
 		a.passphrase = ""
 		a.confirmPassphrase = ""
@@ -165,9 +168,9 @@ func (a *application) submitSetup() {
 		a.unlockTime = time.Now()
 		a.settings = d.Settings
 		a.applyTheme()
-		a.notice = "密码库已打开"
+		a.notice = a.t("密码库已打开")
 		if d.DeviceUnlockNotice != "" {
-			a.notice = d.DeviceUnlockNotice
+			a.warn(d.DeviceUnlockNotice)
 		}
 	})
 }
@@ -176,32 +179,32 @@ func (a *application) unlockView(c *ui.Context) {
 	ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Padding(40).Children(func() {
 		ui.Column(c).FillWidth().MaxWidth(360).MinWidth(0).Gap(20).Children(func() {
 			components.Icon(c, lucide.LockKeyhole).Size(40, 40).TextColor(c.Theme().Accent)
-			section(c, "解锁密码库", a.state.VaultName, nil)
+			section(c, a.t("解锁密码库"), a.state.VaultName, nil)
 			if a.selected != "" && a.state.Settings.BrowseWhileLocked {
 				components.Text(c, entryName(a.selected)).Bold()
 				muted(c, a.selected)
 			}
 			ui.Column(c).FillWidth().Gap(16).Disabled(a.busy).Children(func() {
 				if a.state.DeviceUnlockEnrolled && a.state.Settings.DeviceUnlock {
-					if components.Button(c, "使用 Touch ID 或 Mac 登录密码", components.ButtonPrimary).FillWidth().Disabled(!a.state.DeviceUnlockAvailable).Clicked() {
+					if components.Button(c, a.t("使用 Touch ID 或 Mac 登录密码"), components.ButtonPrimary).FillWidth().Disabled(!a.state.DeviceUnlockAvailable).Clicked() {
 						a.unlock("device")
 					}
 					if !a.state.DeviceUnlockAvailable {
-						muted(c, "系统解锁不可用，请在安全设置中关闭后使用私钥口令。")
-						if components.Button(c, "打开安全设置", components.ButtonOutline).FillWidth().Clicked() {
+						muted(c, a.t("系统解锁不可用，请在安全设置中关闭后使用私钥口令。"))
+						if components.Button(c, a.t("打开安全设置"), components.ButtonOutline).FillWidth().Clicked() {
 							a.settingsState.Category = "security"
 							a.navigate("settings", "")
 						}
 					}
 				} else {
-					input := field(c, "私钥口令", &a.passphrase, "输入口令解锁", true)
+					input := field(c, a.t("私钥口令"), &a.passphrase, a.t("输入口令解锁"), true)
 					input.AutoFocus()
-					if components.Button(c, "解锁密码库", components.ButtonPrimary).FillWidth().Clicked() || input.Submitted() {
+					if components.Button(c, a.t("解锁密码库"), components.ButtonPrimary).FillWidth().Clicked() || input.Submitted() {
 						a.unlock("")
 					}
 				}
 			})
-			if components.Button(c, "打开其他密码库", components.ButtonGhost).Clicked() {
+			if components.Button(c, a.t("打开其他密码库"), components.ButtonGhost).Clicked() {
 				a.openSetup()
 			}
 		})
@@ -217,19 +220,22 @@ func (a *application) unlock(mode string) {
 		a.passphrase = ""
 		a.unlockTime = time.Now()
 		a.lastInput = time.Now()
-		a.notice = d.DeviceUnlockNotice
+		a.warn(d.DeviceUnlockNotice)
+		if a.resumeUnlockAction() {
+			return
+		}
 		if a.pendingCopyEntry != "" {
 			entry, vaultID := a.pendingCopyEntry, a.pendingCopyVaultID
 			a.pendingCopyEntry, a.pendingCopyVaultID = "", ""
 			if !a.state.Locked && a.state.VaultID == vaultID && a.selected == entry && a.page == "entries" && !a.setup {
 				a.call(app.Request{Action: "copy", Entry: entry, Field: "password"}, func(app.Data) {
-					a.notice = "已复制密码"
+					a.notice = a.t("已复制密码")
 					a.selectEntry(entry)
 				})
 				return
 			}
 		}
-		if a.page == "recovery" {
+		if a.preferencesPage() == "recovery" {
 			a.loadRecovery()
 		} else if a.selected != "" {
 			a.selectEntry(a.selected)
@@ -238,19 +244,33 @@ func (a *application) unlock(mode string) {
 }
 
 func (a *application) switchVault(id string) {
+	if a.editor.open {
+		a.requestEditorClose(func() { a.switchVault(id) })
+		return
+	}
 	if a.busy {
 		return
 	}
 	a.clearSecrets()
 	a.selected = ""
 	a.query = ""
-	a.call(app.Request{Action: "switch", ID: id}, func(app.Data) { a.setup = false; a.page = "entries"; a.filter = "all" })
+	a.call(app.Request{Action: "switch", ID: id}, func(app.Data) {
+		a.setup = false
+		a.page = "entries"
+		a.filter = "all"
+		a.history = navigationState{}
+	})
 }
 
 func (a *application) chooseDirectory() {
+	options := mygo.OpenDialogOptions{Parent: a.dialogParent(), Title: a.t("选择密码库目录"), Directory: true, ShowHiddenFiles: true, CreateDirectories: true, DefaultPath: a.setupDirectory}
+	current, setup := a.preferencesLease(), a.setup
 	go func() {
-		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.window, Title: "选择密码库目录", Directory: true, ShowHiddenFiles: true, CreateDirectories: true, DefaultPath: a.setupDirectory})
+		paths, err := mygo.Dialog.Open(options)
 		mygo.RunOnMain(func() {
+			if !current() || setup != a.setup {
+				return
+			}
 			if err != nil {
 				a.errorText = err.Error()
 			} else if len(paths) > 0 {

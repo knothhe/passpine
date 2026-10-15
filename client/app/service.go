@@ -27,41 +27,43 @@ type preferences struct {
 	Settings Settings    `json:"settings"`
 }
 type Service struct {
-	device         deviceunlock.Provider
-	deviceMu       sync.Mutex
-	deviceCancel   context.CancelFunc
-	onChange       func()
-	onGitChange    func()
-	entriesVersion uint64
-	cloneCancel    context.CancelFunc
-	mu             sync.Mutex
-	directory      string
-	preview        bool
-	prefs          preferences
-	active         *vault.Vault
-	server         *nativehost.Server
-	onOpen         func()
-	onLock         func()
-	clipboard      func(string, int) error
-	done           chan struct{}
-	closed         bool
-	activity       []Activity
-	gitError       string
-	gitStatusError string
-	gitData        Data
-	gitVault       *vault.Vault
-	gitRefreshAt   time.Time
-	gitOperation   bool
-	gitEpoch       uint64
-	lastSync       time.Time
-	cancellation   atomic.Uint64
-	cancelVault    atomic.Pointer[vault.Vault]
-	cachedEntries  []vault.Entry
-	cachedAt       time.Time
+	device           deviceunlock.Provider
+	deviceMu         sync.Mutex
+	deviceCancel     context.CancelFunc
+	onChange         func()
+	onGitChange      func()
+	entriesVersion   uint64
+	cloneCancel      context.CancelFunc
+	mu               sync.Mutex
+	directory        string
+	preview          bool
+	prefs            preferences
+	active           *vault.Vault
+	server           *nativehost.Server
+	onOpen           func()
+	onLock           func()
+	clipboard        func(string, int) error
+	done             chan struct{}
+	closed           bool
+	activity         []Activity
+	activityPrunedAt time.Time
+	browser          browserState
+	gitError         string
+	gitStatusError   string
+	gitData          Data
+	gitVault         *vault.Vault
+	gitRefreshAt     time.Time
+	gitOperation     bool
+	gitEpoch         uint64
+	lastSync         time.Time
+	cancellation     atomic.Uint64
+	cancelVault      atomic.Pointer[vault.Vault]
+	cachedEntries    []vault.Entry
+	cachedAt         time.Time
 }
 
 func DefaultSettings() Settings {
-	return Settings{Theme: "system", Language: "zh-CN", IdleMinutes: 10, MaxSessionMinutes: 60, ClipboardSeconds: 30, CloseToTray: true, BrowseWhileLocked: true, DeviceUnlock: true, AutoSync: false, SyncMinutes: 0, RecordActivity: true, GlobalShortcut: DefaultGlobalShortcut}
+	return Settings{Theme: "system", Language: "system", IdleMinutes: 10, MaxSessionMinutes: 60, ClipboardSeconds: 30, CloseToTray: true, BrowseWhileLocked: true, DeviceUnlock: true, AutoSync: false, SyncMinutes: 0, RecordActivity: true, ActivityMaxEntries: 1000, ActivityRetentionDays: 7, GlobalShortcut: DefaultGlobalShortcut}
 }
 func New(o Options) (*Service, error) {
 	var err error
@@ -91,6 +93,12 @@ func New(o Options) (*Service, error) {
 		return nil, err
 	}
 	s := &Service{directory: dir, preview: o.Preview, done: make(chan struct{}), prefs: preferences{Vaults: []VaultInfo{}, Settings: DefaultSettings()}}
+	initialized := false
+	defer func() {
+		if !initialized {
+			_ = s.Close()
+		}
+	}()
 	if !o.Preview {
 		s.device = o.DeviceUnlock
 		if s.device == nil {
@@ -114,6 +122,11 @@ func New(o Options) (*Service, error) {
 		shortcut = DefaultGlobalShortcut
 	}
 	s.prefs.Settings.GlobalShortcut = shortcut
+	if s.migrateVaultNames() {
+		if err = s.savePreferences(); err != nil {
+			return nil, err
+		}
+	}
 	for _, v := range s.prefs.Vaults {
 		if v.ID == s.prefs.Current {
 			s.active, err = s.newVault(v.Directory)
@@ -128,22 +141,25 @@ func New(o Options) (*Service, error) {
 			return nil, err
 		}
 	}
+	s.cancelVault.Store(s.active)
+	if b, e := readPrivate(filepath.Join(dir, "activity.json"), 32<<20); e == nil {
+		var records []Activity
+		if json.Unmarshal(b, &records) == nil {
+			s.activity = records
+		}
+	}
+	if err = s.pruneActivity(time.Now()); err != nil {
+		return nil, err
+	}
+	// Publishing the endpoint allows browser handlers to run immediately.
+	// Complete all session and activity initialization before accepting them.
 	if !o.Preview {
 		s.server, err = nativehost.Start(dir, s.handleBrowser)
 		if err != nil {
 			return nil, err
 		}
 	}
-	s.cancelVault.Store(s.active)
-	if b, e := readPrivate(filepath.Join(dir, "activity.json"), 1<<20); e == nil {
-		var records []Activity
-		if json.Unmarshal(b, &records) == nil {
-			if len(records) > 200 {
-				records = records[:200]
-			}
-			s.activity = records
-		}
-	}
+	initialized = true
 	go s.watch()
 	return s, nil
 }
@@ -219,6 +235,9 @@ func (s *Service) watch() {
 				go s.onLock()
 			}
 			wasUnlocked = unlocked
+			if time.Since(s.activityPrunedAt) >= time.Minute {
+				_ = s.pruneActivity(time.Now())
+			}
 			s.ensureGitRefreshLocked(false)
 			syncNow := s.active != nil && s.gitData.GitInitialized && !s.gitOperation && s.prefs.Settings.AutoSync && s.prefs.Settings.SyncMinutes > 0 && time.Since(s.lastSync) >= time.Duration(s.prefs.Settings.SyncMinutes)*time.Minute
 			syncVaultID := s.prefs.Current
@@ -243,18 +262,23 @@ func (s *Service) newVault(directory string) (*vault.Vault, error) {
 }
 func (s *Service) remember(dir, name string) error {
 	id := idFor(dir)
-	if name == "" {
-		name = filepath.Base(dir)
-	}
+	name = strings.TrimSpace(name)
 	found := false
 	for i, v := range s.prefs.Vaults {
 		if v.ID == id {
-			s.prefs.Vaults[i].Name = name
+			if name != "" {
+				s.prefs.Vaults[i].Name = name
+				s.prefs.Vaults[i].NameCustomized = true
+			}
 			found = true
 		}
 	}
 	if !found {
-		s.prefs.Vaults = append(s.prefs.Vaults, VaultInfo{ID: id, Name: name, Directory: dir})
+		customized := name != ""
+		if name == "" {
+			name = DisplayDirectory(dir)
+		}
+		s.prefs.Vaults = append(s.prefs.Vaults, VaultInfo{ID: id, Name: name, Directory: dir, NameCustomized: customized})
 	}
 	s.prefs.Current = id
 	return s.savePreferences()
@@ -300,7 +324,7 @@ func (s *Service) snapshotWithEntries(includeEntries bool) Data {
 			})
 		}
 	}
-	d.BrowserInstalled = !s.preview && nativehost.CheckRegistration(nativehost.HelperPath())
+	s.browserSnapshot(&d)
 	s.ensureGitRefreshLocked(false)
 	copyGitData(&d, s.gitData)
 	d.GitError = strings.TrimSpace(strings.Join([]string{s.gitError, s.gitStatusError}, " "))
@@ -523,6 +547,8 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 			}
 		}
 		return Data{}, errors.New("unknown vault")
+	case "vault-rename":
+		return Data{}, s.renameVault(r.ID, r.Name)
 	case "generate":
 		o := vault.PasswordOptions{Length: r.Length, Lowercase: r.Lowercase, Uppercase: r.Uppercase, Numbers: r.Numbers, Symbols: r.Symbols, ExcludeAmbiguous: r.ExcludeAmbiguous}
 		if o.Length == 0 {
@@ -557,14 +583,13 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 		if s.active != nil {
 			s.active.SetTimeouts(time.Duration(settings.IdleMinutes)*time.Minute, time.Duration(settings.MaxSessionMinutes)*time.Minute)
 		}
-		return Data{}, nil
+		return Data{}, s.pruneActivity(time.Now())
 	case "browser-install":
-		if s.preview {
-			return Data{}, errors.New("演示模式不注册浏览器连接")
-		}
-		_, e := nativehost.Register(nativehost.HelperPath())
-		return Data{}, e
+		return s.installBrowser(r.ID)
 	case "activity":
+		if e := s.pruneActivity(time.Now()); e != nil {
+			return Data{}, e
+		}
 		return Data{Activity: append([]Activity{}, s.activity...)}, nil
 	}
 	if e := s.requireVault(); e != nil {
@@ -781,6 +806,9 @@ func validateSettings(v Settings) error {
 	if v.Language != "zh-CN" && v.Language != "en" && v.Language != "system" {
 		return errors.New("invalid language")
 	}
+	if v.ActivityMaxEntries < 1 || v.ActivityMaxEntries > 100000 || v.ActivityRetentionDays < 1 || v.ActivityRetentionDays > 3650 {
+		return errors.New("操作记录保留数量或天数超出范围")
+	}
 	return nil
 }
 func classify(e error) (string, string) {
@@ -885,8 +913,10 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 		lease.session = s.ClipboardLease()
 	}
 	out := s.executeWithBrowserLease(r, "browser", &lease)
+	out.Data.VaultName = browserVaultName(out.Data)
 	out.Data.Directory = ""
 	out.Data.Vaults = nil
+	out.Data.BrowserRegistrations = nil
 	// Git remotes and filesystem errors can contain local checkout paths.
 	// The extension does not need the desktop's repository diagnostics.
 	copyGitData(&out.Data, Data{})
@@ -927,15 +957,16 @@ func encodeBrowserResponse(out Response, lease func(func()) error) json.RawMessa
 func encode(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
 func (s *Service) log(action, source, outcome string) {
 	if !s.prefs.Settings.RecordActivity {
+		_ = s.pruneActivity(time.Now())
 		return
 	}
 	item := Activity{Time: time.Now().UTC().Format(time.RFC3339), Action: action, Source: source, Outcome: outcome}
 	s.activity = append([]Activity{item}, s.activity...)
-	if len(s.activity) > 200 {
-		s.activity = s.activity[:200]
+	count := len(s.activity)
+	if err := s.pruneActivity(time.Now()); err == nil && len(s.activity) == count {
+		// Pruning already persists its changes; otherwise save the new record.
+		_ = s.saveActivity()
 	}
-	b, _ := json.Marshal(s.activity)
-	_ = writePrivate(filepath.Join(s.directory, "activity.json"), b, false)
 }
 
 func needsUnlock(action string) bool {

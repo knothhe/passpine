@@ -41,14 +41,14 @@ func (a *application) saveSettingsAutomatically() {
 			if result.Status != "ok" {
 				a.errorText = result.Message
 				if a.errorText == "" {
-					a.errorText = "设置保存失败，请重试"
+					a.errorText = a.t("设置保存失败，请重试")
 				}
 				if shortcutChanged && a.settings.GlobalShortcut == settings.GlobalShortcut {
 					a.settings.GlobalShortcut = a.settingsSaved.GlobalShortcut
 					a.settingsObserved = a.settings
-					a.shortcut.errorText = "快捷键保存失败，请重试。"
+					a.shortcut.errorText = a.t("快捷键保存失败，请重试。")
 					if a.shortcut.registered != "" {
-						a.shortcut.errorText = "快捷键保存失败，原快捷键保持有效。请重试。"
+						a.shortcut.errorText = a.t("快捷键保存失败，原快捷键保持有效。请重试。")
 					}
 				}
 			} else {
@@ -58,11 +58,12 @@ func (a *application) saveSettingsAutomatically() {
 					a.settings = result.Data.Settings
 					a.settingsObserved = a.settings
 					a.settingsDirty = false
-					a.settingsSavedUntil = time.Now().Add(2 * time.Second)
+					a.notice = a.t("已保存")
 				} else {
 					a.settingsDirty = true
 				}
 				a.applyTheme()
+				a.applyLanguage()
 			}
 			a.saveSettingsAutomatically()
 			a.invalidate()
@@ -92,14 +93,14 @@ func (a *application) saveGitRemoteAutomatically() {
 			if result.Status != "ok" {
 				a.errorText = result.Message
 				if a.errorText == "" {
-					a.errorText = "Git 远端地址保存失败，请重新编辑"
+					a.errorText = a.t("Git 远端地址保存失败，请重新编辑")
 				}
 			} else {
 				a.state.GitRemote = result.Data.GitRemote
 				if a.gitRemote == remote {
 					a.gitRemote = result.Data.GitRemote
 					a.gitRemoteObserved = a.gitRemote
-					a.settingsSavedUntil = time.Now().Add(2 * time.Second)
+					a.notice = a.t("已保存")
 				}
 			}
 			a.invalidate()

@@ -31,11 +31,11 @@ func (a *application) shortcutControls(c *ui.Context) {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			value, _ := app.NormalizeGlobalShortcut(a.settings.GlobalShortcut)
 			components.Text(c, strings.ReplaceAll(value, "+", " + ")).FontSize(12).SingleLine().Shrink(0)
-			label := "录制快捷键"
+			label := a.t("录制快捷键")
 			if a.shortcut.recording {
-				label = "请按下组合键…"
+				label = a.t("请按下组合键…")
 			}
-			button := components.Button(c, label, components.ButtonOutline).Label("录制全局搜索快捷键").Ref(&a.shortcut.ref).Disabled(a.settingsSaving)
+			button := components.Button(c, label, components.ButtonOutline).Label(a.t("录制全局搜索快捷键")).Ref(&a.shortcut.ref).Disabled(a.settingsSaving)
 			button.HandleInput(a.shortcutInput)
 			if button.Clicked() {
 				a.setShortcutRecording(!a.shortcut.recording)
@@ -43,16 +43,16 @@ func (a *application) shortcutControls(c *ui.Context) {
 				a.shortcut.ref.Focus()
 			}
 			if a.shortcut.recording {
-				if components.Button(c, "取消", components.ButtonGhost).Clicked() {
+				if components.Button(c, a.t("取消"), components.ButtonGhost).Clicked() {
 					a.setShortcutRecording(false)
 					a.shortcut.errorText = ""
 				}
-			} else if components.Button(c, "恢复默认", components.ButtonGhost).Disabled(a.settingsSaving || value == app.DefaultGlobalShortcut).Clicked() {
+			} else if components.Button(c, a.t("恢复默认"), components.ButtonGhost).Disabled(a.settingsSaving || value == app.DefaultGlobalShortcut).Clicked() {
 				a.recordShortcut(app.DefaultGlobalShortcut)
 			}
 		})
 		if a.shortcut.errorText != "" {
-			components.Text(c, a.shortcut.errorText).FontSize(11).TextColor(c.Theme().Danger).Wrap().MaxWidth(340)
+			components.Text(c, a.t(a.shortcut.errorText)).FontSize(11).TextColor(c.Theme().Danger).Wrap().MaxWidth(340)
 		}
 	})
 }
@@ -154,11 +154,11 @@ func (a *application) prepareGlobalShortcut(value string) (func(bool), error) {
 	}
 	if registry != nil {
 		if err = registry.Register(shortcut, a.globalShortcutActivated); err != nil {
-			message := "快捷键不可用，请更换组合"
+			message := a.t("快捷键不可用，请更换组合")
 			if a.shortcut.registered != "" {
-				message += "。原快捷键保持有效"
+				message = a.t("快捷键不可用，请更换组合。原快捷键保持有效")
 			}
-			return nil, fmt.Errorf("%s：%w", message, err)
+			return nil, fmt.Errorf("%s: %w", message, err)
 		}
 	}
 	previous := a.shortcut.registered
@@ -191,7 +191,7 @@ func (a *application) globalShortcutActivated() {
 		a.invalidate()
 		return
 	}
-	a.quickSearch()
+	a.toggleQuickSearch()
 }
 
 func (a *application) setShortcutRecording(recording bool) {

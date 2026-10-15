@@ -23,8 +23,8 @@ func (a *application) folderSelect(c *ui.Context, selected, query *string, label
 		components.Text(c, display).SingleLine()
 	})
 	sel.Popup(func(panel ui.Element) {
-		panel.Width(280).MaxWidth(360).Label(label + "选项")
-		if sel.SearchField(query).Label("搜索文件夹").Placeholder("搜索文件夹…").Changed() {
+		panel.Width(280).MaxWidth(360).Label(a.t("%s选项", label))
+		if sel.SearchField(query).Label(a.t("搜索文件夹")).Placeholder(a.t("搜索文件夹…")).Changed() {
 			a.lastInput = time.Now()
 		}
 		components.ScrollView(c, components.ScrollViewOptions{}).FillWidth().MaxHeight(240).ScrollbarInsets(2).Children(func() {
@@ -33,16 +33,16 @@ func (a *application) folderSelect(c *ui.Context, selected, query *string, label
 			for _, folder := range matchingFolders(a.folders, *query) {
 				folder := folder
 				matches++
-				sel.Item(folder).Label("选择文件夹 " + folder).Children(func() { components.Text(c, folder).SingleLine() })
+				sel.Item(folder).Label(a.t("选择文件夹 %s", folder)).Children(func() { components.Text(c, folder).SingleLine() })
 			}
 			candidate := strings.TrimSpace(*query)
 			if allowCreate && candidate != "" && !containsFolder(a.folders, candidate) {
-				sel.Item(candidate).Label("新建文件夹 " + candidate).Children(func() {
+				sel.Item(candidate).Label(a.t("新建文件夹 %s", candidate)).Children(func() {
 					components.Icon(c, lucide.FolderPlus()).Size(14, 14)
-					components.Text(c, "新建文件夹："+candidate).SingleLine()
+					components.Text(c, a.t("新建文件夹：%s", candidate)).SingleLine()
 				})
 			} else if matches == 0 && candidate != "" {
-				components.Text(c, "没有找到文件夹").Padding(10).FontSize(12).TextColor(c.Theme().TextMuted)
+				components.Text(c, a.t("没有找到文件夹")).Padding(10).FontSize(12).TextColor(c.Theme().TextMuted)
 			}
 		})
 	})

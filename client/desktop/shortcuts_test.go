@@ -30,6 +30,7 @@ func shortcutFixture(t *testing.T) (*application, *fakeShortcutRegistry) {
 	t.Helper()
 	a := fixture()
 	a.settings = app.DefaultSettings()
+	a.settings.Language = "zh-CN"
 	a.settingsSaved = a.settings
 	a.settingsObserved = a.settings
 	a.settingsLoaded = true

@@ -1,82 +1,69 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Callout, Heading, Text, TextField } from '@radix-ui/themes';
-import { Command, ExternalLink, Pencil } from 'lucide-react';
+import { Button, Callout, Heading, IconButton, Select, Text } from '@radix-ui/themes';
+import { Command, ExternalLink, Plus, Trash2 } from 'lucide-react';
 import { browser } from 'wxt/browser';
-import { assignedShortcuts, captureShortcut, defaultShortcuts, formatShortcut, saveShortcut, shortcutDefinitions, shortcutsPageURL, type ShortcutAPI } from '../lib/shortcuts';
+import { assignedShortcuts, canonicalShortcut, defaultShortcuts, saveShortcut, shortcutDefinitions, shortcutsPageURL, type ShortcutAPI } from '../lib/shortcuts';
+import { defaultPopupShortcuts, isMac, popupShortcutActions, readPopupShortcuts, writePopupShortcuts, type PopupShortcut, type PopupShortcutAction } from '../lib/popup-shortcuts';
+import { ShortcutKeys, ShortcutRecorder } from './ShortcutRecorder';
 import './options-shortcuts.css';
 
 export function ShortcutSettings({ firefox, demo = false }: { firefox: boolean; demo?: boolean }) {
-  const mac = /Mac/.test(navigator.userAgent);
   const api = browser?.commands as ShortcutAPI | undefined;
-  const editable = firefox && !!api?.update && !!api?.reset;
+  const editable = !demo && firefox && !!api?.update && !!api?.reset;
   const [bindings, setBindings] = useState<Record<string, string>>();
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const [editing, setEditing] = useState<string>();
-  const [draft, setDraft] = useState('');
-  const [saving, setSaving] = useState(false);
-  const sequence = useRef(0);
-  const mutating = useRef(false);
+  const [local, setLocal] = useState<PopupShortcut[]>(defaultPopupShortcuts);
+  const [error, setError] = useState(''), [notice, setNotice] = useState(''), [saving, setSaving] = useState(false);
+  const sequence = useRef(0), mutating = useRef(false);
   const refresh = async () => {
     if (mutating.current) return;
     const current = ++sequence.current;
-    try {
-      const values = demo ? defaultShortcuts(mac) : assignedShortcuts(await api!.getAll());
-      if (current === sequence.current) { setBindings(values); setError(''); }
-    } catch {
-      if (current === sequence.current) setError('无法读取当前快捷键，请重新打开设置页。');
-    }
+    const [commands, popup] = await Promise.allSettled([demo ? Promise.resolve(defaultShortcuts(isMac())) : api!.getAll().then(assignedShortcuts), readPopupShortcuts(demo)]);
+    if (current !== sequence.current) return;
+    if (commands.status === 'fulfilled') setBindings(commands.value);
+    if (popup.status === 'fulfilled') setLocal(popup.value);
+    setError(commands.status === 'rejected' || popup.status === 'rejected' ? '部分快捷键读取失败，请重新打开设置页。' : '');
   };
   useEffect(() => {
     void refresh();
     const visible = () => { if (!document.hidden) void refresh(); };
-    window.addEventListener('focus', visible);
-    document.addEventListener('visibilitychange', visible);
+    window.addEventListener('focus', visible); document.addEventListener('visibilitychange', visible);
     return () => { sequence.current++; window.removeEventListener('focus', visible); document.removeEventListener('visibilitychange', visible); };
   }, [demo, firefox]);
-
-  const openSettings = async () => {
-    setError('');
-    try {
-      if (firefox) await api!.openShortcutSettings!();
-      else await browser.tabs.create({ url: shortcutsPageURL(navigator.userAgent) });
-    } catch { setError('无法打开浏览器快捷键设置，请从扩展管理页面打开快捷键设置。'); }
-  };
-  const save = async (name: string, reset = false) => {
-    if (!api || mutating.current) return;
-    mutating.current = true;
-    setSaving(true); setError(''); setNotice('');
+  const mutate = async (operation: () => Promise<void>) => {
+    if (mutating.current) return;
+    mutating.current = true; setSaving(true); setError(''); setNotice('');
     const current = ++sequence.current;
-    try {
-      const values = reset ? (await api.reset!(name), assignedShortcuts(await api.getAll())) : await saveShortcut(api, name, draft);
-      if (current !== sequence.current) return;
-      setBindings(values); setEditing(undefined); setNotice(reset ? '已恢复默认快捷键。' : '快捷键已保存。');
-    } catch (error) { if (current === sequence.current) setError(error instanceof Error ? error.message : '快捷键未保存，请重试。'); }
+    try { await operation(); if (current === sequence.current) setNotice('快捷键已保存'); }
+    catch (error) { if (current === sequence.current) setError(error instanceof Error ? error.message : '快捷键未保存，请重试。'); }
     finally { mutating.current = false; if (current === sequence.current) setSaving(false); }
   };
-
+  const openSettings = async () => {
+    setError('');
+    try { if (firefox) await api!.openShortcutSettings!(); else await browser.tabs.create({ url: shortcutsPageURL(navigator.userAgent) }); }
+    catch { setError('无法打开浏览器快捷键设置，请从扩展管理页面打开快捷键设置。'); }
+  };
+  const saveLocal = (next: PopupShortcut[]) => void mutate(async () => {
+    const keys = next.map(item => canonicalShortcut(item.shortcut)).filter(Boolean);
+    if (new Set(keys).size !== keys.length || keys.some(key => Object.values(bindings ?? {}).some(value => value && canonicalShortcut(value) === key))) throw new Error('此快捷键已用于另一项操作，请选择其他组合。');
+    await writePopupShortcuts(next, demo); setLocal(next);
+  });
+  const invalid = () => setError('请使用 Ctrl、Command 或 Alt 与字母、数字等按键的组合。');
   return <>
     <div className="options-section-heading"><Command size={18}/><Heading as="h2" size="3">快捷键</Heading></div>
-    <dl className="shortcut-list shortcut-settings-list">{shortcutDefinitions.map(({ name, label }) => <div key={name}>
-      <dt>{label}</dt><dd>
-        {editing === name ? <div className="shortcut-editor">
-          <TextField.Root autoFocus readOnly value={draft ? formatShortcut(draft) : ''} placeholder="按下快捷键组合" aria-label={`${label}快捷键`} aria-describedby="shortcut-recording-help" disabled={saving} onKeyDown={event => {
-            if (event.key === 'Tab') return;
-            event.preventDefault(); event.stopPropagation();
-            const result = captureShortcut(event.nativeEvent, mac);
-            if (result.type === 'cancel') { setEditing(undefined); setError(''); }
-            else if (result.type === 'shortcut') { setDraft(result.shortcut); setError(''); }
-            else if (result.type === 'invalid') setError('请按 Ctrl、Command 或 Alt 与字母、数字等按键的组合，最多使用两个修饰键。');
-          }}/>
-          <div className="shortcut-editor-actions"><Button size="1" disabled={saving} onClick={() => void save(name)}>保存</Button><Button size="1" variant="soft" color="gray" disabled={saving} onClick={() => { setEditing(undefined); setError(''); }}>取消</Button><Button size="1" variant="ghost" color="gray" disabled={saving} onClick={() => setDraft('')}>清除</Button></div>
-        </div> : <div className="shortcut-binding"><kbd>{bindings ? bindings[name] ? formatShortcut(bindings[name]!) : '未设置' : error ? '读取失败' : '正在读取…'}</kbd>{editable && <Button size="1" variant="ghost" color="gray" disabled={!bindings || saving} aria-label={`修改${label}快捷键`} onClick={() => { setEditing(name); setDraft(bindings?.[name] ?? ''); setError(''); setNotice(''); }}><Pencil size={12}/>修改</Button>}</div>}
-        {editable && <Button className="shortcut-reset" size="1" variant="ghost" color="gray" disabled={!bindings || saving} onClick={() => void save(name, true)} aria-label={`恢复${label}的默认快捷键`}>恢复默认</Button>}
-      </dd>
-    </div>)}</dl>
-    <Text as="p" size="1" color="gray" className="options-help">默认快捷键沿用旧插件。{editable ? '点击“修改”后按下新的组合，保存后生效。' : '点击下方按钮，在浏览器中自定义快捷键。'}</Text>
-    {editing && <Text as="p" size="1" color="gray" id="shortcut-recording-help" className="shortcut-recording-help">按 Escape 取消，按 Backspace 或 Delete 清除。</Text>}
-    {(!firefox || api?.openShortcutSettings) && <div className="options-card-actions"><Button variant="soft" size="1" color="gray" disabled={demo} onClick={() => void openSettings()}><ExternalLink size={14}/>自定义快捷键</Button></div>}
-    {demo && <Text as="p" size="1" color="gray" className="shortcut-recording-help">预览展示默认组合，安装扩展后可修改。</Text>}
+    <Text as="div" size="1" color="gray" className="shortcut-group-title">浏览器快捷键</Text>
+    <dl className="shortcut-list shortcut-settings-list">{shortcutDefinitions.map(({ name, label }) => <div key={name}><dt>{label}</dt><dd>
+      {editable ? <ShortcutRecorder command label={label} value={bindings?.[name] ?? ''} disabled={!bindings || saving} invalid={invalid} change={shortcut => void mutate(async () => {
+        if (shortcut && local.some(item => canonicalShortcut(item.shortcut) === canonicalShortcut(shortcut))) throw new Error('此快捷键已用于弹窗中的另一项操作。');
+        setBindings(await saveShortcut(api!, name, shortcut));
+      })}/> : <button type="button" className="shortcut-recorder shortcut-system-button" aria-label={`修改${label}快捷键`} disabled={demo || !bindings} onClick={() => void openSettings()}>{bindings?.[name] ? <ShortcutKeys value={bindings[name]!}/> : <span className="shortcut-placeholder">{bindings ? '未设置' : '正在读取…'}</span>}<ExternalLink size={12}/></button>}
+    </dd></div>)}</dl>
+    <div className="shortcut-group-heading"><Text size="1" color="gray">弹窗快捷键</Text><Text size="1" color="gray">弹窗打开时可用</Text></div>
+    <div className="popup-shortcut-list">{local.map((item, index) => {
+      const label = popupShortcutActions.find(({ action }) => action === item.action)!.label;
+      return <div className="popup-shortcut-row" key={item.id}><Select.Root value={item.action} disabled={saving} onValueChange={action => saveLocal(local.map(row => row.id === item.id ? { ...row, action: action as PopupShortcutAction } : row))}><Select.Trigger aria-label={`快捷键 ${index + 1} 的操作`} variant="ghost"/><Select.Content>{popupShortcutActions.map(action => <Select.Item key={action.action} value={action.action}>{action.label}</Select.Item>)}</Select.Content></Select.Root><div className="popup-shortcut-controls"><ShortcutRecorder label={label} value={item.shortcut} disabled={saving} invalid={invalid} change={shortcut => saveLocal(local.map(row => row.id === item.id ? { ...row, shortcut } : row))}/><IconButton aria-label={`删除${label}快捷键`} size="1" variant="ghost" color="gray" disabled={saving} onClick={() => saveLocal(local.filter(row => row.id !== item.id))}><Trash2 size={14}/></IconButton></div></div>;
+    })}</div>
+    <div className="shortcut-bottom-actions"><Button size="1" variant="ghost" disabled={saving} onClick={() => { const action = popupShortcutActions.find(action => !local.some(item => item.action === action.action))?.action ?? 'search'; saveLocal([...local, { id: crypto.randomUUID(), action, shortcut: '' }]); }}><Plus size={14}/>添加快捷键</Button><Button size="1" variant="ghost" color="gray" disabled={saving} onClick={() => saveLocal(defaultPopupShortcuts())}>恢复弹窗默认</Button></div>
+    <Text as="p" size="1" color="gray" className="shortcut-recording-help">点击键帽录制，按 Esc 取消，Delete 或 Backspace 清除。</Text>
     {error && <Callout.Root mt="3" size="1" color="amber" role="alert"><Callout.Text>{error}</Callout.Text></Callout.Root>}
     {notice && <Text as="p" size="1" color="gray" className="shortcut-recording-help" role="status">{notice}</Text>}
   </>;

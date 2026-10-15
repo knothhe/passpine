@@ -18,9 +18,10 @@ let disconnected = false;
 const snapshot = (): Snapshot => {
   const fixture = new URLSearchParams(location.search).get('fixture');
   const configured = fixture !== 'unconfigured';
+  const hostname = fixture === 'rich' ? 'accounts.very-long-organization-name.example.test' : 'github.com';
   const paths = configured && fixture !== 'empty' ? Object.keys(examples) : [];
   if (fixture === 'long') for (let index = 1; index <= 24; index++) paths.push(`工作/开发工具/示例 ${index}/用于检查省略与滚动的较长账号名称 ${index}`);
-  return { configured, vaultId: 'demo-vault', vaultName: configured ? '个人密码库' : '', locked, entriesVersion: revision, capabilities: ['fetch', 'save', 'delete', 'copy', 'generate'], entries: paths.map(path => ({ path, name: path.split('/').at(-1)!, folder: path.split('/').slice(0, -1).join('/') })), tab: { id: 1, url: 'https://github.com/login', hostname: 'github.com', secure: true }, matches: paths.filter(path => matches.has(path)) };
+  return { configured, vaultId: 'demo-vault', vaultName: configured ? '个人密码库' : '', locked, entriesVersion: revision, capabilities: ['fetch', 'save', 'delete', 'copy', 'generate'], entries: paths.map(path => ({ path, name: path.split('/').at(-1)!, folder: path.split('/').slice(0, -1).join('/') })), tab: { id: 1, url: `https://${hostname}/login`, hostname, secure: true }, matches: fixture === 'rich' ? [] : paths.filter(path => matches.has(path)) };
 };
 
 export const demoClient: Client = {
@@ -44,7 +45,10 @@ export const demoClient: Client = {
       result = { password: Array.from(bytes, byte => pool[byte % pool.length]).join('') };
     } else {
       if (locked) throw new PassPineError('locked');
-      if (request.action === 'fetch') result = { contents: examples[request.entry] ?? '', revision: String(revision) } satisfies EntryDocument;
+      if (request.action === 'fetch') {
+        const rich = new URLSearchParams(location.search).get('fixture') === 'rich';
+        result = { contents: rich ? `${'preview-only-'.repeat(10)}\nusername: long-account-name.for-compact-layout@example.test\nurl: https://accounts.example.test/organizations/design-team/settings\n\n${'用于检查长备注和滚动，内容仅为演示。\n'.repeat(14)}` : examples[request.entry] ?? '', revision: String(revision), ...(rich ? { otp: '123456', otpSeconds: 30 } : {}) } satisfies EntryDocument;
+      }
       else if (request.action === 'save') { if (request.mode === 'create' && examples[request.entry]) throw new Error('此名称已存在。'); if (request.destination) delete examples[request.entry]; examples[request.destination ?? request.entry] = request.contents; revision++; }
       else if (request.action === 'delete') { delete examples[request.entry]; revision++; }
       else if (request.action === 'associate') matches.add(request.entry);

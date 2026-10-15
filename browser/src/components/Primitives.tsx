@@ -11,8 +11,8 @@ export function Brand() {
   return <Flex align="center" gap="2"><span className="brand-mark" style={{ background: 'transparent', width: 30, height: 30 }}><ApplicationIcon size={30}/></span><span className="brand-name">PassPine</span></Flex>;
 }
 
-export function ActionIcon({ label, children, onClick, disabled }: { label: string; children: React.ReactNode; onClick(): void; disabled?: boolean }) {
-  return <Tooltip content={label}><IconButton aria-label={label} variant="ghost" color="gray" size="2" disabled={disabled} onClick={onClick}>{children}</IconButton></Tooltip>;
+export function ActionIcon({ label, children, onClick, disabled, loading }: { label: string; children: React.ReactNode; onClick(): void; disabled?: boolean; loading?: boolean }) {
+  return <Tooltip content={label}><IconButton aria-label={label} aria-busy={loading || undefined} variant="ghost" color="gray" size="2" disabled={disabled} onClick={onClick}>{children}</IconButton></Tooltip>;
 }
 
 export function PageHeader({ title, backLabel = '返回密码库', back, disabled, children }: { title: string; backLabel?: string; back(): void; disabled?: boolean; children?: React.ReactNode }) {
@@ -26,5 +26,5 @@ export function EntryAvatar({ entry, large }: { entry: Entry; large?: boolean })
 }
 
 export function SecretField({ label, value, onCopy }: { label: string; value: string; onCopy?: () => void }) {
-  return <div className="credential-field"><div className="truncate"><Text as="div" size="1" color="gray" mb="1">{label}</Text><Text size="2">{value}</Text></div>{onCopy && <ActionIcon label={`复制${label}`} onClick={onCopy}><Copy size={16}/></ActionIcon>}</div>;
+  return <div className="credential-field"><div><Text as="div" size="1" color="gray" className="credential-label">{label}</Text><Text as="div" size="2" className="credential-value truncate" title={value}>{value}</Text></div>{onCopy && <ActionIcon label={`复制${label}`} onClick={onCopy}><Copy size={16}/></ActionIcon>}</div>;
 }

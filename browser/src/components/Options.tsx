@@ -11,14 +11,15 @@ export function Options({ client, extensionId, firefox = false }: { client: Clie
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [notice, setNotice] = useState('');
   const refreshSequence = useRef(0);
-  const refresh = async () => {
+  const refresh = async (manual = false) => {
     const sequence = ++refreshSequence.current;
-    setChecking(true);
+    setChecking(true); if (manual) setNotice('');
     try {
       const state = await client.request<Snapshot>({ action: 'snapshot' });
       if (sequence !== refreshSequence.current) return;
-      setSnapshot(state); setError('');
+      setSnapshot(state); setError(''); if (manual) setNotice('连接检查完成');
     } catch (error) {
       if (sequence !== refreshSequence.current) return;
       setSnapshot(undefined); setError(errorMessage(error));
@@ -39,9 +40,10 @@ export function Options({ client, extensionId, firefox = false }: { client: Clie
       <Card size="3" className="options-card options-card-connection">
         <div className="options-connection">
           <div className="options-connection-summary"><span className={`connection-dot ${!snapshot || snapshot.locked ? 'locked' : ''}`} aria-hidden="true"/><div><Heading as="h2" size="3">{checking ? '正在检查连接…' : snapshot ? snapshot.locked ? '已连接 · 已锁定' : '已连接' : '未连接客户端'}</Heading><Text as="p" size="2" color="gray">{snapshot?.vaultName || (snapshot ? '请在客户端打开密码库' : '连接本机 Passpine Neo')}</Text></div></div>
-          <Button variant="soft" disabled={checking} onClick={() => void refresh()}><RefreshCw size={15} className={checking ? 'connection-checking' : undefined}/>{checking ? '检查中' : '检查连接'}</Button>
+          <Button variant="soft" aria-busy={checking || undefined} disabled={checking} onClick={() => void refresh(true)}><RefreshCw size={15} className={checking ? 'connection-checking' : undefined}/>{checking ? '检查中' : '检查连接'}</Button>
         </div>
-        {error && <Callout.Root mt="4" size="1" color="amber"><Callout.Text>{error}</Callout.Text></Callout.Root>}
+        {error && <Callout.Root mt="4" size="1" color="amber" role="alert"><Callout.Text>{error}</Callout.Text></Callout.Root>}
+        {notice && <Text as="p" size="1" color="gray" mt="3" role="status">{notice}</Text>}
         {!snapshot && !checking && <ol className="setup-steps"><SetupStep number="1">打开客户端，创建或导入密码库。</SetupStep><SetupStep number="2">打开客户端设置 → 浏览器，点击“注册浏览器连接”。</SetupStep><SetupStep number="3">点击浏览器工具栏中的 Passpine Neo。</SetupStep></ol>}
       </Card>
       <Card size="3" className="options-card">

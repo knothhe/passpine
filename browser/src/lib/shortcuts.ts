@@ -40,19 +40,20 @@ export function shortcutsPageURL(userAgent: string): string {
 type ShortcutKeyEvent = Pick<KeyboardEvent, 'key' | 'code' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'isComposing'>;
 type ShortcutCapture = { type: 'shortcut'; shortcut: string } | { type: 'pending' | 'cancel' | 'invalid' };
 
-export function captureShortcut(event: ShortcutKeyEvent, mac: boolean): ShortcutCapture {
+export function captureShortcut(event: ShortcutKeyEvent, mac: boolean, popup = false): ShortcutCapture {
   if (event.isComposing || ['Control', 'Shift', 'Alt', 'Meta', 'AltGraph'].includes(event.key)) return { type: 'pending' };
   const modified = event.ctrlKey || event.altKey || event.metaKey || event.shiftKey;
   if (event.key === 'Escape' && !modified) return { type: 'cancel' };
   if (['Backspace', 'Delete'].includes(event.key) && !modified) return { type: 'shortcut', shortcut: '' };
-  const namedKeys: Record<string, string> = { ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', ',': 'Comma', '.': 'Period', ' ': 'Space', Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown', Insert: 'Insert', Delete: 'Delete' };
-  const key = /^Key[A-Z]$/.test(event.code) ? event.code.slice(3) : /^Digit[0-9]$/.test(event.code) ? event.code.slice(5) : ['Comma', 'Period'].includes(event.code) ? event.code : /^F([1-9]|1[0-9])$/.test(event.key) ? event.key : namedKeys[event.key];
+  const namedKeys: Record<string, string> = { ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', ',': 'Comma', '.': 'Period', ' ': 'Space', Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown', Insert: 'Insert', Delete: 'Delete', ...(popup ? { Enter: 'Enter', '/': 'Slash', '\\': 'Backslash', ';': 'Semicolon', "'": 'Quote', '-': 'Minus', '=': 'Equal', '[': 'BracketLeft', ']': 'BracketRight', '`': 'Backquote' } : {}) };
+  const punctuation = ['Comma', 'Period', ...(popup ? ['Slash', 'Backslash', 'Semicolon', 'Quote', 'Minus', 'Equal', 'BracketLeft', 'BracketRight', 'Backquote'] : [])];
+  const key = /^Key[A-Z]$/.test(event.code) ? event.code.slice(3) : /^Digit[0-9]$/.test(event.code) ? event.code.slice(5) : punctuation.includes(event.code) ? event.code : /^F([1-9]|1[0-9])$/.test(event.key) ? event.key : namedKeys[event.key];
   const modifiers = [event.ctrlKey ? mac ? 'MacCtrl' : 'Ctrl' : '', event.altKey ? 'Alt' : '', event.metaKey && mac ? 'Command' : '', event.shiftKey ? 'Shift' : ''].filter(Boolean);
-  if (!key || (event.metaKey && !mac) || modifiers.length > 2 || (!event.ctrlKey && !event.altKey && !event.metaKey && !/^F\d+$/.test(key))) return { type: 'invalid' };
+  if (!key || (event.metaKey && !mac) || !popup && modifiers.length > 2 || (!event.ctrlKey && !event.altKey && !event.metaKey && !/^F\d+$/.test(key))) return { type: 'invalid' };
   return { type: 'shortcut', shortcut: [...modifiers, key].join('+') };
 }
 
-function canonicalShortcut(shortcut: string): string {
+export function canonicalShortcut(shortcut: string): string {
   return shortcut.replace(/MacCtrl|Control|⌃/g, 'Ctrl+').replace(/Command|⌘/g, 'Meta+').replace(/Shift|⇧/g, 'Shift+').replace(/Alt|⌥/g, 'Alt+').replace(/\s/g, '').split('+').filter(Boolean).sort().join('+').toLowerCase();
 }
 

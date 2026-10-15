@@ -32,10 +32,10 @@ export function parseDocument(contents: string): Credentials {
   const fields: Credentials['fields'] = [];
   const notes: string[] = [];
   for (const line of lines) {
-    const match = /^([\p{L}\p{N}_-]+):\s?(.*)$/u.exec(line);
+    const match = /^([\p{L}\p{Nd}_-]+): ?(.*)$/us.exec(line);
     if (match) {
       const key = match[1]!, isNote = ['notes', 'note'].includes(key.toLowerCase());
-      const value = isNote ? line.slice(key.length + 1).replace(/^ /, '') : match[2]!;
+      const value = match[2]!;
       fields.push({ key, value });
       if (isNote) notes.push(value);
     }
@@ -49,26 +49,57 @@ export function parseDocument(contents: string): Credentials {
   };
 }
 
-export function updateDocument(original: string, values: { password: string; username: string; url: string; notes: string }): string {
+const usernameKeys = ['login', 'username', 'user', 'email'];
+const websiteKeys = ['url', 'uri', 'website', 'site', 'link'];
+export const isPrimaryFieldKey = (key: string): boolean => [...usernameKeys, ...websiteKeys].includes(key.toLowerCase());
+
+// The first username and website are displayed as dedicated controls. Keep
+// secondary aliases editable alongside OTP and other user-defined fields.
+export function additionalFields(document: Credentials): Credentials['fields'] {
+  let username = false, website = false;
+  return document.fields.filter(({ key }) => {
+    const name = key.toLowerCase();
+    if (['notes', 'note'].includes(name)) return false;
+    if (!username && usernameKeys.includes(name)) { username = true; return false; }
+    if (!website && websiteKeys.includes(name)) { website = true; return false; }
+    return true;
+  });
+}
+
+export type EditableField = Credentials['fields'][number] & { sourceIndex?: number };
+
+export function updateDocument(original: string, values: { password: string; username: string; url: string; notes: string; customFields?: EditableField[] }): string {
   const document = parseDocument(original);
-  if (values.password === document.password && values.username === document.username && values.url === (document.urls[0] ?? '') && values.notes === document.notes) return original;
+  const customChanged = values.customFields !== undefined && JSON.stringify(values.customFields.map(({ key, value }) => ({ key, value }))) !== JSON.stringify(additionalFields(document));
+  if (values.password === document.password && values.username === document.username && values.url === (document.urls[0] ?? '') && values.notes === document.notes && !customChanged) return original;
 
   // Keep each line's original terminator and every untouched field verbatim.
   // The structured editor changes the first displayed alias, never all aliases.
   type Line = { text: string; ending: string };
-  let lines: Line[] = Array.from(original.matchAll(/([^\r\n]*)(\r\n|\n|\r|$)/g)).filter(match => match[0] !== '').map(match => ({ text: match[1]!, ending: match[2]! }));
+  let lines: Line[] = Array.from(original.matchAll(/([^\n]*?)(\r\n|\n|$)/g)).filter(match => match[0] !== '').map(match => ({ text: match[1]!, ending: match[2]! }));
   if (!lines.length) lines = [{ text: '', ending: '' }];
   const newline = lines.find(line => line.ending)?.ending ?? '\n';
-  const field = (line: Line) => /^([\p{L}\p{N}_-]+):\s?(.*)$/u.exec(line.text);
+  const field = (line: Line) => /^([\p{L}\p{Nd}_-]+): ?(.*)$/us.exec(line.text);
   const noteLine = (line: Line) => { const match = field(line); return !match || ['notes', 'note'].includes(match[1]!.toLowerCase()); };
-  const changeField = (aliases: string[], key: string, value: string) => {
+  let primaryUsername = false, primaryWebsite = false;
+  const customLines = lines.slice(1).filter(line => {
+    const match = field(line);
+    if (!match || ['notes', 'note'].includes(match[1]!.toLowerCase())) return false;
+    const key = match[1]!.toLowerCase();
+    if (!primaryUsername && usernameKeys.includes(key)) { primaryUsername = true; return false; }
+    if (!primaryWebsite && websiteKeys.includes(key)) { primaryWebsite = true; return false; }
+    return true;
+  });
+  const changeField = (aliases: string[], key: string, value: string, force = false) => {
     const line = lines.slice(1).find(candidate => { const match = field(candidate); return !!match && aliases.includes(match[1]!.toLowerCase()); });
-    if (line) { const match = field(line)!; line.text = line.text.slice(0, line.text.length - match[2]!.length) + value; }
-    else if (value) { if (!lines[0]!.ending) lines[0]!.ending = newline; lines.splice(1, 0, { text: `${key}: ${value}`, ending: newline }); }
+    if (line) line.text = `${field(line)![1]}: ${value}`;
+    else if (value || force) { if (!lines[0]!.ending) lines[0]!.ending = newline; lines.splice(1, 0, { text: `${key}: ${value}`, ending: newline }); }
   };
   if (values.password !== document.password) lines[0]!.text = values.password;
-  if (values.username !== document.username) changeField(['login', 'username', 'user', 'email'], 'username', values.username);
-  if (values.url !== (document.urls[0] ?? '')) changeField(['url', 'uri', 'website', 'site', 'link'], 'url', values.url);
+  const needsUsername = customChanged && !primaryUsername && values.customFields!.some(({ key }) => usernameKeys.includes(key.toLowerCase()));
+  const needsWebsite = customChanged && !primaryWebsite && values.customFields!.some(({ key }) => websiteKeys.includes(key.toLowerCase()));
+  if (values.username !== document.username || needsUsername) changeField(usernameKeys, 'username', values.username, needsUsername);
+  if (values.url !== (document.urls[0] ?? '') || needsWebsite) changeField(websiteKeys, 'url', values.url, needsWebsite);
   if (values.notes !== document.notes) {
     const firstNote = lines.findIndex((line, index) => index > 0 && noteLine(line) && line.text.trim() !== '');
     const position = firstNote < 0 ? lines.length : firstNote;
@@ -81,6 +112,44 @@ export function updateDocument(original: string, values: { password: string; use
       if (insertAt > 0 && !lines[insertAt - 1]!.ending) lines[insertAt - 1]!.ending = newline;
       lines.splice(insertAt, 0, ...notes);
     }
+  }
+  if (customChanged) {
+    // A row keeps its source line when preceding rows are removed. New editor
+    // rows use -1; callers without identities match unchanged fields first.
+    const replacements = new Map<Line, EditableField>();
+    const additions: EditableField[] = [];
+    const unmatched = values.customFields!.filter(next => {
+      if (next.sourceIndex === undefined) return true;
+      const line = Number.isInteger(next.sourceIndex) && next.sourceIndex >= 0 ? customLines[next.sourceIndex] : undefined;
+      if (line && !replacements.has(line)) replacements.set(line, next);
+      else additions.push(next);
+      return false;
+    });
+    const matchFields = (matches: (line: Line, next: EditableField) => boolean) => {
+      for (let index = 0; index < unmatched.length;) {
+        const next = unmatched[index]!;
+        const line = customLines.find(line => !replacements.has(line) && matches(line, next));
+        if (line) { replacements.set(line, next); unmatched.splice(index, 1); }
+        else index++;
+      }
+    };
+    matchFields((line, next) => { const match = field(line)!; return match[1] === next.key && match[2] === next.value; });
+    matchFields((line, next) => field(line)![1] === next.key);
+    matchFields(() => true);
+    additions.push(...unmatched);
+    customLines.forEach(line => {
+      const next = replacements.get(line);
+      if (!next) { lines = lines.filter(candidate => candidate !== line); return; }
+      const match = field(line)!;
+      if (match[1] === next.key && match[2] === next.value) return;
+      line.text = `${next.key}: ${next.value}`;
+    });
+    additions.forEach(({ key, value }) => {
+      const last = lines.at(-1)!;
+      const ending = last.ending;
+      if (!last.ending) last.ending = newline;
+      lines.push({ text: `${key}: ${value}`, ending });
+    });
   }
   return lines.map(line => line.text + line.ending).join('');
 }

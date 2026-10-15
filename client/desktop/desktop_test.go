@@ -11,8 +11,10 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine-neo/client/app"
+	"github.com/knothhe/passpine-neo/client/nativehost"
 	"github.com/knothhe/passpine-neo/client/vault"
-	"github.com/oneo-me/onevra/source/theme"
+	"github.com/oneo-me/onevra/source/components"
+	"github.com/oneo-me/onevra/source/icons/lucide"
 )
 
 type backendFunc func(app.Request) app.Response
@@ -31,12 +33,14 @@ func awaitMain(t *testing.T, callbacks <-chan func()) {
 
 func fixture() *application {
 	a := newApplication(nil)
+	a.state.Settings.Language = "zh-CN"
 	a.state = app.Data{Configured: true, VaultName: "个人密码库", Preview: true, Settings: app.DefaultSettings(), Entries: []app.Entry{
 		{Path: "开发/GitHub", Name: "GitHub", Folder: "开发"},
 		{Path: "工作/Figma", Name: "Figma", Folder: "工作"},
 		{Path: "生活/Apple", Name: "Apple", Folder: "生活"},
 		{Path: "开发/Cloudflare", Name: "Cloudflare", Folder: "开发"},
 	}}
+	a.state.Settings.Language = "zh-CN"
 	a.selected = "开发/GitHub"
 	a.detail = app.Data{Entry: "开发/GitHub", Password: "fake-Secret-42!", Username: "pine@example.test", URL: "https://github.com", Notes: "工作与开源项目使用的账户。", Contents: "fake-Secret-42!\nusername: pine@example.test\nurl: https://github.com\nnotes: 工作与开源项目使用的账户。\n", Revision: "fixture-revision"}
 	return a
@@ -44,7 +48,7 @@ func fixture() *application {
 
 func testView(a *application) func(*ui.Context) {
 	return func(c *ui.Context) {
-		c.SetTheme(theme.Onevra(c))
+		c.SetTheme(clientTheme(c))
 		ui.Row(c).Fill().Children(func() {
 			ui.Column(c).Width(310).FillHeight().Background(c.Theme().Surface).Children(func() {
 				a.sidebarView(c)
@@ -52,7 +56,12 @@ func testView(a *application) func(*ui.Context) {
 			})
 			ui.Column(c).Grow(1).FillHeight().Children(func() { a.contentView(c) })
 		})
+		ui.Row(c).Absolute().Top(8).Left(8).AlignItems(ui.Center).Children(func() {
+			a.historyControls(c)
+			iconButton(c, lucide.PanelLeft(), a.t("切换侧栏"), components.ButtonGhost)
+		})
 		ui.Row(c).Absolute().Top(0).Left(310).Right(0).Height(48).Padding(8, 16).Children(func() { a.header(c) })
+		components.WithLocalization(c, components.Localization{CloseToast: "关闭提示"}, func() { components.Toasts(c) })
 	}
 }
 
@@ -319,7 +328,7 @@ func TestActivitySurvivesMetadataRefresh(t *testing.T) {
 }
 
 func TestScreensRender(t *testing.T) {
-	screens := []string{"entries", "settings", "recovery", "setup", "locked", "editor"}
+	screens := []string{"entries", "settings", "recovery", "setup", "locked", "editor", "editor-custom", "generator"}
 	directory := os.Getenv("PASSPINE_SNAPSHOT_DIR")
 	if directory != "" {
 		screens = append(screens, "settings-security", "settings-vault", "settings-browser", "activity", "recovery-items", "drafts", "setup-import", "setup-git", "locked-device", "editor-raw", "empty", "git-locked", "git-syncing", "confirm-delete", "confirm-discard", "confirm-purge", "backup")
@@ -343,6 +352,14 @@ func TestScreensRender(t *testing.T) {
 					a.page = "settings"
 					a.settingsState.Category = strings.TrimPrefix(screen, "settings-")
 					a.state.DeviceUnlockAvailable, a.state.DeviceUnlockEnrolled = true, true
+					if screen == "settings-browser" {
+						a.state.BrowserHelperAvailable = true
+						a.state.BrowserRegistrations = []nativehost.BrowserRegistration{
+							{ID: "chrome", Name: "Chrome", Registered: true, Status: "registered", ExtensionID: "example-chromium-extension"},
+							{ID: "firefox", Name: "Firefox", Status: "missing", ExtensionID: "example@passpine.test"},
+							{ID: "brave", Name: "Brave", Status: "invalid", ExtensionID: "example-chromium-extension"},
+						}
+					}
 				case "setup", "setup-import", "setup-git":
 					a.state.Configured = false
 					if screen == "setup-import" {
@@ -365,10 +382,21 @@ func TestScreensRender(t *testing.T) {
 					a.purgeOpen = screen == "confirm-purge"
 					a.backupOpen = screen == "backup"
 					a.backupPath = "/tmp/example-recovery.asc"
-				case "editor", "editor-raw":
+				case "editor", "editor-raw", "editor-custom", "generator":
 					a.page = "entries"
 					a.editEntry()
 					a.editor.showRaw = screen == "editor-raw"
+					if screen == "editor-custom" {
+						a.editor.fields.add("account-id", "pine-account-42", -1)
+						a.editor.fields.add("api-token", "fake-token-value", -1)
+						a.editor.compose()
+					}
+					if screen == "generator" {
+						a.generator.open = true
+						a.generator.target = a.editor.ensureIdentity()
+						a.generator.password = "fake-Generated-Secret-42!"
+						a.generator.generated = a.generator.options()
+					}
 				case "empty":
 					a.page = "entries"
 					a.state.Entries = nil
@@ -387,6 +415,9 @@ func TestScreensRender(t *testing.T) {
 					a.state.GitBranch, a.state.GitSummary = "main", "已同步"
 					a.state.Locked = screen == "git-locked"
 					a.state.GitSyncing = screen == "git-syncing"
+				}
+				if a.backupOpen || a.purgeOpen {
+					a.page = "settings"
 				}
 				v := ui.NewTester(testView(a), size.width, size.height)
 				v.SetDark(size.dark)
@@ -441,6 +472,7 @@ func TestDefaultVaultDiscovery(t *testing.T) {
 				}
 			}
 			a := newApplication(nil)
+			a.state.Settings.Language = "zh-CN"
 			a.state.Configured = scenario == "configured"
 			a.state.Preview = scenario == "preview"
 			if scenario == "manual" {
@@ -469,6 +501,7 @@ func TestDefaultVaultDiscovery(t *testing.T) {
 
 func TestDefaultVaultIsOnlyPrefilledForImport(t *testing.T) {
 	a := newApplication(nil)
+	a.state.Settings.Language = "zh-CN"
 	a.defaultVaultDirectory = filepath.Join(t.TempDir(), ".password-store")
 	a.setupDirectory = a.defaultVaultDirectory
 	a.setupMode = 1
@@ -499,6 +532,7 @@ func TestDefaultVaultIsOnlyPrefilledForImport(t *testing.T) {
 
 func TestOpenVaultUsesSystemGPGWithoutKeyFile(t *testing.T) {
 	a := newApplication(nil)
+	a.state.Settings.Language = "zh-CN"
 	a.setupMode = 1
 	a.setupDirectory = filepath.Join(t.TempDir(), ".password-store")
 	a.passphrase = "fixture-system-gpg-passphrase"
@@ -525,6 +559,7 @@ func TestOpenVaultUsesSystemGPGWithoutKeyFile(t *testing.T) {
 
 func BenchmarkSearch10000(b *testing.B) {
 	a := newApplication(nil)
+	a.state.Settings.Language = "zh-CN"
 	for i := 0; i < 10000; i++ {
 		a.state.Entries = append(a.state.Entries, app.Entry{Path: fmt.Sprintf("work/account-%05d", i), Name: fmt.Sprintf("account-%05d", i), Folder: "work"})
 	}
@@ -543,6 +578,7 @@ func BenchmarkSearch10000(b *testing.B) {
 
 func BenchmarkIdleList10000(b *testing.B) {
 	a := newApplication(nil)
+	a.state.Settings.Language = "zh-CN"
 	for i := 0; i < 10000; i++ {
 		a.state.Entries = append(a.state.Entries, app.Entry{Path: fmt.Sprintf("work/account-%05d", i)})
 	}

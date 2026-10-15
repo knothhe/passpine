@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { Badge, Button, Flex, Text, Theme } from '@radix-ui/themes';
+import { Badge, Button, Flex, Text } from '@radix-ui/themes';
 import { App } from '../src/components/App';
 import { Options } from '../src/components/Options';
 import { Provider } from '../src/components/Provider';
@@ -25,4 +25,4 @@ function Preview() {
 const appearance = previewParameters.get('theme');
 const root: Root = import.meta.hot?.data.reactRoot ?? createRoot(document.getElementById('root')!);
 if (import.meta.hot) import.meta.hot.data.reactRoot = root;
-root.render(<Provider>{appearance === 'light' || appearance === 'dark' ? <Theme appearance={appearance} accentColor="orange" grayColor="sand" radius="medium" scaling="100%" className="onevra-theme"><Preview/></Theme> : <Preview/>}</Provider>);
+root.render(<Provider appearance={appearance === 'light' || appearance === 'dark' ? appearance : undefined}><Preview/></Provider>);
