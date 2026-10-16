@@ -9,6 +9,47 @@ import (
 	"github.com/knothhe/passpine/client/app"
 )
 
+func TestWindowAndStartupSettingsAreReachableAndPreviewCannotChangeLoginItem(t *testing.T) {
+	a := fixture()
+	a.page = "settings"
+	view := ui.NewTester(testView(a), 860, 620)
+	view.SetPreferences(ui.Preferences{ReduceMotion: true})
+	if err := view.Click("窗口与启动"); err != nil {
+		t.Fatal(err)
+	}
+	for _, label := range []string{"Dock 图标", "点击托盘图标", "轻量模式", "开机自启"} {
+		if _, ok := view.Find(label); !ok {
+			t.Fatalf("new setting is unreachable: %s", label)
+		}
+	}
+	if err := view.Click("展示"); err != nil {
+		t.Fatal(err)
+	}
+	if err := view.Click("跟随窗口"); err != nil {
+		t.Fatal(err)
+	}
+	if a.settings.DockIcon != app.DockIconFollowWindow {
+		t.Fatal("Dock policy did not change")
+	}
+	if err := view.Click("打开快捷面板"); err != nil {
+		t.Fatal(err)
+	}
+	if err := view.Click("打开主窗口"); err != nil {
+		t.Fatal(err)
+	}
+	if a.settings.TrayClickAction != app.TrayClickMainWindow {
+		t.Fatal("tray click destination did not change")
+	}
+	clickBooleanSettingSegment(t, view, "启用轻量模式", true)
+	if !a.settings.LightweightMode {
+		t.Fatal("lightweight toggle did not change")
+	}
+	clickBooleanSettingSegment(t, view, "启用开机自启", true)
+	if a.settings.LaunchAtLogin {
+		t.Fatal("preview was allowed to register a real login item")
+	}
+}
+
 func TestDurationChoicesPreserveSavedValuesWithinThreeOptions(t *testing.T) {
 	for _, test := range []struct {
 		name    string

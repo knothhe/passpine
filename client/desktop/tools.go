@@ -220,6 +220,22 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 		}},
 		{ID: "shortcut", Title: a.t("全局搜索快捷键"), Description: a.t("点击录制后按下组合键，Esc 取消。保存后立即生效。"), Build: a.shortcutControls},
 	}
+	systemItems := []components.SettingsItem{
+		{ID: "dock", Title: a.t("Dock 图标"), Description: a.t("跟随窗口时，仅在主窗口打开时展示。"), Build: func(c *ui.Context) {
+			choiceSettingSegments(c, &a.settings.DockIcon, a.t("Dock 图标"), []string{app.DockIconShow, app.DockIconHide, app.DockIconFollowWindow}, []string{a.t("展示"), a.t("隐藏"), a.t("跟随窗口")})
+		}},
+		{ID: "tray-click", Title: a.t("点击托盘图标"), Build: func(c *ui.Context) {
+			choiceSettingSegments(c, &a.settings.TrayClickAction, a.t("点击托盘图标"), []string{app.TrayClickQuickPanel, app.TrayClickMainWindow}, []string{a.t("打开快捷面板"), a.t("打开主窗口")})
+		}},
+		{ID: "lightweight", Title: a.t("轻量模式"), Description: a.t("窗口和面板全部关闭一分钟后释放界面内存，再次打开时重新加载。"), Build: func(c *ui.Context) {
+			a.booleanSettingSegments(c, &a.settings.LightweightMode, a.t("启用轻量模式"))
+		}},
+		{ID: "launch-at-login", Title: a.t("开机自启"), Description: a.t("登录系统后在后台启动 Passpine。"), Build: func(c *ui.Context) {
+			ui.Column(c).AlignSelf(ui.Center).Disabled(a.state.Preview).Children(func() {
+				a.booleanSettingSegments(c, &a.settings.LaunchAtLogin, a.t("启用开机自启"))
+			})
+		}},
+	}
 	security := []components.SettingsItem{
 		{ID: "device", Title: a.t("使用 Touch ID 或 Mac 登录密码解锁"), Description: a.deviceUnlockDescription(), Build: func(c *ui.Context) {
 			ui.Column(c).AlignSelf(ui.Center).Disabled(!a.state.DeviceUnlockAvailable && !a.state.DeviceUnlockEnrolled).Children(func() {
@@ -304,6 +320,7 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 	}
 	return []components.SettingsCategory{
 		{ID: "general", Title: a.t("通用"), Icon: lucide.Settings(), Description: a.t("调整外观、快捷键与本机操作记录。"), Groups: []components.SettingsGroup{{ID: "appearance", Items: general}, {ID: "activity", Title: a.t("操作记录"), Items: activityItems}}},
+		{ID: "system", Title: a.t("窗口与启动"), Icon: lucide.AppWindow(), Description: a.t("管理 Dock、托盘、内存释放与开机自启。"), Groups: []components.SettingsGroup{{ID: "system", Items: systemItems}}},
 		{ID: "security", Title: a.t("安全"), Icon: lucide.LockKeyhole(), Description: a.t("管理解锁方式和密码的保留时间。"), Groups: []components.SettingsGroup{{ID: "session", Items: security}}},
 		{ID: "vault", Title: a.t("密码库"), Icon: lucide.FolderKey(), Description: a.t("管理恢复备份与 Git 同步。"), Groups: []components.SettingsGroup{{ID: "backup", Items: vaultItems}, {ID: "sync", Title: a.t("Git 同步"), Items: syncItems}}},
 		{ID: "browser", Title: a.t("浏览器"), Icon: lucide.Globe(), Description: a.t("让浏览器扩展安全地访问当前密码库。"), Groups: []components.SettingsGroup{{ID: "integration", Items: browserItems}}},

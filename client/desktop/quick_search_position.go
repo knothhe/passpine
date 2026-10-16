@@ -70,7 +70,7 @@ func storeQuickSearchPosition(path string, position quickSearchPosition) error {
 }
 
 func (a *application) restoreQuickSearchPosition(options *mygo.WindowOptions, areas []mygo.Rectangle, fallback mygo.Rectangle) {
-	if a.quick.positionPath == "" {
+	if a.quick.mode == quickSearchTray || a.quick.positionPath == "" {
 		return
 	}
 	position, found, err := loadQuickSearchPosition(a.quick.positionPath)
@@ -83,7 +83,7 @@ func (a *application) restoreQuickSearchPosition(options *mygo.WindowOptions, ar
 }
 
 func (a *application) queueQuickSearchPositionSave() {
-	if a.quick.window == nil || a.quick.positionPath == "" {
+	if a.quick.mode == quickSearchTray || a.quick.window == nil || a.quick.positionPath == "" {
 		return
 	}
 	if a.quick.positionTimer != nil {
@@ -99,7 +99,7 @@ func (a *application) saveQuickSearchPosition() {
 		a.quick.positionTimer.Stop()
 		a.quick.positionTimer = nil
 	}
-	if a.quick.window == nil || a.quick.positionPath == "" {
+	if a.quick.mode == quickSearchTray || a.quick.window == nil || a.quick.positionPath == "" {
 		return
 	}
 	bounds := a.quick.window.Bounds()

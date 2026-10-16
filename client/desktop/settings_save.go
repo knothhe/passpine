@@ -28,6 +28,18 @@ func (a *application) saveSettingsAutomatically() {
 			return
 		}
 	}
+	finishLogin, err := a.prepareLaunchAtLogin(settings.LaunchAtLogin)
+	if err != nil {
+		finishShortcut(false)
+		a.errorText = a.t("无法设置开机自启：%s", err)
+		a.settings.LaunchAtLogin = a.settingsSaved.LaunchAtLogin
+		a.settingsObserved = a.settings
+		a.settingsDirty = a.settings != a.settingsSaved
+		if a.settingsDirty {
+			a.saveSettingsAutomatically()
+		}
+		return
+	}
 	a.settingsSaving = true
 	a.settingsDirty = false
 	go func() {
@@ -38,6 +50,7 @@ func (a *application) saveSettingsAutomatically() {
 			}
 			a.settingsSaving = false
 			finishShortcut(result.Status == "ok")
+			finishLogin(result.Status == "ok")
 			if result.Status != "ok" {
 				a.errorText = result.Message
 				if a.errorText == "" {
@@ -50,6 +63,10 @@ func (a *application) saveSettingsAutomatically() {
 					if a.shortcut.registered != "" {
 						a.shortcut.errorText = a.t("快捷键保存失败，原快捷键保持有效。请重试。")
 					}
+				}
+				if a.settings.LaunchAtLogin == settings.LaunchAtLogin {
+					a.settings.LaunchAtLogin = a.settingsSaved.LaunchAtLogin
+					a.settingsObserved = a.settings
 				}
 			} else {
 				a.settingsSaved = result.Data.Settings
@@ -64,6 +81,7 @@ func (a *application) saveSettingsAutomatically() {
 				}
 				a.applyTheme()
 				a.applyLanguage()
+				a.applyNativeSettings()
 			}
 			a.saveSettingsAutomatically()
 			a.invalidate()

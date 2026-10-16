@@ -197,5 +197,8 @@ func (a *application) handleMainWindowClose(event *mygo.CloseEvent) {
 		if a.window != nil {
 			a.window.Hide()
 		}
+		// Hide emits OnHide only when the backend still reports visible. Keep
+		// the lifecycle accurate even if the OS has already hidden the window.
+		a.mainWindowVisibilityChanged(false)
 	}
 }

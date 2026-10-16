@@ -53,6 +53,8 @@ type quickSearchWindow interface {
 
 type quickSearchState struct {
 	window                   quickSearchWindow
+	mode                     string
+	globalQuery, trayQuery   string
 	visible, focusPending    bool
 	clearFeedback            bool
 	query, passphrase        string
@@ -123,6 +125,11 @@ func (a *application) placeQuickSearchWindow() {
 	if _, native := a.quick.window.(*mygo.Window); !native {
 		return
 	}
+	if a.quick.mode == quickSearchTray {
+		anchor, area := a.trayQuickPanelAnchor()
+		a.quick.window.SetBounds(trayQuickPanelBounds(anchor, area))
+		return
+	}
 	areas := []mygo.Rectangle{}
 	for _, display := range mygo.Screen.Displays() {
 		areas = append(areas, display.WorkArea)
@@ -147,8 +154,13 @@ func quickSearchOptions(area mygo.Rectangle) mygo.WindowOptions {
 func (a *application) newQuickSearchWindow() {
 	area := mygo.Screen.DisplayNearestPoint(mygo.Screen.CursorScreenPoint()).WorkArea
 	options := quickSearchOptions(area)
+	if a.quick.mode == quickSearchTray {
+		anchor, workArea := a.trayQuickPanelAnchor()
+		bounds := trayQuickPanelBounds(anchor, workArea)
+		options.X, options.Y, options.Width, options.Height = bounds.X, bounds.Y, bounds.Width, bounds.Height
+	}
 	options.BackgroundColor = nativeThemeBackground(a.themeSettings().ThemeStyle)
-	options.Title = a.t("Passpine 快速搜索")
+	options.Title = a.quickSearchTitle()
 	if directory, ok := a.service.(interface{ DataDirectory() string }); ok {
 		a.quick.positionPath = filepath.Join(directory.DataDirectory(), quickSearchPositionFile)
 	}
@@ -162,7 +174,7 @@ func (a *application) newQuickSearchWindow() {
 	a.quick.window = window
 	a.updateNativeIcons()
 	// NewWindow treats (0, 0) as centering; an explicit saved origin must win.
-	if a.quick.positionSaved {
+	if a.quick.mode == quickSearchTray || a.quick.positionSaved {
 		window.SetBounds(mygo.Rectangle{X: options.X, Y: options.Y, Width: options.Width, Height: options.Height})
 	}
 	window.OnMove(a.queueQuickSearchPositionSave)
@@ -182,15 +194,45 @@ func (a *application) newQuickSearchWindow() {
 }
 
 func (a *application) quickSearch() {
-	if a.closing || a.initializing {
+	a.openQuickSearch(quickSearchGlobal)
+}
+
+func (a *application) trayQuickPanel() {
+	if a.quick.visible && a.quick.mode == quickSearchTray {
+		a.hideQuickSearch()
 		return
 	}
+	a.openQuickSearch(quickSearchTray)
+}
+
+func (a *application) openQuickSearch(mode string) {
+	if a.closing {
+		return
+	}
+	target := "quick"
+	if mode == quickSearchTray {
+		target = "tray"
+	}
+	if a.initializing {
+		a.lifecycle.resumeTarget = target
+		return
+	}
+	if a.resumeLightweightUI(target) {
+		return
+	}
+	changed := a.setQuickSearchMode(mode)
 	if a.quick.window == nil {
 		a.newQuickSearchWindow()
+	} else if changed && mode == quickSearchGlobal {
+		a.restoreGlobalQuickSearchBounds()
 	}
 	a.quick.visible, a.quick.focusPending = true, true
+	a.updateLightweightTimer(time.Now())
 	a.quick.errorText, a.quick.clearFeedback = "", true
 	a.placeQuickSearchWindow()
+	if window, ok := a.quick.window.(*mygo.Window); ok {
+		window.SetTitle(a.quickSearchTitle())
+	}
 	a.quick.window.Show()
 	a.quick.window.Focus()
 	a.lastInput = time.Now()
@@ -199,7 +241,7 @@ func (a *application) quickSearch() {
 }
 
 func (a *application) toggleQuickSearch() {
-	if a.quick.visible {
+	if a.quick.visible && a.quick.mode == quickSearchGlobal {
 		a.hideQuickSearch()
 		return
 	}
@@ -216,6 +258,7 @@ func (a *application) hideQuickSearch() {
 	if a.quick.window != nil {
 		a.quick.window.Hide()
 	}
+	a.updateLightweightTimer(time.Now())
 }
 
 func (a *application) closeQuickSearch() {
@@ -297,12 +340,19 @@ func (a *application) quickSearchView(c *ui.Context) {
 	a.prepareQuickSearchList()
 	c.OnShortcut(0, ui.KeyEscape, a.hideQuickSearch)
 	c.OnShortcut(ui.Cmd, ui.KeyF, func() { a.quick.searchRef.Focus() })
-	c.OnShortcut(ui.Cmd, ui.KeyO, a.openQuickSearchInManager)
+	tray := a.quick.mode == quickSearchTray
+	if !tray {
+		c.OnShortcut(ui.Cmd, ui.KeyO, a.openQuickSearchInManager)
+		c.OnShortcut(ui.Cmd|ui.Shift, ui.KeyL, a.lock)
+	}
 	c.OnShortcut(ui.Ctrl, ui.KeyN, func() { a.moveQuickSearchSelection(1) })
 	c.OnShortcut(ui.Ctrl, ui.KeyP, func() { a.moveQuickSearchSelection(-1) })
-	c.OnShortcut(ui.Cmd|ui.Shift, ui.KeyL, a.lock)
 	ui.Column(c).Fill().Background(c.Theme().Background).Border(1, c.Theme().Border).Radius(14).Clip().Children(func() {
-		ui.Row(c).FillWidth().Height(38).Padding(6, 16).AlignItems(ui.Center).Gap(7).DragWindow().Children(func() {
+		header := ui.Row(c).FillWidth().Height(38).Padding(6, 16).AlignItems(ui.Center).Gap(7)
+		if !tray {
+			header = header.DragWindow()
+		}
+		header.Children(func() {
 			components.Icon(c, lucide.KeyRound()).Size(13, 13).TextColor(c.Theme().TextMuted)
 			components.Text(c, "Passpine").FontSize(11).TextColor(c.Theme().TextMuted)
 			ui.Spacer(c)
@@ -326,15 +376,17 @@ func (a *application) quickSearchView(c *ui.Context) {
 						quickSearchKeycap(c, "↑", false)
 						quickSearchKeycap(c, "↓", false)
 					})
-					ui.Row(c).Gap(3).Tooltip("Ctrl+N / Ctrl+P").Children(func() {
-						quickSearchKeycap(c, quickSearchControlShortcut("N"), false)
-						quickSearchKeycap(c, quickSearchControlShortcut("P"), false)
-					})
+					if !tray {
+						ui.Row(c).Gap(3).Tooltip("Ctrl+N / Ctrl+P").Children(func() {
+							quickSearchKeycap(c, quickSearchControlShortcut("N"), false)
+							quickSearchKeycap(c, quickSearchControlShortcut("P"), false)
+						})
+					}
 					components.Text(c, a.t("选择")).FontSize(11).SingleLine().TextColor(c.Theme().TextMuted)
 				})
 			}
 			ui.Spacer(c)
-			if components.Button(c, "", components.ButtonGhost).Label(a.t("打开主窗口")).Height(30).Padding(5, 9).Gap(9).Shrink(0).Children(func() {
+			if !tray && components.Button(c, "", components.ButtonGhost).Label(a.t("打开主窗口")).Height(30).Padding(5, 9).Gap(9).Shrink(0).Children(func() {
 				components.Text(c, a.t("打开主窗口")).FontSize(12).SingleLine()
 				quickSearchKeycap(c, quickSearchOpenShortcut(), false)
 			}).Clicked() {

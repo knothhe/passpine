@@ -223,6 +223,33 @@ func (a *application) durationSegments(c *ui.Context, value *int, label string, 
 	}
 }
 
+func (a *application) booleanSettingSegments(c *ui.Context, value *bool, label string) ui.Element {
+	selected := 1
+	if *value {
+		selected = 0
+	}
+	control := ui.Segmented(c, &selected, a.t("开启"), a.t("关闭")).Label(label).AlignSelf(ui.Center).Shrink(0)
+	if control.Changed() {
+		*value = selected == 0
+	}
+	return control
+}
+
+func choiceSettingSegments(c *ui.Context, value *string, label string, values, labels []string) ui.Element {
+	selected := 0
+	for i, option := range values {
+		if option == *value {
+			selected = i
+			break
+		}
+	}
+	control := ui.Segmented(c, &selected, labels...).Label(label).AlignSelf(ui.Center).Shrink(0)
+	if control.Changed() {
+		*value = values[selected]
+	}
+	return control
+}
+
 func settingSwitch(c *ui.Context, value *bool, label string) ui.Element {
 	return components.Switch(c, value, label, components.SwitchOptions{HideLabel: true}).AlignSelf(ui.Center).Shrink(0)
 }

@@ -8,6 +8,29 @@ import (
 )
 
 func (a *application) startNativeIntegrations() {
+	a.lifecycle.nativeReady = true
+	if runtime.GOOS == "darwin" {
+		a.lifecycle.setDockVisible = func(visible bool) {
+			if visible {
+				mygo.App.Dock.Show()
+			} else {
+				mygo.App.Dock.Hide()
+			}
+		}
+	}
+	if !a.state.Preview {
+		a.lifecycle.setOpenAtLogin = mygo.App.SetOpenAtLogin
+		// System Settings and Task Manager can change this outside the app.
+		// Read the real registration; startup must not silently re-enable it.
+		if enabled := mygo.App.OpenAtLogin(); enabled != a.settings.LaunchAtLogin {
+			a.settings.LaunchAtLogin = enabled
+			a.settingsSaved.LaunchAtLogin = enabled
+			a.settingsObserved = a.settings
+			a.state.Settings.LaunchAtLogin = enabled
+			a.settingsDirty = true
+			a.saveSettingsAutomatically()
+		}
+	}
 	if a.tray != nil {
 		return
 	}
@@ -19,19 +42,20 @@ func (a *application) startNativeIntegrations() {
 	tray, err := mygo.NewTray(mygo.TrayOptions{Icon: icon, IconIsTemplate: template, ToolTip: "Passpine"})
 	if err != nil {
 		a.warn(a.t("菜单栏图标不可用：%s", err))
+		a.registerGlobalShortcut()
 		return
 	}
 	a.tray = tray
 	a.installTrayMenu()
 	if runtime.GOOS != "linux" {
-		tray.OnClick(a.quickSearch)
-		tray.OnRightClick(func() { tray.PopUpMenu() })
+		tray.OnClick(a.trayClicked)
+		tray.OnRightClick(a.showTrayMenu)
 	}
 	a.registerGlobalShortcut()
 }
 
 func (a *application) updateNativeIcons() {
-	if a.window == nil || a.closing {
+	if a.closing || !a.lifecycle.nativeReady {
 		return
 	}
 	icon := assets.IconForStyle(a.themeSettings().ThemeStyle)
@@ -39,7 +63,9 @@ func (a *application) updateNativeIcons() {
 		_ = mygo.App.Dock.SetIcon(icon)
 		return // The menu bar uses the OS-colored template in both styles.
 	}
-	_ = a.window.SetIcon(icon)
+	if a.window != nil {
+		_ = a.window.SetIcon(icon)
+	}
 	if window, ok := a.quick.window.(*mygo.Window); ok {
 		_ = window.SetIcon(icon)
 	}
@@ -57,11 +83,27 @@ func (a *application) registerGlobalShortcut() {
 
 func (a *application) installTrayMenu() {
 	menu := mygo.NewMenu([]*mygo.MenuItem{
-		{Label: a.t("搜索密码"), Click: func(*mygo.MenuItem, *mygo.Window) { a.quickSearch() }},
+		{Label: a.t("搜索密码"), Click: func(*mygo.MenuItem, *mygo.Window) { a.trayQuickPanel() }},
 		{Label: a.t("设置…"), Click: func(*mygo.MenuItem, *mygo.Window) { a.show(); a.navigate("settings", ""); a.invalidate() }},
 		{Label: a.t("锁定密码库"), Click: func(*mygo.MenuItem, *mygo.Window) { a.lock() }},
 		mygo.Separator(),
 		{Label: a.t("退出 Passpine"), Click: func(*mygo.MenuItem, *mygo.Window) { mygo.App.Quit() }},
 	})
-	a.tray.SetMenu(menu)
+	a.lifecycle.trayMenu = menu
+	if runtime.GOOS == "linux" {
+		a.tray.SetMenu(menu)
+	} else {
+		// Attaching an NSStatusItem menu swallows its left-click action.
+		// Keep the menu for explicit right-click tracking instead.
+		a.tray.SetMenu(nil)
+	}
+}
+
+func (a *application) showTrayMenu() {
+	if a.tray == nil || a.lifecycle.trayMenu == nil || a.closing {
+		return
+	}
+	a.tray.SetMenu(a.lifecycle.trayMenu)
+	defer a.tray.SetMenu(nil)
+	a.tray.PopUpMenu()
 }

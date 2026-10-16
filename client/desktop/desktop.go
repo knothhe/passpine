@@ -95,6 +95,7 @@ type application struct {
 	cachedResults                                                        []app.Entry
 	folders                                                              []string
 	tray                                                                 *mygo.Tray
+	lifecycle                                                            lifecycleState
 	setupRemote, gitRemote                                               string
 	gitRemoteObserved                                                    string
 	gitRemoteVaultID                                                     string
@@ -120,12 +121,17 @@ func Run(service *app.Service) error {
 	mygo.App.OnActivate(func(bool) { a.show() })
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
 		a.saveQuickSearchPosition()
+		a.stopLightweightTimer()
 		a.closing = true
 		close(a.stop)
 		a.clearSecrets()
 		go service.Close()
 	})
-	mygo.App.OnWindowAllClosed(func() { mygo.App.Quit() })
+	mygo.App.OnWindowAllClosed(func() {
+		if !a.lifecycle.suspended {
+			mygo.App.Quit()
+		}
+	})
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
 		mygo.GlobalShortcut.UnregisterAll()
 		if a.tray != nil {
@@ -162,23 +168,10 @@ func Run(service *app.Service) error {
 	})
 	mygo.App.WhenReady(func() {
 		a.initializing = true
-		a.shell = sidebar.NewShell(sidebar.ShellOptions{
-			Hidden: true, Title: "Passpine", Width: 1120, Height: 760, MinWidth: 860, MinHeight: 620,
-			StateKey: "passpine-main", LeftWidth: defaultSidebarWidth, LeftMinWidth: 280, LeftMaxWidth: 460,
-			Theme: a.clientTheme, Left: a.sidebarView, Content: a.contentView,
-			ContentTitle: a.header, LeftToolbar: a.sidebarToolbar,
-			LeadingHeader: a.historyControls, LeadingHeaderWidth: 64,
-			LeftToggleLabel: "切换侧栏", LeftResizeLabel: "调整侧栏宽度", CloseToastLabel: "关闭提示",
-		})
-		a.window = a.shell.Window()
-		a.window.SetVibrancy(mygo.VibrancyNone)
-		a.window.OnFocus(func() {
-			if a.state.Configured {
-				a.queueMetadataRefresh(false)
-			}
-		})
-		a.window.OnClose(a.handleMainWindowClose)
-		a.window.OnClosed(a.closeQuickSearch)
+		if mygo.App.WasOpenedAtLogin() {
+			a.lifecycle.resumeTarget = ""
+		}
+		a.newMainWindow()
 		a.installMenu()
 		a.callBackground(app.Request{Action: "configure"}, func(d app.Data) {
 			if home, err := os.UserHomeDir(); err == nil {
@@ -191,6 +184,7 @@ func Run(service *app.Service) error {
 			a.applyTheme()
 			a.applyLanguage()
 			a.startNativeIntegrations()
+			a.applyNativeSettings()
 		})
 		go a.clock()
 	})
@@ -199,6 +193,12 @@ func Run(service *app.Service) error {
 
 func newApplication(service Backend) *application {
 	a := &application{service: service, runOnMain: mygo.RunOnMain, page: "entries", filter: "all", selectedIndex: -1, generator: generatorState{length: 24, lower: true, upper: true, numbers: true, symbols: true, exclude: true}, lastInput: time.Now(), stop: make(chan struct{})}
+	a.lifecycle.resumeTarget = "main"
+	a.initializeEntryList()
+	return a
+}
+
+func (a *application) initializeEntryList() {
 	a.list = components.ListState{Selected: &a.selectedIndex, Key: func(i int) any { return a.filtered[i].Path }, Label: func(i int) string { return a.filtered[i].Name }, OnChange: func() {
 		if a.selectedIndex >= 0 && a.selectedIndex < len(a.filtered) {
 			a.selectEntry(a.filtered[a.selectedIndex].Path)
@@ -208,11 +208,25 @@ func newApplication(service Backend) *application {
 			a.selectEntry(a.filtered[i].Path)
 		}
 	}}
-	return a
 }
 
 func (a *application) show() {
-	if a.window != nil && !a.closing && !a.initializing {
+	if a.closing {
+		return
+	}
+	if a.initializing {
+		a.lifecycle.resumeTarget = "main"
+		return
+	}
+	if a.resumeLightweightUI("main") {
+		return
+	}
+	if a.window == nil && a.lifecycle.nativeReady {
+		a.newMainWindow()
+		a.applyTheme()
+		a.applyLanguage()
+	}
+	if a.window != nil {
 		if a.window.IsMinimized() {
 			a.window.Restore()
 		}
@@ -262,6 +276,9 @@ func (a *application) startCall(req app.Request, done func(app.Data), userAction
 	if a.busy || a.closing {
 		return
 	}
+	if req.Action == "configure" && a.initializing {
+		a.lifecycle.configureDone = done
+	}
 	a.busy = true
 	a.backgroundBusy = !userAction
 	a.activeRequestAction = req.Action
@@ -280,7 +297,15 @@ func (a *application) startCall(req app.Request, done func(app.Data), userAction
 }
 
 func (a *application) receiveResponse(generation uint64, r app.Response, done func(app.Data)) {
-	if a.closing || generation != a.generation {
+	if a.closing {
+		return
+	}
+	if generation != a.generation {
+		// A lock can invalidate configuration while reopening a suspended UI.
+		// Refresh under the current session instead of leaving it initializing.
+		if a.initializing && !a.busy && a.service != nil {
+			a.callBackground(app.Request{Action: "configure"}, a.lifecycle.configureDone)
+		}
 		return
 	}
 	background, pendingCreation, requestAction := a.backgroundBusy, a.pendingNewEntry, a.activeRequestAction
@@ -288,8 +313,7 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 		// First paint follows configuration and theme setup, so reopening an
 		// existing vault never briefly displays onboarding or the wrong theme.
 		if a.initializing {
-			a.initializing = false
-			a.show()
+			a.finishUIInitialization()
 		}
 		if a.pendingChanged {
 			a.dropDetail()
@@ -378,7 +402,7 @@ func (a *application) dropDetail() {
 }
 
 func (a *application) refreshReady() bool {
-	return a.pendingRefresh && !a.busy && !a.editor.open && !a.closing
+	return a.pendingRefresh && !a.busy && !a.editor.open && !a.closing && !a.lifecycle.suspended
 }
 
 func (a *application) flushMetadataRefresh() {
@@ -958,6 +982,7 @@ func (a *application) installMenu() {
 				a.searchRef.Focus()
 			}),
 			action(a.t("快速搜索…"), "", a.quickSearch),
+			action(a.t("快捷面板…"), "", a.trayQuickPanel),
 			action(a.t("恢复中心"), "", func() { a.navigate("recovery", "") }),
 			action(a.t("操作记录"), "", func() { a.navigate("activity", "") }),
 		}},

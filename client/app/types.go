@@ -70,6 +70,10 @@ type Activity struct {
 }
 type Settings struct {
 	CloseToTray           bool   `json:"closeToTray"`
+	DockIcon              string `json:"dockIcon"`
+	TrayClickAction       string `json:"trayClickAction"`
+	LightweightMode       bool   `json:"lightweightMode"`
+	LaunchAtLogin         bool   `json:"launchAtLogin"`
 	Theme                 string `json:"theme"`
 	ThemeStyle            string `json:"themeStyle"`
 	Language              string `json:"language"`
