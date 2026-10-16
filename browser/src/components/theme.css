@@ -1,0 +1,51 @@
+/* Theme palettes belong here; components consume Radix or semantic tokens. */
+:root { --onevra-light-background:#fcfbf9; --onevra-dark-background:#211f1c; --monochrome-light-background:#f4f4f6; --monochrome-dark-background:#1a1a1e; }
+html[data-theme-style="onevra"][data-appearance="light"] { background:var(--onevra-light-background); }
+html[data-theme-style="onevra"][data-appearance="dark"] { background:var(--onevra-dark-background); }
+html[data-theme-style="monochrome"][data-appearance="light"] { background:var(--monochrome-light-background); }
+html[data-theme-style="monochrome"][data-appearance="dark"] { background:var(--monochrome-dark-background); }
+.radix-themes {
+  --default-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --radius-3:8px; --radius-4:10px;
+  --pine-background:var(--color-background); --pine-surface:var(--color-panel-solid);
+  --pine-hover:var(--gray-3); --pine-border:var(--gray-6);
+  --pine-text:var(--gray-12); --pine-muted:var(--gray-11); --pine-accent:var(--accent-11);
+  --pine-success:var(--green-9); --pine-warning:var(--amber-9); --pine-error:var(--red-9);
+  color:var(--pine-text);
+}
+/* Radix repeats Theme on portals and preserves accent/gray attributes. */
+.radix-themes[data-accent-color="orange"] {
+  --color-background:var(--onevra-light-background); --color-panel-solid:#fefefd; --color-panel-translucent:#fefefd;
+  --gray-3:#eceae4; --gray-6:#deded5; --gray-11:#72726a; --gray-12:#33332f;
+  --accent-9:#bd481b; --accent-10:#a73f18; --accent-11:#a83f17; --accent-12:#58240e;
+  --accent-a3:#bd481b0e; --accent-a4:#bd481b19; --accent-a5:#bd481b29; --accent-a9:#bd481b;
+  --accent-a10:#a73f18; --accent-a11:#a83f17; --accent-a12:#58240e; --accent-contrast:#fff;
+  --focus-8:#b947168c; --pine-accent:var(--accent-9);
+}
+.radix-themes[data-accent-color="orange"].dark {
+  --color-background:var(--onevra-dark-background); --color-panel-solid:#2b2925; --color-panel-translucent:#2b2925;
+  --gray-3:#36332e; --gray-6:#504b43; --gray-11:#bdb6aa; --gray-12:#eeeae2;
+  --accent-9:#ed986e; --accent-10:#efaa87; --accent-11:#ed986e; --accent-12:#ffd9c7;
+  --accent-a3:#ed986e12; --accent-a4:#ed986e20; --accent-a5:#ed986e30; --accent-a9:#ed986e;
+  --accent-a10:#efaa87; --accent-a11:#ed986e; --accent-a12:#ffd9c7; --accent-contrast:#291b14;
+  --focus-8:#ed986e90;
+}
+/* Neutral surfaces follow Racomi/Magpie; gray accent supplies monochrome controls. */
+.radix-themes[data-accent-color="gray"] {
+  --color-background:var(--monochrome-light-background); --color-panel-solid:#fff; --color-panel-translucent:#fff;
+  --gray-2:#f9f9fb; --gray-3:#f1f1f4; --gray-6:#e3e3e8; --gray-11:#686872; --gray-12:#1c1c21;
+  --accent-9:#1c1c21; --accent-10:#35353d; --accent-11:#1c1c21; --accent-12:#1c1c21;
+  --accent-a3:#1c1c2109; --accent-a4:#1c1c2112; --accent-a5:#1c1c211b;
+  --accent-a9:#1c1c21; --accent-a10:#35353d; --accent-a11:#1c1c21; --accent-a12:#1c1c21;
+  --accent-contrast:#fff; --focus-8:#69697390;
+}
+.radix-themes[data-accent-color="gray"].dark {
+  --color-background:var(--monochrome-dark-background); --color-panel-solid:#232327; --color-panel-translucent:#232327;
+  --gray-2:#1f1f23; --gray-3:#2d2d33; --gray-6:#333339; --gray-11:#a1a1aa; --gray-12:#ededf1;
+  --accent-9:#ededf1; --accent-10:#fff; --accent-11:#ededf1; --accent-12:#fff;
+  --accent-a3:#ededf10d; --accent-a4:#ededf118; --accent-a5:#ededf124;
+  --accent-a9:#ededf1; --accent-a10:#fff; --accent-a11:#ededf1; --accent-a12:#fff;
+  --accent-contrast:#1a1a1e; --focus-8:#a1a1aa90;
+}
+.radix-themes.light { color-scheme:light; }
+.radix-themes.dark { color-scheme:dark; }

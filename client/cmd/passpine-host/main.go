@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/knothhe/passpine-neo/client/nativehost"
+	"github.com/knothhe/passpine/client/nativehost"
 	"os"
 )
 
@@ -16,7 +16,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, e)
 			os.Exit(1)
 		}
-		fmt.Fprintln(os.Stderr, "Passpine Neo native messaging host registered")
+		fmt.Fprintln(os.Stderr, "Passpine native messaging host registered")
 		return
 	}
 	dir, e := nativehost.DataDir()

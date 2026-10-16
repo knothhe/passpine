@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/knothhe/passpine-neo/client/nativehost"
+	"github.com/knothhe/passpine/client/nativehost"
 )
 
 type browserState struct {

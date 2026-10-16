@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/knothhe/passpine-neo/client/app"
+	"github.com/knothhe/passpine/client/app"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
 )
@@ -142,6 +142,20 @@ func (a *application) settingsContent(c *ui.Context, categories []components.Set
 			})
 		})
 	})
+}
+
+// Keep all idle presets selectable while preserving a saved custom duration.
+// The extra option disappears after the user chooses one of the presets.
+func idleDurationPresets(value int) []int {
+	values := []int{1, 10, 30}
+	for _, preset := range values {
+		if preset == value {
+			return values
+		}
+	}
+	values = append(values, value)
+	sort.Ints(values)
+	return values
 }
 
 // Keep a saved custom duration visible without adding a fourth segment. The

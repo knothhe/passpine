@@ -77,7 +77,7 @@ func registrationTargets(home, platform string) []registrationTarget {
 }
 
 func manifestFor(executable string, target registrationTarget) hostManifest {
-	m := hostManifest{Name: Name, Description: "Passpine Neo native password manager", Path: executable, Type: "stdio"}
+	m := hostManifest{Name: Name, Description: "Passpine native password manager", Path: executable, Type: "stdio"}
 	if target.firefox {
 		m.AllowedExtensions = []string{FirefoxID}
 	} else {

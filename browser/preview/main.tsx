@@ -5,6 +5,7 @@ import { App } from '../src/components/App';
 import { Options } from '../src/components/Options';
 import { Provider } from '../src/components/Provider';
 import { demoClient, setPreviewState } from './client';
+import { type AppearancePreferences } from '../src/lib/appearance';
 
 const previewParameters = new URLSearchParams(location.search);
 const requestedState = previewParameters.get('state');
@@ -23,6 +24,10 @@ function Preview() {
   </main>;
 }
 const appearance = previewParameters.get('theme');
+const style = previewParameters.get('style');
+const initialPreferences: Partial<AppearancePreferences> = {};
+if (appearance === 'light' || appearance === 'dark' || appearance === 'system') initialPreferences.appearance = appearance;
+if (style === 'onevra' || style === 'monochrome') initialPreferences.style = style;
 const root: Root = import.meta.hot?.data.reactRoot ?? createRoot(document.getElementById('root')!);
 if (import.meta.hot) import.meta.hot.data.reactRoot = root;
-root.render(<Provider appearance={appearance === 'light' || appearance === 'dark' ? appearance : undefined}><Preview/></Provider>);
+root.render(<Provider demo initialPreferences={Object.keys(initialPreferences).length ? initialPreferences : undefined}><Preview/></Provider>);

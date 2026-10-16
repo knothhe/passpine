@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/knothhe/passpine-neo/client/app"
+	"github.com/knothhe/passpine/client/app"
 )
 
 type fakeShortcutRegistry struct {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/knothhe/passpine-neo/client/vault"
+	"github.com/knothhe/passpine/client/vault"
 )
 
 func gitStatusOf(ctx context.Context, v *vault.Vault) (Data, error) {

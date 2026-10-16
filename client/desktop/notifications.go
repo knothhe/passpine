@@ -5,21 +5,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/oneo-me/onevra/source/components"
-	"github.com/oneo-me/onevra/source/theme"
 )
-
-// Shared opaque surfaces distinguish navigation from content in both windows.
-func clientTheme(c *ui.Context) *ui.Theme {
-	t := *theme.Onevra(c)
-	if t.Dark {
-		t.Background = ui.Hex("#211f1c")
-		t.Surface = ui.Hex("#292723")
-	} else {
-		t.Background = ui.Hex("#fcfbf9")
-		t.Surface = ui.Hex("#f0eee9")
-	}
-	return &t
-}
 
 type notificationState struct {
 	kind, typedMessage string

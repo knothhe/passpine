@@ -13,9 +13,9 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-	"github.com/knothhe/passpine-neo/client/app"
-	sidebar "github.com/knothhe/passpine-neo/client/internal/clientshell"
-	"github.com/knothhe/passpine-neo/client/vault"
+	"github.com/knothhe/passpine/client/app"
+	sidebar "github.com/knothhe/passpine/client/internal/clientshell"
+	"github.com/knothhe/passpine/client/vault"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
 )
@@ -112,7 +112,7 @@ type application struct {
 // clipboard and system lock/sleep notifications. It does not create a WebView.
 func Run(service *app.Service) error {
 	a := newApplication(service)
-	mygo.App.SetName("Passpine Neo")
+	mygo.App.SetName("Passpine")
 	mygo.App.SetPath(mygo.PathUserData, service.DataDirectory())
 	if !mygo.App.RequestSingleInstanceLock() {
 		return nil
@@ -171,9 +171,9 @@ func Run(service *app.Service) error {
 	mygo.App.WhenReady(func() {
 		a.initializing = true
 		a.shell = sidebar.NewShell(sidebar.ShellOptions{
-			Hidden: true, Title: "Passpine Neo", Width: 1120, Height: 760, MinWidth: 860, MinHeight: 620,
+			Hidden: true, Title: "Passpine", Width: 1120, Height: 760, MinWidth: 860, MinHeight: 620,
 			StateKey: "passpine-main", LeftWidth: defaultSidebarWidth, LeftMinWidth: 280, LeftMaxWidth: 460,
-			Theme: clientTheme, Left: a.sidebarView, Content: a.contentView,
+			Theme: a.clientTheme, Left: a.sidebarView, Content: a.contentView,
 			ContentTitle: a.header, LeftToolbar: a.sidebarToolbar,
 			LeadingHeader: a.historyControls, LeadingHeaderWidth: 64,
 			LeftToggleLabel: "切换侧栏", LeftResizeLabel: "调整侧栏宽度", CloseToastLabel: "关闭提示",
@@ -238,11 +238,17 @@ func (a *application) applyTheme() {
 	if a.window == nil {
 		return
 	}
-	source := a.state.Settings.Theme
+	source := a.themeSettings().Theme
 	if source == "" {
 		source = "system"
 	}
 	mygo.Theme.SetSource(mygo.ThemeSource(source))
+	_ = a.window.SetBackgroundColor(nativeThemeBackground(a.themeSettings().ThemeStyle))
+	if window, ok := a.quick.window.(*mygo.Window); ok {
+		_ = window.SetBackgroundColor(nativeThemeBackground(a.themeSettings().ThemeStyle))
+	}
+	a.updateNativeIcons()
+	a.invalidate()
 }
 
 // All application state is confined to MyGo's main thread. The generation
@@ -776,6 +782,9 @@ func (a *application) header(c *ui.Context) {
 		if a.state.Configured {
 			a.vaultSelector(c)
 			a.gitHeaderStatus(c)
+			if iconButton(c, lucide.RefreshCw(), a.t("同步密码库"), components.ButtonOutline).Disabled(a.gitActionPending || a.state.GitSyncing || !a.state.GitInitialized).Clicked() {
+				a.call(app.Request{Action: "git-sync"}, func(app.Data) { a.notice = a.t("同步完成") })
+			}
 			lockIcon, lockLabel := lucide.LockKeyhole(), a.t("锁定密码库")
 			if a.state.Locked {
 				lockIcon, lockLabel = lucide.LockOpen(), a.t("解锁密码库")
@@ -786,9 +795,6 @@ func (a *application) header(c *ui.Context) {
 				} else {
 					a.lock()
 				}
-			}
-			if iconButton(c, lucide.RefreshCw(), a.t("同步密码库"), components.ButtonOutline).Disabled(a.gitActionPending || a.state.GitSyncing || !a.state.GitInitialized).Clicked() {
-				a.call(app.Request{Action: "git-sync"}, func(app.Data) { a.notice = a.t("同步完成") })
 			}
 		}
 		if a.page != "entries" || a.setup || !a.state.Configured {
@@ -920,7 +926,7 @@ func (a *application) installMenu() {
 		windowMenu = &mygo.MenuItem{Label: a.t("窗口"), Disabled: true}
 	}
 	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
-		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{action(a.t("设置…"), "CmdOrCtrl+,", func() { a.navigate("settings", "") }), mygo.Separator(), action(a.t("退出 Passpine Neo"), "CmdOrCtrl+Q", mygo.App.Quit)}},
+		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{action(a.t("设置…"), "CmdOrCtrl+,", func() { a.navigate("settings", "") }), mygo.Separator(), action(a.t("退出 Passpine"), "CmdOrCtrl+Q", mygo.App.Quit)}},
 		{Label: a.t("文件"), Submenu: []*mygo.MenuItem{action(a.t("新建条目"), "CmdOrCtrl+N", a.newEntry), action(a.t("打开密码库…"), "", a.openSetup), mygo.Separator(), action(a.t("锁定密码库"), "CmdOrCtrl+Shift+L", a.lock)}},
 		editMenu,
 		{Label: a.t("显示"), Submenu: []*mygo.MenuItem{

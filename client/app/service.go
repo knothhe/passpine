@@ -16,9 +16,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/knothhe/passpine-neo/client/deviceunlock"
-	"github.com/knothhe/passpine-neo/client/nativehost"
-	"github.com/knothhe/passpine-neo/client/vault"
+	"github.com/knothhe/passpine/client/deviceunlock"
+	"github.com/knothhe/passpine/client/nativehost"
+	"github.com/knothhe/passpine/client/vault"
 )
 
 type preferences struct {
@@ -63,12 +63,12 @@ type Service struct {
 }
 
 func DefaultSettings() Settings {
-	return Settings{Theme: "system", Language: "system", IdleMinutes: 10, MaxSessionMinutes: 60, ClipboardSeconds: 30, CloseToTray: true, BrowseWhileLocked: true, DeviceUnlock: true, AutoSync: false, SyncMinutes: 0, RecordActivity: true, ActivityMaxEntries: 1000, ActivityRetentionDays: 7, GlobalShortcut: DefaultGlobalShortcut}
+	return Settings{Theme: "system", ThemeStyle: ThemeStyleOnevra, Language: "system", IdleMinutes: 1, MaxSessionMinutes: 60, ClipboardSeconds: 30, CloseToTray: true, BrowseWhileLocked: true, DeviceUnlock: true, AutoSync: false, SyncMinutes: 0, RecordActivity: true, ActivityMaxEntries: 1000, ActivityRetentionDays: 7, GlobalShortcut: DefaultGlobalShortcut}
 }
 func New(o Options) (*Service, error) {
 	var err error
 	if o.Preview && o.DataDir == "" {
-		o.DataDir, err = os.MkdirTemp("", "passpine-neo-preview-")
+		o.DataDir, err = os.MkdirTemp("", "passpine-preview-")
 		if err != nil {
 			return nil, err
 		}
@@ -114,6 +114,7 @@ func New(o Options) (*Service, error) {
 		return nil, e
 	}
 
+	s.prefs.Settings.ThemeStyle = NormalizeThemeStyle(s.prefs.Settings.ThemeStyle)
 	if e := validateSettings(s.prefs.Settings); e != nil {
 		s.prefs.Settings = DefaultSettings()
 	}
@@ -561,6 +562,10 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 			return Data{}, nil
 		}
 		settings := *r.Settings
+		// Older clients omit this preference; preserve the user's current style.
+		if settings.ThemeStyle == "" {
+			settings.ThemeStyle = NormalizeThemeStyle(s.prefs.Settings.ThemeStyle)
+		}
 		shortcut, err := NormalizeGlobalShortcut(settings.GlobalShortcut)
 		if err != nil {
 			return Data{}, err
@@ -802,6 +807,9 @@ func validateSettings(v Settings) error {
 	}
 	if v.Theme != "system" && v.Theme != "light" && v.Theme != "dark" {
 		return errors.New("invalid theme")
+	}
+	if v.ThemeStyle != ThemeStyleOnevra && v.ThemeStyle != ThemeStyleMonochrome {
+		return errors.New("invalid theme style")
 	}
 	if v.Language != "zh-CN" && v.Language != "en" && v.Language != "system" {
 		return errors.New("invalid language")

@@ -5,9 +5,11 @@ import { fillPage } from '../src/lib/fill';
 import { nativeRequest, trustedSender, validUIRequest } from '../src/lib/protocol';
 import { NativeConnection } from '../src/lib/native';
 import { FILL_COMMAND } from '../src/lib/shortcuts';
+import { initializeToolbarAppearance } from '../src/lib/appearance';
 import { HOST, PROTOCOL, type EntryDocument, type NativeRequest, type SessionStatus, type Snapshot, type TabContext, type UIRequest, type VaultState } from '../src/lib/types';
 
 export default defineBackground(() => {
+  initializeToolbarAppearance();
   const connection = new NativeConnection(() => browser.runtime.connectNative(HOST));
   const native = <T>(request: NativeRequest): Promise<T> => connection.request<T>(request);
   const activeTab = async () => (await browser.tabs.query({ active: true, currentWindow: true }))[0];

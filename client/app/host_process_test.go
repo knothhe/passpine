@@ -2,7 +2,7 @@ package app
 
 import (
 	"encoding/json"
-	"github.com/knothhe/passpine-neo/client/nativehost"
+	"github.com/knothhe/passpine/client/nativehost"
 	"os"
 	"os/exec"
 	"testing"
@@ -11,15 +11,15 @@ import (
 // This test uses the shipped helper executable and its real stdin/stdout pipes.
 // scripts/check.sh sets the path after building it; no browser is launched.
 func TestNativeHelperProcess(t *testing.T) {
-	binary := os.Getenv("PASSPINE_NEO_TEST_HOST")
+	binary := os.Getenv("PASSPINE_TEST_HOST")
 	if binary == "" {
-		t.Skip("set PASSPINE_NEO_TEST_HOST to the built passpine-host binary")
+		t.Skip("set PASSPINE_TEST_HOST to the built passpine-host binary")
 	}
 	s := testService(t)
 	state := must(t, s, Request{Action: "status"})
 	saved := must(t, s, Request{Action: "save", Entry: "example.com/login", Contents: "fixture-password\nusername: test-user\n", Mode: "create"})
 	cmd := exec.Command(binary, "chrome-extension://"+nativehost.ChromiumID+"/")
-	cmd.Env = append(os.Environ(), "PASSPINE_NEO_HOME="+s.directory)
+	cmd.Env = append(os.Environ(), "PASSPINE_HOME="+s.directory)
 	stdin, e := cmd.StdinPipe()
 	if e != nil {
 		t.Fatal(e)

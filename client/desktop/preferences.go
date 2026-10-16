@@ -2,7 +2,7 @@ package desktop
 
 import (
 	"github.com/egoist/mygo"
-	"github.com/knothhe/passpine-neo/client/app"
+	"github.com/knothhe/passpine/client/app"
 )
 
 // Preferences use the manager window and share its navigation. The epoch

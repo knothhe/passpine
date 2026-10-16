@@ -174,7 +174,9 @@ export async function installLocal(argv, { root = projectRoot, runBuild = build,
   requireThat(browsers.includes(browser), "Browser must be chrome, firefox or edge.")
   const directory = args.dir ?? config.directories?.[browser]
   requireThat(directory !== undefined, `No installation directory configured for ${browser}. Copy .install-local.example.json to .install-local.json and edit its directories, or pass --dir <path>.`)
-  const name = args.name ?? config.name ?? path.basename(canonical(root))
+  const packagePath = path.join(root, "package.json")
+  const packageName = fs.existsSync(packagePath) ? JSON.parse(fs.readFileSync(packagePath, "utf8")).name : undefined
+  const name = args.name ?? config.name ?? packageName ?? path.basename(canonical(root))
   validateName(name)
   const parentDirectory = resolveDirectory(directory, root)
   const destination = path.join(parentDirectory, name)
@@ -230,7 +232,7 @@ export async function installLocal(argv, { root = projectRoot, runBuild = build,
 async function main() {
   const argv = process.argv.slice(2)
   if (argv.includes("--help") || argv.includes("-h")) {
-    console.log("Usage: node scripts/install-local.mjs [chrome|firefox|edge] [--browser <browser>] [--dir <parent-directory>] [--name <plugin-name>] [--config <file>]\nBuilds MV3 and installs into <parent-directory>/<plugin-name>. Default name: project folder name.\nDefaults: .install-local.json, then Chrome. CLI options override config.\nRelative parent directories resolve from the repository; ~/ expands to your home.\nOnly the named plugin directory is replaced; other files in the parent directory are preserved.\nExisting plugin directories from other installations require overwrite confirmation [Y/n].\nLoad the plugin directory in Chrome/Edge, or its manifest.json temporarily in Firefox. Reload after updates.")
+    console.log("Usage: node scripts/install-local.mjs [chrome|firefox|edge] [--browser <browser>] [--dir <parent-directory>] [--name <plugin-name>] [--config <file>]\nBuilds MV3 and installs into <parent-directory>/<plugin-name>. Default name: package.json name, falling back to the project folder name.\nDefaults: .install-local.json, then Chrome. CLI options override config.\nRelative parent directories resolve from the repository; ~/ expands to your home.\nOnly the named plugin directory is replaced; other files in the parent directory are preserved.\nExisting plugin directories from other installations require overwrite confirmation [Y/n].\nLoad the plugin directory in Chrome/Edge, or its manifest.json temporarily in Firefox. Reload after updates.")
     return
   }
   const result = await installLocal(argv)

@@ -9,7 +9,7 @@
 
 ## 客户端
 
-macOS 构建产物为 `dist/Passpine Neo.app`，安装到 `~/Applications/Passpine Neo.app`；Linux 将 `dist/passpine` 和 `dist/passpine-host` 安装到 `~/.local/bin`。客户端安装完成后，使用安装位置中的 Host 注册浏览器连接。
+macOS 构建产物为 `dist/Passpine.app`，安装到 `~/Applications/Passpine.app`；Linux 将 `dist/passpine` 和 `dist/passpine-host` 安装到 `~/.local/bin`。客户端安装完成后，使用安装位置中的 Host 注册浏览器连接。
 
 ```sh
 make client:install
@@ -17,6 +17,8 @@ make client:install CLIENT_INSTALL_DIR="/Applications"
 ```
 
 `CLIENT_INSTALL_DIR` 是安装父目录，需对其有写权限。macOS 更新会替换应用包，不保留旧版应用资源。关闭正在运行的客户端后再更新并重新启动。当前已验收 macOS Apple Silicon，Linux 客户端运行能力仍需在目标系统确认。
+
+macOS 应用 ID 为 `com.knothhe.passpine`，与旧原生客户端相同；安装到同一目录会替换原有 `Passpine.app`。本机数据不会随应用包安装而迁移，已有 Go 配置的继续使用与迁移方式见 [README](../README.md#正式使用与原库迁移)。
 
 手动移动应用后，在客户端设置 → 浏览器中逐项**修复**，或选择**重新检测并修复**。只为已安装的浏览器注册连接；不要注册临时构建目录里的应用后删除该目录。
 
@@ -33,7 +35,7 @@ cp .install-local.example.json .install-local.json
 ```json
 {
   "browser": "chrome",
-  "name": "passpine-neo",
+  "name": "passpine",
   "directories": {
     "chrome": "~/ChromeExtensions",
     "firefox": "~/FirefoxExtensions",
@@ -42,7 +44,7 @@ cp .install-local.example.json .install-local.json
 }
 ```
 
-个人配置已被 Git 忽略。示例中的 Chrome 安装目标为 `~/ChromeExtensions/passpine-neo`，Firefox 为 `~/FirefoxExtensions/passpine-neo`。父目录支持 `~/`，相对路径以仓库根目录为基准；不展开 `$HOME` 等环境变量。名称只决定本地子目录，不改变扩展 ID 或 manifest 名称。
+个人配置已被 Git 忽略。示例中的 Chrome 安装目标为 `~/ChromeExtensions/passpine`，Firefox 为 `~/FirefoxExtensions/passpine`。父目录支持 `~/`，相对路径以仓库根目录为基准；不展开 `$HOME` 等环境变量。省略名称时使用根目录 `package.json` 中的 `name`（本项目为 `passpine`），未声明包名时才使用仓库目录名。名称只决定本地子目录，不改变扩展 ID 或 manifest 名称。
 
 ```sh
 make browser:install
@@ -51,11 +53,11 @@ make browser:install BROWSER=edge
 make install
 
 # 无配置文件时，直接提供安装父目录
-make browser:install BROWSER=chrome INSTALL_ARGS='--dir "~/ChromeExtensions" --name passpine-neo'
+make browser:install BROWSER=chrome INSTALL_ARGS='--dir "~/ChromeExtensions" --name passpine'
 
 # CLI 选项优先于配置；也可选择另一份配置
 make browser:install INSTALL_ARGS='--config .install-local.custom.json'
-npm run install:local -- firefox --dir "~/FirefoxExtensions" --name passpine-neo
+npm run install:local -- firefox --dir "~/FirefoxExtensions" --name passpine
 node scripts/install-local.mjs --help
 ```
 
@@ -79,7 +81,7 @@ node scripts/install-local.mjs --help
 4. 支持的 Mac 默认启用系统解锁，首次用私钥口令打开密码库后完成 Touch ID 或登录密码验证。扩展锁定时操作条目会自动请求系统验证，成功后继续操作；尚未启用系统解锁时会唤出客户端。客户端关闭则连接断开，可在客户端开启“关闭窗口后继续运行”。
 5. 点击账号查看或填充；非匹配网站需明确关联，按精确 hostname 匹配，不自动继承子域，填充不会提交表单。
 
-扩展 ID 和 Native Host 名称独立于旧版，可并存：Chrome `obnlebeedcbbchadakacilopfdaifgjh`，Firefox `passpine-neo@knothhe.com`，Host `com.knothhe.passpine.neo`。
+Chrome / Edge 固定扩展 ID 为 `obnlebeedcbbchadakacilopfdaifgjh`，Firefox ID 为 `passpine@knothhe.com`，Native Host 为 `com.knothhe.passpine`。Chromium ID 保持不变；Firefox ID 与旧插件相同，新版会替换对应扩展。更换客户端后，重新加载扩展并在客户端设置中修复浏览器连接。
 
 ## Agent 收尾安装
 

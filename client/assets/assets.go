@@ -3,12 +3,26 @@ package assets
 
 import _ "embed"
 
-// AppIconPNG is generated from the bundle's Passpine.icns artwork.
+// AppIconPNG contains the terracotta and warm-white botanical key artwork.
+// generate.swift exports it from the shared vector geometry at 256 pixels.
 //
 //go:embed app-icon.png
 var AppIconPNG []byte
 
-// MenuBarTemplatePNG contains the application's leaves and stem on transparency.
+// AppIconMonochromePNG contains the white tile and black botanical key artwork.
+//
+//go:embed app-icon-monochrome.png
+var AppIconMonochromePNG []byte
+
+// IconForStyle returns the brand artwork paired with a theme style.
+func IconForStyle(style string) []byte {
+	if style == "monochrome" {
+		return AppIconMonochromePNG
+	}
+	return AppIconPNG
+}
+
+// MenuBarTemplatePNG is the botanical key drawn in black on transparency.
 // macOS applies the appropriate menu bar foreground color.
 //
 //go:embed menu-bar-template.png

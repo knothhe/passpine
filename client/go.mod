@@ -1,4 +1,4 @@
-module github.com/knothhe/passpine-neo/client
+module github.com/knothhe/passpine/client
 
 go 1.27.1
 

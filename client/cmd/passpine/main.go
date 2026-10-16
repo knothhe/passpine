@@ -5,9 +5,9 @@ import (
 	"flag"
 	"log"
 
-	"github.com/knothhe/passpine-neo/client/app"
-	"github.com/knothhe/passpine-neo/client/desktop"
-	"github.com/knothhe/passpine-neo/client/nativehost"
+	"github.com/knothhe/passpine/client/app"
+	"github.com/knothhe/passpine/client/desktop"
+	"github.com/knothhe/passpine/client/nativehost"
 )
 
 func main() {

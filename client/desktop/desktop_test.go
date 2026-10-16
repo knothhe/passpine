@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/knothhe/passpine-neo/client/app"
-	"github.com/knothhe/passpine-neo/client/nativehost"
-	"github.com/knothhe/passpine-neo/client/vault"
+	"github.com/knothhe/passpine/client/app"
+	"github.com/knothhe/passpine/client/nativehost"
+	"github.com/knothhe/passpine/client/vault"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
 )
@@ -48,7 +48,7 @@ func fixture() *application {
 
 func testView(a *application) func(*ui.Context) {
 	return func(c *ui.Context) {
-		c.SetTheme(clientTheme(c))
+		c.SetTheme(a.clientTheme(c))
 		ui.Row(c).Fill().Children(func() {
 			ui.Column(c).Width(defaultSidebarWidth).FillHeight().Background(c.Theme().Surface).Children(func() {
 				a.sidebarView(c)

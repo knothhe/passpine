@@ -246,8 +246,26 @@ export function App({ client }: { client: Client }) {
   const document = detail ? parseDocument(detail.contents) : undefined;
   const detailEntry = detail?.entry ?? detailTarget?.entry;
   const page = editor ? 'editor' : detailEntry ? 'detail' : 'list';
+  const navigateEntries = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (page !== 'list' || busy || deleteOpen || window.document.hidden || event.defaultPrevented || event.nativeEvent.isComposing) return;
+    const control = event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
+    const plain = !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
+    const key = event.key.toLowerCase();
+    const direction = control && key === 'n' || plain && key === 'arrowdown' ? 1 : control && key === 'p' || plain && key === 'arrowup' ? -1 : 0;
+    if (!direction || !(event.target instanceof HTMLElement)) return;
+    const list = event.target.closest<HTMLElement>('.popup-page-list:not([aria-hidden="true"])');
+    if (!list) return;
+    const search = list.querySelector<HTMLInputElement>('input[aria-label="搜索密码库"]');
+    const row = event.target.closest<HTMLElement>('.entry-row');
+    if (event.target !== search && (!row || event.target.closest('.account-more'))) return;
+    const buttons = Array.from(list.querySelectorAll<HTMLButtonElement>('button[data-entry-path]:not(:disabled)'));
+    const current = row?.querySelector<HTMLButtonElement>('button[data-entry-path]');
+    const next = current ? buttons.indexOf(current) + direction : direction > 0 ? 0 : buttons.length - 1;
+    event.preventDefault();
+    (buttons[next] ?? search)?.focus();
+  };
 
-  return <MotionConfig reducedMotion="user" transition={{ duration: .16, ease: [.2, .8, .2, 1] }}><div className="popup-shell">
+  return <MotionConfig reducedMotion="user" transition={{ duration: .16, ease: [.2, .8, .2, 1] }}><div className="popup-shell" onKeyDown={navigateEntries}>
     <div className="popup-pages"><AnimatePresence initial={false} mode="sync"><PopupPage key={page} view={page} listScroll={listScroll.current} returnEntry={returnEntry.current}>
     {editor ? <EditorForm client={client} value={editor} defaultURL={snapshot?.tab ? `https://${snapshot.tab.hostname}` : ''} close={() => setEditor(undefined)} saved={async () => { setEditor(undefined); cancelDetails(); await refresh(); setNotice({ text: '账号已加密保存' }); }}/>
     : detailEntry ? <>
@@ -285,7 +303,7 @@ export function App({ client }: { client: Client }) {
     </PopupPage></AnimatePresence></div>
     {notice && <div className={`notice ${notice.error ? 'notice-error' : ''}`} role={notice.error ? 'alert' : 'status'}>{notice.error ? <CircleAlert size={16}/> : <Check size={16}/>}<span>{notice.text}</span><button aria-label="关闭提示" onClick={() => setNotice(undefined)}><X size={14}/></button></div>}
     <footer className="app-footer">
-      <div className="footer-connection" title={snapshot?.vaultName || '客户端连接'}><span className={`connection-dot ${!snapshot ? 'disconnected' : snapshot.locked ? 'locked' : ''}`} aria-hidden="true"/><span className="footer-vault">{snapshot?.vaultName || 'PassPine 客户端'}</span><span className="footer-state">{loading ? '连接中' : !snapshot ? '未连接' : !snapshot.configured ? '未设置' : snapshot.locked ? '已锁定' : '已连接'}</span></div>
+      <div className="footer-connection" title={snapshot?.vaultName || '客户端连接'}><span className={`connection-dot ${!snapshot ? 'disconnected' : snapshot.locked ? 'locked' : ''}`} aria-hidden="true"/><span className="footer-vault">{snapshot?.vaultName || 'Passpine 客户端'}</span><span className="footer-state">{loading ? '连接中' : !snapshot ? '未连接' : !snapshot.configured ? '未设置' : snapshot.locked ? '已锁定' : '已连接'}</span></div>
       <div className="footer-actions"><ActionIcon label="刷新密码库" onClick={() => void refreshManually()} loading={loading || refreshing} disabled={loading || refreshing || busy}><RefreshCw size={15} className={loading || refreshing ? 'connection-checking' : undefined}/></ActionIcon>{snapshot?.configured && !snapshot.locked && <ActionIcon label="锁定密码库" onClick={lock} disabled={busy}><LockKeyhole size={16}/></ActionIcon>}<ActionIcon label="设置与连接" onClick={() => void client.openOptions()}><Settings2 size={16}/></ActionIcon></div>
     </footer>
     {client.demo && <div className="demo-ribbon">预览 · 示例数据</div>}

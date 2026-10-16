@@ -1,6 +1,6 @@
-# Passpine Neo
+# Passpine
 
-用 Go 重写的 pass 兼容密码管理器，以及 WXT 浏览器伴侣。客户端通过 [MyGo](https://github.com/egoist/mygo) 的原生 GPU UI 和 [Onevra](https://github.com/oneo-me/onevra) 组件构建；不包含 WebView 前端或 Rust 应用代码。浏览器使用 Vite、WXT、TypeScript、React 和 Radix Themes，采用相同的 Onevra 暖白 / 暖炭配色。
+用 Go 重写的 pass 兼容密码管理器，以及 WXT 浏览器插件。客户端通过 [MyGo](https://github.com/egoist/mygo) 的原生 GPU UI 和 [Onevra](https://github.com/oneo-me/onevra) 组件构建；不包含 WebView 前端或 Rust 应用代码。浏览器使用 Vite、WXT、TypeScript、React 和 Radix Themes。两端设置页提供陶土橙与黑白两套主题及配套图标，并可独立选择跟随系统、浅色或深色外观。
 
 ## 目录
 
@@ -25,10 +25,10 @@ docs/                    架构、功能边界和验证记录
 
 ## 直接体验
 
-本机 macOS Apple Silicon 构建产物位于 `dist/Passpine Neo.app`。演示启动：
+本机 macOS Apple Silicon 构建产物位于 `dist/Passpine.app`。演示启动：
 
 ```sh
-open -n 'dist/Passpine Neo.app' --args --preview
+open -n 'dist/Passpine.app' --args --preview
 ```
 
 演示会新建隔离临时目录、真实 OpenPGP 密钥和 11 条虚构账号，不读取个人密码库，不注册浏览器 Host 或全局快捷键。演示口令为 `Passpine-demo-2026`。关闭演示后临时目录保留，可按应用输出 / 进程参数定位；真实应用和演示的配置分开。
@@ -62,7 +62,7 @@ npm run dev                      # 从源码运行正式客户端
 
 Make 自动安装或更新浏览器构建依赖。`client:` 和 `browser:` 前缀分别限定客户端和扩展，不加前缀的 `build` / `install` 同时处理两者；旧的 npm 构建命令仍可使用。
 
-macOS 脚本生成独立的 `.app`，内含 Go 客户端、Go Host 和 Swift 系统解锁辅助程序，使用本地 ad-hoc 签名。客户端默认安装到 `~/Applications/Passpine Neo.app`，Linux 安装到 `~/.local/bin`，安装后自动注册 Native Messaging Host。可通过 `make client:install CLIENT_INSTALL_DIR="/Applications"` 指定安装目录。分发到其他 Mac 时，系统可能要求确认本地构建的应用；本项目未配置 Developer ID 公证。
+macOS 脚本生成独立的 `.app`，内含 Go 客户端、Go Host 和 Swift 系统解锁辅助程序，使用本地 ad-hoc 签名。客户端默认安装到 `~/Applications/Passpine.app`，Linux 安装到 `~/.local/bin`，安装后自动注册 Native Messaging Host。可通过 `make client:install CLIENT_INSTALL_DIR="/Applications"` 指定安装目录。分发到其他 Mac 时，系统可能要求确认本地构建的应用；本项目未配置 Developer ID 公证。
 
 ## 正式使用与原库迁移
 
@@ -74,7 +74,9 @@ macOS 脚本生成独立的 `.app`，内含 Go 客户端、Go Host 和 Swift 系
 
 系统 GPG 自动匹配支持指纹、密钥 ID、子钥指纹及邮箱；匹配不唯一时会报错。客户端通过 GPG 在内存中读取匹配的可导出私钥及其他收件人的公钥，验证后将私钥用输入口令加密保存到应用数据目录。口令不进入命令参数或日志，不生成明文私钥临时文件；遵循 `GNUPGHOME`，macOS 从 Finder 启动也会查找 Homebrew GPG。不同口令的多份私钥需要先统一口令；硬件卡私钥暂不支持导入。导入后的解锁使用客户端保存的加密副本，系统密钥轮换后需重新导入更新密钥。
 
-macOS 默认配置目录：`~/Library/Application Support/Passpine Neo/`。可用 `--data-dir` 或 `PASSPINE_NEO_HOME` 指定隔离路径；自定义路径启动时，浏览器 Host 也需要相同的环境变量。正式使用推荐默认路径。
+macOS 默认配置目录：`~/Library/Application Support/Passpine/`。可用 `--data-dir` 或 `PASSPINE_HOME` 指定隔离路径；自定义路径启动时，浏览器 Host 也需要相同的环境变量。正式使用推荐默认路径。
+
+改名前的 Go 客户端配置不会自动搬移或与默认目录合并。继续使用现有配置时，先通过 `--data-dir <原数据目录>` 或 `PASSPINE_HOME` 指向原目录；原目录中的系统解锁封装仍可使用。若要迁移到默认目录，先关闭客户端并备份，确认目标没有其他客户端数据，再复制配置及 `keys`；迁移后重新启用系统解锁，因为设备封装绑定密钥目录的绝对路径。旧 Swift / Rust 客户端的本机配置与密钥目录不会自动转换，可按上述流程重新打开 pass 密码库并导入系统 GPG 密钥。
 
 ## 安装浏览器扩展
 
@@ -82,7 +84,7 @@ macOS 默认配置目录：`~/Library/Application Support/Passpine Neo/`。可�
 
 ## 已实现的主要流程
 
-- 多密码库、新建 / 导入 / 下载、口令解锁、自动锁定、锁屏 / 休眠锁定。
+- 多密码库、新建 / 导入 / 下载、口令解锁、自动锁定、锁屏 / 休眠锁定。空闲锁定预设为 1 / 10 / 30 分钟，新配置默认 1 分钟；已有保存时长继续保留。
 - 本地即时搜索（名称与文件夹）、精简条目侧栏、默认隐藏密码、原生剪贴板与定时清理。
 - 锁定时默认列出名称；支持的 Mac 默认启用 Touch ID / 登录密码解锁，首次通过私钥口令解锁后完成系统验证。
 - 设置、恢复中心与操作记录在主窗口内切换；顶部前进 / 后退位于侧栏开关左侧，保留搜索、选择和未保存表单，更改设置自动保存。支持跟随系统、English 和简体中文；未匹配语言时显示英文。

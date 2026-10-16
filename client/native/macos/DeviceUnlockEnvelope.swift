@@ -13,22 +13,29 @@ struct DeviceUnlockEnvelope: Codable, Sendable {
     let salt: Data
     let ciphertext: Data
 
-    static func context(account: String) -> Data {
-        Data(("com.knothhe.passpine.neo.device-unlock.v1\u{0}" + account).utf8)
+    static func context(account: String, version: Int) throws -> Data {
+        let domain: String
+        switch version {
+        // Existing envelopes keep their original authenticated domain.
+        case 1: domain = "com.knothhe.passpine.neo.device-unlock.v1"
+        case 2: domain = "com.knothhe.passpine.device-unlock.v2"
+        default: throw UnlockError.message("不支持此设备解锁数据版本，请重新启用系统解锁。")
+        }
+        return Data((domain + "\u{0}" + account).utf8)
     }
     static func seal(_ plaintext: Data, deviceKey: Data, publicKey: P256.KeyAgreement.PublicKey, account: String) throws -> Self {
         let ephemeral = P256.KeyAgreement.PrivateKey()
         let shared = try ephemeral.sharedSecretFromKeyAgreement(with: publicKey)
         let salt = SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) }
-        let context = context(account: account)
+        let context = try context(account: account, version: 2)
         let key = shared.hkdfDerivedSymmetricKey(using: SHA256.self, salt: salt, sharedInfo: context, outputByteCount: 32)
         let box = try AES.GCM.seal(plaintext, using: key, authenticating: context)
         guard let combined = box.combined else { throw UnlockError.message("无法创建设备解锁数据。") }
-        return Self(version: 1, deviceKey: deviceKey, ephemeralPublicKey: ephemeral.publicKey.x963Representation, salt: salt, ciphertext: combined)
+        return Self(version: 2, deviceKey: deviceKey, ephemeralPublicKey: ephemeral.publicKey.x963Representation, salt: salt, ciphertext: combined)
     }
     func open(sharedSecret: SharedSecret, account: String) throws -> Data {
-        guard version == 1, salt.count == 32 else { throw UnlockError.message("设备解锁数据已损坏，请使用私钥口令解锁后重新启用。") }
-        let context = Self.context(account: account)
+        guard salt.count == 32 else { throw UnlockError.message("设备解锁数据已损坏，请使用私钥口令解锁后重新启用。") }
+        let context = try Self.context(account: account, version: version)
         let key = sharedSecret.hkdfDerivedSymmetricKey(using: SHA256.self, salt: salt, sharedInfo: context, outputByteCount: 32)
         return try AES.GCM.open(AES.GCM.SealedBox(combined: ciphertext), using: key, authenticating: context)
     }
@@ -41,7 +48,7 @@ struct DeviceUnlockEnvelope: Codable, Sendable {
         return try seal(Data(passphrase.utf8), deviceKey: device.dataRepresentation, publicKey: device.publicKey, account: account)
     }
     func decrypt(account: String, context: LAContext) throws -> String {
-        guard version == 1 else { throw UnlockError.message("不支持此设备解锁数据版本，请重新启用系统解锁。") }
+        _ = try Self.context(account: account, version: version)
         let device = try SecureEnclave.P256.KeyAgreement.PrivateKey(dataRepresentation: deviceKey, authenticationContext: context)
         let peer = try P256.KeyAgreement.PublicKey(x963Representation: ephemeralPublicKey)
         // Authentication is enforced by the protected private-key operation itself.

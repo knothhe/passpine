@@ -1,4 +1,4 @@
-export const HOST = 'com.knothhe.passpine.neo';
+export const HOST = 'com.knothhe.passpine';
 export const PROTOCOL = 1;
 
 export type NativeAction = 'configure' | 'status' | 'list' | 'fetch' | 'save' | 'delete' | 'lock' | 'unlock' | 'generate' | 'copy';

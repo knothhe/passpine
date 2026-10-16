@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/knothhe/passpine-neo/client/app"
-	"github.com/knothhe/passpine-neo/client/nativehost"
+	"github.com/knothhe/passpine/client/app"
+	"github.com/knothhe/passpine/client/nativehost"
 )
 
 func preferencesReadFixture() (*application, chan func(), chan app.Request) {

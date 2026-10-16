@@ -13,19 +13,20 @@ fi
 go build -trimpath -ldflags='-s -w' -o "$root_dir/dist/passpine" ./cmd/passpine
 go build -trimpath -ldflags='-s -w' -o "$root_dir/dist/passpine-host" ./cmd/passpine-host
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  bundle="$root_dir/dist/Passpine Neo.app"
+  bundle="$root_dir/dist/Passpine.app"
   mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
   cp "$root_dir/dist/passpine" "$bundle/Contents/MacOS/passpine"
   cp "$root_dir/dist/passpine-host" "$bundle/Contents/MacOS/passpine-host"
   cp "$root_dir/dist/passpine-device-unlock" "$bundle/Contents/MacOS/passpine-device-unlock"
   cp "$root_dir/client/assets/Passpine.icns" "$bundle/Contents/Resources/Passpine.icns"
+  cp "$root_dir/client/assets/Passpine-monochrome.icns" "$bundle/Contents/Resources/Passpine-monochrome.icns"
   cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleName</key><string>Passpine Neo</string>
-<key>CFBundleDisplayName</key><string>Passpine Neo</string>
-<key>CFBundleIdentifier</key><string>com.knothhe.passpine.neo</string>
+<key>CFBundleName</key><string>Passpine</string>
+<key>CFBundleDisplayName</key><string>Passpine</string>
+<key>CFBundleIdentifier</key><string>com.knothhe.passpine</string>
 <key>CFBundleExecutable</key><string>passpine</string>
 <key>CFBundleIconFile</key><string>Passpine.icns</string>
 <key>CFBundlePackageType</key><string>APPL</string>
@@ -38,6 +39,6 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
 PLIST
   codesign --force --deep --sign - "$bundle"
   codesign --verify --deep --strict "$bundle"
-  ditto -c -k --sequesterRsrc --keepParent "$bundle" "$root_dir/dist/Passpine-Neo-0.1.0-macos-$(uname -m).zip"
+  ditto -c -k --sequesterRsrc --keepParent "$bundle" "$root_dir/dist/Passpine-0.1.0-macos-$(uname -m).zip"
   echo "Built: $bundle"
 fi

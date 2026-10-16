@@ -40,6 +40,105 @@ async function render(client: Client) {
   await act(async () => root.render(createElement(Theme, {}, createElement(App, { client }))));
 }
 
+function navigationFixture() {
+  const state: Snapshot = { configured: true, vaultId: 'first', vaultName: '测试密码库', locked: false, entriesVersion: 1, capabilities: [], entries: ['Alex', 'Blair', 'Casey'].map(name => ({ path: `example.test/${name}`, name, folder: 'example.test' })), matches: [] };
+  const client: Client = { demo: true, openOptions: async () => {}, copy: async () => {}, async request<T>() { return { ...state } as T; } };
+  return { client, state };
+}
+async function pressNavigation(target: Element, key: string, modifiers: KeyboardEventInit = {}) {
+  const event = new KeyboardEvent('keydown', { key, code: key.startsWith('Arrow') ? key : `Key${key.toUpperCase()}`, bubbles: true, cancelable: true, ...modifiers });
+  await act(async () => target.dispatchEvent(event));
+  return event;
+}
+
+describe('account list keyboard navigation', () => {
+  it.each([
+    ['n', { ctrlKey: true }, [0, 1, 2]],
+    ['p', { ctrlKey: true }, [2, 1, 0]],
+    ['ArrowDown', {}, [0, 1, 2]],
+    ['ArrowUp', {}, [2, 1, 0]],
+  ] as const)('moves with %s from search through entries and back to search', async (key, modifiers, order) => {
+    await render(navigationFixture().client);
+    const search = container.querySelector<HTMLInputElement>('input[aria-label="搜索密码库"]')!;
+    const entries = Array.from(container.querySelectorAll<HTMLButtonElement>('button[data-entry-path]'));
+    search.focus();
+    for (const index of order) {
+      expect((await pressNavigation(document.activeElement!, key, modifiers)).defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(entries[index]);
+    }
+    await pressNavigation(document.activeElement!, key, modifiers);
+    expect(document.activeElement).toBe(search);
+  });
+
+  it('moves from entry actions, supports held keys, and takes precedence over custom popup bindings', async () => {
+    localStorage.setItem('popupShortcuts', JSON.stringify([{ id: 'new', action: 'new', shortcut: 'Ctrl+N' }]));
+    await render(navigationFixture().client);
+    const copy = container.querySelector<HTMLButtonElement>('button[aria-label="复制用户名 Alex"]')!;
+    copy.focus();
+    await pressNavigation(copy, 'n', { ctrlKey: true });
+    expect(document.activeElement?.getAttribute('data-entry-path')).toBe('example.test/Blair');
+    expect(container.querySelector('form')).toBeNull();
+    await pressNavigation(document.activeElement!, 'n', { ctrlKey: true, repeat: true });
+    expect(document.activeElement?.getAttribute('data-entry-path')).toBe('example.test/Casey');
+  });
+
+  it('navigates only the filtered search results without changing the query', async () => {
+    await render(navigationFixture().client);
+    const search = container.querySelector<HTMLInputElement>('input[aria-label="搜索密码库"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'blair');
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(container.querySelectorAll('button[data-entry-path]')).toHaveLength(1);
+    await pressNavigation(search, 'p', { ctrlKey: true });
+    expect(document.activeElement?.getAttribute('data-entry-path')).toBe('example.test/Blair');
+    await pressNavigation(document.activeElement!, 'n', { ctrlKey: true });
+    expect(document.activeElement).toBe(search);
+    expect(search.value).toBe('blair');
+  });
+
+  it.each([
+    { ctrlKey: true, altKey: true },
+    { ctrlKey: true, metaKey: true },
+    { ctrlKey: true, shiftKey: true },
+    { metaKey: true },
+    { ctrlKey: true, isComposing: true },
+    {},
+  ])('does not intercept typing or other modifier combinations (%j)', async modifiers => {
+    await render(navigationFixture().client);
+    const search = container.querySelector<HTMLInputElement>('input[aria-label="搜索密码库"]')!;
+    search.focus();
+    expect((await pressNavigation(search, 'n', modifiers)).defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(search);
+  });
+
+  it('keeps empty searches focused', async () => {
+    const fixture = navigationFixture(); fixture.state.entries = [];
+    await render(fixture.client);
+    const search = container.querySelector<HTMLInputElement>('input[aria-label="搜索密码库"]')!;
+    search.focus();
+    expect((await pressNavigation(search, 'p', { ctrlKey: true })).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(search);
+  });
+
+  it('leaves the account menu trigger to its own navigation', async () => {
+    await render(navigationFixture().client);
+    const more = container.querySelector<HTMLButtonElement>('button[aria-label="更多操作 Alex"]')!;
+    more.focus();
+    expect((await pressNavigation(more, 'n', { ctrlKey: true })).defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(more);
+  });
+
+  it('does not intercept Ctrl+N/P inside account editor fields', async () => {
+    await render(navigationFixture().client);
+    await newAccount();
+    const input = container.querySelector<HTMLInputElement>('input[placeholder="path/to/entry（支持多级路径）"]')!;
+    input.focus();
+    for (const key of ['n', 'p']) expect((await pressNavigation(input, key, { ctrlKey: true })).defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(input);
+  });
+});
+
 describe('create an account from a locked popup', () => {
   it('places icon-only creation beside the domain and executes a stored custom shortcut through unlock', async () => {
     localStorage.setItem('popupShortcuts', JSON.stringify([{ id: 'new', action: 'new', shortcut: 'Alt+N' }]));
@@ -86,6 +185,60 @@ function deferred<T>() {
   const promise = new Promise<T>((accept, decline) => { resolve = accept; reject = decline; });
   return { promise, resolve, reject };
 }
+
+describe('account list primary action', () => {
+  function fillFixture(locked = false, matched = false, error?: Error) {
+    const state: Snapshot = { configured: true, vaultId: 'first', vaultName: '测试密码库', locked, entriesVersion: 1, capabilities: [], entries: [{ path: 'accounts/Alex', name: 'Alex', folder: 'accounts' }], matches: matched ? ['accounts/Alex'] : [], tab: { id: 1, url: 'https://example.test/login', hostname: 'example.test', secure: true } };
+    const requests: UIRequest[] = [];
+    const client: Client = {
+      demo: true, openOptions: async () => {}, copy: async () => {},
+      async request<T>(request: UIRequest): Promise<T> {
+        requests.push(request);
+        if (request.action === 'unlock') state.locked = false;
+        if (request.action === 'fill') {
+          if (error) throw error;
+          return { filled: 2 } as T;
+        }
+        return { ...state } as T;
+      },
+    };
+    return { client, state, requests };
+  }
+
+  it.each([[false, false], [false, true], [true, false], [true, true]])('fills from the entry body and stays in the list (locked=%s, matched=%s)', async (locked, matched) => {
+    const fixture = fillFixture(locked, matched);
+    await render(fixture.client);
+    await act(async () => container.querySelector<HTMLButtonElement>('button[data-entry-path]')!.click());
+    expect(fixture.requests.map(request => request.action)).toEqual(locked ? ['snapshot', 'unlock', 'snapshot', 'fill'] : ['snapshot', 'fill']);
+    expect(fixture.requests.at(-1)).toEqual({ action: 'fill', vaultId: 'first', entry: 'accounts/Alex', tab: fixture.state.tab });
+    expect(currentPage().dataset.popupPage).toBe('list');
+    expect(container.querySelector('[role="status"]')?.textContent).toContain('将填写 2 个登录字段');
+  });
+
+  it('shows a filling failure without opening details or associating the entry', async () => {
+    const fixture = fillFixture(false, false, new Error('请先将账号关联到当前网站。'));
+    await render(fixture.client);
+    await act(async () => container.querySelector<HTMLButtonElement>('button[data-entry-path]')!.click());
+    expect(fixture.requests.map(request => request.action)).toEqual(['snapshot', 'fill']);
+    expect(currentPage().dataset.popupPage).toBe('list');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('请先将账号关联到当前网站。');
+    expect(container.querySelector<HTMLButtonElement>('button[data-entry-path]')?.disabled).toBe(false);
+  });
+
+  it('keeps the copy icons independent from filling', async () => {
+    const fixture = fillFixture();
+    await render(fixture.client);
+    await clickAction('复制用户名 Alex');
+    await clickAction('复制密码 Alex');
+    expect(fixture.requests).toEqual([
+      { action: 'snapshot' },
+      { action: 'copy', vaultId: 'first', entry: 'accounts/Alex', field: 'username' },
+      { action: 'copy', vaultId: 'first', entry: 'accounts/Alex', field: 'password' },
+    ]);
+    expect(currentPage().dataset.popupPage).toBe('list');
+  });
+});
+
 describe('manual refresh feedback', () => {
   it.each([true, false])('shows immediate progress and completion feedback (success=%s)', async success => {
     const pending = deferred<Snapshot>();

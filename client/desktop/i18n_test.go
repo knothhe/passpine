@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/knothhe/passpine-neo/client/i18n"
+	"github.com/knothhe/passpine/client/i18n"
 )
 
 func TestEnglishInterfaceAndLanguageSwitchPreserveVaultData(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"runtime"
 
 	"github.com/egoist/mygo"
-	"github.com/knothhe/passpine-neo/client/i18n"
-	sidebar "github.com/knothhe/passpine-neo/client/internal/clientshell"
+	"github.com/knothhe/passpine/client/i18n"
+	sidebar "github.com/knothhe/passpine/client/internal/clientshell"
 )
 
 func (a *application) uiLocale() string {

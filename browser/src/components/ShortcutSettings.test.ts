@@ -32,19 +32,19 @@ async function renderSettings(firefox: boolean) { await act(async () => root.ren
 describe('shortcut settings interactions', () => {
   it('shows browser-assigned values, opens the customization page and refreshes after returning', async () => {
     await renderSettings(false);
-    expect(button('修改打开 Passpine Neo快捷键').textContent).toBe('AltL');
+    expect(button('修改打开 Passpine快捷键').textContent).toBe('AltL');
     expect(container.textContent).toContain('未设置');
-    await act(async () => button('修改打开 Passpine Neo快捷键').click());
+    await act(async () => button('修改打开 Passpine快捷键').click());
     expect(extension.tabs.create).toHaveBeenCalledWith({ url: 'chrome://extensions/shortcuts' });
     bindings[0]!.shortcut = 'Alt+K';
     await act(async () => window.dispatchEvent(new Event('focus')));
-    expect(button('修改打开 Passpine Neo快捷键').textContent).toBe('AltK');
+    expect(button('修改打开 Passpine快捷键').textContent).toBe('AltK');
   });
 
   it('records and saves a Firefox command and keeps Tab available for keyboard navigation', async () => {
     await renderSettings(true);
-    await act(async () => button('修改打开 Passpine Neo快捷键').click());
-    const input = button('修改打开 Passpine Neo快捷键');
+    await act(async () => button('修改打开 Passpine快捷键').click());
+    const input = button('修改打开 Passpine快捷键');
     const tab = new KeyboardEvent('keydown', { key: 'Tab', code: 'Tab', bubbles: true, cancelable: true });
     await act(async () => input.dispatchEvent(tab));
     expect(tab.defaultPrevented).toBe(false);
@@ -59,8 +59,8 @@ describe('shortcut settings interactions', () => {
   it('keeps an unsuccessful Firefox edit open and exposes a retryable error', async () => {
     extension.commands.update.mockRejectedValue(new Error('快捷键冲突'));
     await renderSettings(true);
-    await act(async () => button('修改打开 Passpine Neo快捷键').click());
-    await act(async () => button('修改打开 Passpine Neo快捷键').dispatchEvent(new KeyboardEvent('keydown', { key: 'K', code: 'KeyK', altKey: true, bubbles: true, cancelable: true })));
+    await act(async () => button('修改打开 Passpine快捷键').click());
+    await act(async () => button('修改打开 Passpine快捷键').dispatchEvent(new KeyboardEvent('keydown', { key: 'K', code: 'KeyK', altKey: true, bubbles: true, cancelable: true })));
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('快捷键冲突');
     expect(container.textContent).not.toContain('快捷键已保存');
   });

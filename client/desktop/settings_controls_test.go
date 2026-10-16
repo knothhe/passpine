@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/knothhe/passpine-neo/client/app"
+	"github.com/knothhe/passpine/client/app"
 )
 
 func TestDurationChoicesPreserveSavedValuesWithinThreeOptions(t *testing.T) {
@@ -16,8 +16,9 @@ func TestDurationChoicesPreserveSavedValuesWithinThreeOptions(t *testing.T) {
 		presets []int
 		want    []int
 	}{
-		{"idle default", 10, []int{5, 10, 30}, []int{5, 10, 30}},
-		{"idle saved", 15, []int{5, 10, 30}, []int{5, 15, 30}},
+		{"idle default", 1, []int{1, 10, 30}, []int{1, 10, 30}},
+		{"idle previous preset", 5, []int{1, 10, 30}, []int{5, 10, 30}},
+		{"idle saved", 15, []int{1, 10, 30}, []int{1, 15, 30}},
 		{"session saved", 120, []int{30, 60, 480}, []int{30, 120, 480}},
 		{"clipboard saved", 120, []int{15, 30, 60}, []int{15, 30, 120}},
 		{"sync disabled", 0, []int{0, 15, 30}, []int{0, 15, 30}},
@@ -45,6 +46,32 @@ func TestDurationChoicesPreserveSavedValuesWithinThreeOptions(t *testing.T) {
 	}
 	if value != 15 {
 		t.Fatal("an explicit duration selection did not update the setting")
+	}
+}
+
+func TestIdleLockKeepsPresetsAlongsideSavedDuration(t *testing.T) {
+	a := fixture()
+	a.page = "settings"
+	a.settingsState.Category = "security"
+	a.state.Settings.IdleMinutes = 5
+	view := ui.NewTester(testView(a), 1120, 760)
+	if a.settings.IdleMinutes != 5 {
+		t.Fatal("rendering changed the previously saved idle duration")
+	}
+	for _, label := range []string{"1 分钟", "5 分钟", "10 分钟", "30 分钟"} {
+		if !view.HasText(label) {
+			t.Fatalf("idle duration hid a preset or the saved value: %s", label)
+		}
+	}
+	if err := view.Click("1 分钟"); err != nil {
+		t.Fatal(err)
+	}
+	view.Frame()
+	if a.settings.IdleMinutes != 1 || view.HasText("5 分钟") {
+		t.Fatal("choosing one minute did not replace the saved custom option")
+	}
+	if got := idleDurationPresets(a.settings.IdleMinutes); !reflect.DeepEqual(got, []int{1, 10, 30}) {
+		t.Fatalf("choosing a preset did not restore the three idle choices: %v", got)
 	}
 }
 

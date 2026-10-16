@@ -4,12 +4,12 @@ export const FILL_COMMAND = 'fill-best';
 // Keep the command IDs stable so browser-managed custom bindings survive updates.
 // The defaults match browserpasspine-extension's Chromium and Firefox manifests.
 export const extensionCommands = {
-  [OPEN_COMMAND]: { suggested_key: { default: 'Ctrl+Shift+L', mac: 'Command+Shift+L' }, description: '打开 Passpine Neo' },
+  [OPEN_COMMAND]: { suggested_key: { default: 'Ctrl+Shift+L', mac: 'Command+Shift+L' }, description: '打开 Passpine' },
   [FILL_COMMAND]: { suggested_key: { default: 'Ctrl+Shift+F', mac: 'Command+Shift+F' }, description: '填充匹配账号' },
 };
 
 export const shortcutDefinitions = [
-  { name: OPEN_COMMAND, label: '打开 Passpine Neo' },
+  { name: OPEN_COMMAND, label: '打开 Passpine' },
   { name: FILL_COMMAND, label: '填充匹配账号' },
 ] as const;
 

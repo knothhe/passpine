@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <title>Passpine — botanical key</title>
+  <rect x="96" y="96" width="832" height="832" rx="184" fill="#fcfbf9"/>
+  <g fill="#bd481b">
+    <path d="M467 548 C371 536 344 446 366 382 C444 398 489 466 467 548 Z"/>
+    <path d="M501 514 C545 441 632 430 689 458 C657 533 571 558 501 514 Z"/>
+    <path d="M563 451 C478 428 464 346 490 288 C564 315 594 379 563 451 Z"/>
+    <path d="M599 415 C635 347 707 334 757 358 C731 425 660 453 599 415 Z"/>
+    <path d="M658 357 C631 281 684 226 746 219 C766 286 727 345 658 357 Z"/>
+  </g>
+  <g stroke="#bd481b" stroke-width="52" stroke-linecap="round">
+    <path d="M402 613 L695 320"/>
+    <circle cx="345" cy="670" r="70"/>
+  </g>
+</svg>

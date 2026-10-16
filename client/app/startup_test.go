@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/knothhe/passpine-neo/client/nativehost"
+	"github.com/knothhe/passpine/client/nativehost"
 )
 
 func TestBrowserEndpointPublishesOnlyAfterActivityInitialization(t *testing.T) {

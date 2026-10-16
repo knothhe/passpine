@@ -1,8 +1,8 @@
 package app
 
 import (
-	"github.com/knothhe/passpine-neo/client/deviceunlock"
-	"github.com/knothhe/passpine-neo/client/nativehost"
+	"github.com/knothhe/passpine/client/deviceunlock"
+	"github.com/knothhe/passpine/client/nativehost"
 )
 
 // Request is shared by the native UI and the browser native-messaging boundary.
@@ -71,6 +71,7 @@ type Activity struct {
 type Settings struct {
 	CloseToTray           bool   `json:"closeToTray"`
 	Theme                 string `json:"theme"`
+	ThemeStyle            string `json:"themeStyle"`
 	Language              string `json:"language"`
 	IdleMinutes           int    `json:"idleMinutes"`
 	MaxSessionMinutes     int    `json:"maxSessionMinutes"`

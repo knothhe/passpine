@@ -2,13 +2,17 @@ import { Flex, Heading, IconButton, Text, Tooltip } from '@radix-ui/themes';
 import { ArrowLeft, Copy } from 'lucide-react';
 import type { Entry } from '../lib/types';
 import appIconURL from '../assets/app-icon.png';
+import monochromeIconURL from '../assets/app-icon-monochrome.png';
+import { useAppearance } from './Provider';
+import type { ThemeStyle } from '../lib/appearance';
 
-export function ApplicationIcon({ size = 24 }: { size?: number }) {
-  return <img src={appIconURL} alt="" width={size} height={size} aria-hidden="true" style={{ display: 'block', objectFit: 'contain', flexShrink: 0 }}/>;
+export function ApplicationIcon({ size = 24, style }: { size?: number; style?: ThemeStyle }) {
+  const { preferences } = useAppearance();
+  return <img src={(style ?? preferences.style) === 'monochrome' ? monochromeIconURL : appIconURL} alt="" width={size} height={size} aria-hidden="true" style={{ display: 'block', objectFit: 'contain', flexShrink: 0 }}/>;
 }
 
 export function Brand() {
-  return <Flex align="center" gap="2"><span className="brand-mark" style={{ background: 'transparent', width: 30, height: 30 }}><ApplicationIcon size={30}/></span><span className="brand-name">PassPine</span></Flex>;
+  return <Flex align="center" gap="2"><span className="brand-mark" style={{ background: 'transparent', width: 30, height: 30 }}><ApplicationIcon size={30}/></span><span className="brand-name">Passpine</span></Flex>;
 }
 
 export function ActionIcon({ label, children, onClick, disabled, loading }: { label: string; children: React.ReactNode; onClick(): void; disabled?: boolean; loading?: boolean }) {

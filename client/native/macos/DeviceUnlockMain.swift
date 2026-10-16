@@ -23,7 +23,7 @@ struct DeviceUnlockMain {
         var response = Response()
         let context = LAContext()
         context.localizedFallbackTitle = "使用 Mac 登录密码"
-        context.localizedReason = "解锁 Passpine Neo 密码库"
+        context.localizedReason = "解锁 Passpine 密码库"
         context.touchIDAuthenticationAllowableReuseDuration = 0
         defer { context.invalidate() }
         do {
@@ -39,7 +39,7 @@ struct DeviceUnlockMain {
                     guard let secret = request.secret, let passphrase = String(data: secret, encoding: .utf8), !passphrase.isEmpty else {
                         throw UnlockError.message("请输入私钥口令")
                     }
-                    try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "为 Passpine Neo 启用 Touch ID 或 Mac 登录密码解锁")
+                    try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "为 Passpine 启用 Touch ID 或 Mac 登录密码解锁")
                     let envelope: DeviceUnlockEnvelope = try await withCheckedThrowingContinuation { continuation in
                         DispatchQueue.global(qos: .userInitiated).async {
                             do {

@@ -5,7 +5,7 @@ root_dir="$(cd "$(dirname "$0")/.." && pwd -P)"
 case "$(uname -s)" in
   Darwin)
     install_dir="${1:-$HOME/Applications}"
-    source_bundle="$root_dir/dist/Passpine Neo.app"
+    source_bundle="$root_dir/dist/Passpine.app"
     [[ -d "$source_bundle" ]] || { echo "Missing client build. Run make client:build first." >&2; exit 1; }
     ;;
   Linux)
@@ -24,12 +24,12 @@ case "$install_dir/" in
 esac
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  destination="$install_dir/Passpine Neo.app"
+  destination="$install_dir/Passpine.app"
   if [[ -L "$destination" || ( -e "$destination" && ! -d "$destination" ) ]]; then
     echo "Client destination must be a real directory, not a symlink or file: $destination" >&2
     exit 1
   fi
-  staging="$(mktemp -d "$install_dir/.passpine-neo.XXXXXX")"
+  staging="$(mktemp -d "$install_dir/.passpine.XXXXXX")"
   backup="$staging/previous.app"
   cleanup() {
     if [[ -e "$backup" ]]; then
@@ -39,12 +39,12 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     fi
   }
   trap cleanup EXIT
-  ditto "$source_bundle" "$staging/Passpine Neo.app"
-  codesign --verify --deep --strict "$staging/Passpine Neo.app"
+  ditto "$source_bundle" "$staging/Passpine.app"
+  codesign --verify --deep --strict "$staging/Passpine.app"
   if [[ -e "$destination" ]]; then
     mv "$destination" "$backup"
   fi
-  if ! mv "$staging/Passpine Neo.app" "$destination"; then
+  if ! mv "$staging/Passpine.app" "$destination"; then
     if [[ -e "$backup" ]]; then
       mv "$backup" "$destination"
     fi

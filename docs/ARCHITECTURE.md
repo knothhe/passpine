@@ -6,6 +6,8 @@
 
 密码库使用 ProtonMail 的 Go OpenPGP 实现；随机密码来自 `crypto/rand`。Git 调用系统二进制，禁用仓库 hooks 和 ext 协议，不在命令参数或日志里写私钥口令。应用自身不使用 Rust / Cargo。
 
+主题风格与明暗外观分开管理。客户端通过 Shell 的 `Theme` 回调和 `Context.SetTheme` 向 MyGo / Onevra 控件提供集中式语义调色板，明暗继续使用 `mygo.Theme.SetSource`，保留系统文字缩放与高对比度设置。扩展通过 Radix `Theme` 的 `appearance`、`accentColor` 和 `grayColor`，配合集中的语义 CSS token，覆盖弹窗、设置页和弹出层。陶土橙保留 Onevra 配色；黑白采用 racomi / magpie 的冷灰基底与黑白主操作。主题及图标选择分别保存在客户端偏好与扩展本地存储中。扩展工具栏使用主题色底、白色图形，界面及客户端图标使用浅色底、主题色图形；错误、警告与成功仍使用语义提示色。
+
 首次打开已有库时，收集根目录和非隐藏子目录的 `.gpg-id`，通过系统 GPG 导出对应公钥，并在 Go 中校验匹配是否唯一，再按完整主钥指纹请求可导出的私钥。口令通过标准输入交给 GPG，导出仅在内存中传递，验证所有现有密文和收件人策略后才保存受口令保护的本机密钥副本。后续使用 Go 解锁与加解密；锁定期间结束的导入不能恢复会话。GPG 操作有超时和输出大小限制，保留 `GNUPGHOME`，不读取个人密钥文件格式。接口参考 [GnuPG 输入与输出文档](https://www.gnupg.org/documentation/manuals/gnupg/GPG-Input-and-Output.html)。
 
 macOS 系统解锁由随应用签名的 Swift 辅助程序实现。默认开启，在支持 Secure Enclave 和系统用户验证的 Mac 上，首次用私钥口令解锁后请求系统验证，将口令封装为设备绑定的 P256 ECDH / HKDF-SHA256 / AES-GCM 密文。非永久设备密钥封装与密文保存在本机密钥目录，绑定当前密码库；真正的私钥运算由 `.userPresence` 强制执行 Touch ID 或 Mac 登录密码验证。登录密码由系统处理，应用不读取。辅助程序通过受限大小的标准输入 / 输出交换数据，锁定会取消验证，过期结果不能恢复会话。关闭系统解锁会删除所有密码库的设备封装；不支持的设备和验证失败时仍可使用私钥口令。

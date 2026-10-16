@@ -9,7 +9,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-	"github.com/knothhe/passpine-neo/client/app"
+	"github.com/knothhe/passpine/client/app"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
 )
@@ -140,13 +140,14 @@ func quickSearchOptions(area mygo.Rectangle) mygo.WindowOptions {
 		Title: "Passpine Quick Search", Width: bounds.Width, Height: bounds.Height,
 		X: bounds.X, Y: bounds.Y, Hidden: true, Panel: true, Frameless: true,
 		DisableResize:   true,
-		BackgroundColor: "light-dark(#f9f9f9, #1d1d1d)",
+		BackgroundColor: nativeThemeBackground(app.ThemeStyleOnevra),
 	}
 }
 
 func (a *application) newQuickSearchWindow() {
 	area := mygo.Screen.DisplayNearestPoint(mygo.Screen.CursorScreenPoint()).WorkArea
 	options := quickSearchOptions(area)
+	options.BackgroundColor = nativeThemeBackground(a.themeSettings().ThemeStyle)
 	options.Title = a.t("Passpine 快速搜索")
 	if directory, ok := a.service.(interface{ DataDirectory() string }); ok {
 		a.quick.positionPath = filepath.Join(directory.DataDirectory(), quickSearchPositionFile)
@@ -159,6 +160,7 @@ func (a *application) newQuickSearchWindow() {
 	options.Content = ui.View(a.quickSearchView)
 	window := mygo.NewWindow(options)
 	a.quick.window = window
+	a.updateNativeIcons()
 	// NewWindow treats (0, 0) as centering; an explicit saved origin must win.
 	if a.quick.positionSaved {
 		window.SetBounds(mygo.Rectangle{X: options.X, Y: options.Y, Width: options.Width, Height: options.Height})
@@ -291,7 +293,7 @@ func (a *application) prepareQuickSearchList() {
 }
 
 func (a *application) quickSearchView(c *ui.Context) {
-	c.SetTheme(clientTheme(c))
+	c.SetTheme(a.clientTheme(c))
 	a.prepareQuickSearchList()
 	c.OnShortcut(0, ui.KeyEscape, a.hideQuickSearch)
 	c.OnShortcut(ui.Cmd, ui.KeyF, func() { a.quick.searchRef.Focus() })

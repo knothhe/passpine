@@ -6,7 +6,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-	"github.com/knothhe/passpine-neo/client/app"
+	"github.com/knothhe/passpine/client/app"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
 )
@@ -206,6 +206,9 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 		}
 	}
 	general := []components.SettingsItem{
+		{ID: "theme-style", Title: a.t("主题风格"), Description: a.t("主题配色和应用图标一起切换。"), Build: func(c *ui.Context) {
+			selectValue(c, &a.settings.ThemeStyle, a.t("主题风格"), []string{app.ThemeStyleOnevra, app.ThemeStyleMonochrome}, []string{a.t("陶土橙"), a.t("黑白")})
+		}},
 		{ID: "theme", Title: a.t("外观"), Build: func(c *ui.Context) {
 			selectValue(c, &a.settings.Theme, a.t("外观"), []string{"system", "light", "dark"}, []string{a.t("跟随系统"), a.t("浅色"), a.t("深色")})
 		}},
@@ -224,7 +227,7 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 			})
 		}},
 		{ID: "idle", Title: a.t("空闲自动锁定"), Build: func(c *ui.Context) {
-			a.durationSegments(c, &a.settings.IdleMinutes, a.t("空闲自动锁定"), []int{5, 10, 30}, a.t("分钟"))
+			a.durationSegments(c, &a.settings.IdleMinutes, a.t("空闲自动锁定"), idleDurationPresets(a.settings.IdleMinutes), a.t("分钟"))
 		}},
 		{ID: "max", Title: a.t("最长解锁时间"), Build: func(c *ui.Context) {
 			a.durationSegments(c, &a.settings.MaxSessionMinutes, a.t("最长解锁时间"), []int{30, 60, 480}, a.t("分钟"))
@@ -321,6 +324,9 @@ func (a *application) settingsView(c *ui.Context) {
 		a.setShortcutRecording(false)
 	}
 	if a.settings != a.settingsObserved {
+		if a.settings.Theme != a.settingsObserved.Theme || a.settings.ThemeStyle != a.settingsObserved.ThemeStyle {
+			a.applyTheme()
+		}
 		a.settingsObserved = a.settings
 		a.settingsDirty = true
 		a.saveSettingsAutomatically()

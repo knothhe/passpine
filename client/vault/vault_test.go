@@ -207,17 +207,24 @@ func TestIdleAndMaximumExpiry(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
 		idle, maximum time.Duration
-	}{{"idle", 10 * time.Second, time.Hour}, {"maximum", time.Hour, 10 * time.Second}} {
+		elapsed       time.Duration
+	}{
+		{"default idle", 0, 0, time.Minute},
+		{"idle", 10 * time.Second, time.Hour, 11 * time.Second},
+		{"maximum", time.Hour, 10 * time.Second, 11 * time.Second},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v := newFixture(t)
-			v.SetTimeouts(tc.idle, tc.maximum)
+			if tc.idle > 0 {
+				v.SetTimeouts(tc.idle, tc.maximum)
+			}
 			now := time.Now()
 			v.session.Lock()
 			v.opened = now
 			v.touched = now
 			v.clock = func() time.Time { return now }
 			v.session.Unlock()
-			now = now.Add(11 * time.Second)
+			now = now.Add(tc.elapsed)
 			if v.Status().Unlocked {
 				t.Fatal("expired session remained open")
 			}

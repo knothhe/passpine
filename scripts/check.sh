@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
-test_dir="$(mktemp -d "${TMPDIR:-/tmp}/passpine-neo-check.XXXXXX")"
+test_dir="$(mktemp -d "${TMPDIR:-/tmp}/passpine-check.XXXXXX")"
 trap 'rm -rf "$test_dir"' EXIT
 cd "$root_dir/client"
 if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -12,7 +12,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   "$test_dir/device-unlock-test"
 fi
 go build -o "$test_dir/passpine-host-test" ./cmd/passpine-host
-PASSPINE_NEO_TEST_HOST="$test_dir/passpine-host-test" go test -race ./...
+PASSPINE_TEST_HOST="$test_dir/passpine-host-test" go test -race ./...
 go vet ./...
 cd "$root_dir/browser"
 npm run typecheck

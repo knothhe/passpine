@@ -18,8 +18,8 @@ import (
 	"time"
 )
 
-const Name = "com.knothhe.passpine.neo"
-const FirefoxID = "passpine-neo@knothhe.com"
+const Name = "com.knothhe.passpine"
+const FirefoxID = "passpine@knothhe.com"
 
 // ChromiumID is tied to the checked-in browser manifest public key.
 const ChromiumID = "obnlebeedcbbchadakacilopfdaifgjh"
@@ -29,7 +29,7 @@ const MaxFrame = 1024 * 1024
 // Keep the relay alive until the client finishes or cancels that interaction.
 const relayTimeout = 130 * time.Second
 
-var ErrAlreadyRunning = errors.New("Passpine Neo is already running")
+var ErrAlreadyRunning = errors.New("Passpine is already running")
 
 type Endpoint struct {
 	Address string `json:"address"`
@@ -53,14 +53,14 @@ type Server struct {
 }
 
 func DataDir() (string, error) {
-	if d := os.Getenv("PASSPINE_NEO_HOME"); d != "" {
+	if d := os.Getenv("PASSPINE_HOME"); d != "" {
 		return filepath.Abs(d)
 	}
 	base, e := os.UserConfigDir()
 	if e != nil {
 		return "", e
 	}
-	return filepath.Join(base, "Passpine Neo"), nil
+	return filepath.Join(base, "Passpine"), nil
 }
 func ReadFrame(r io.Reader) ([]byte, error) {
 	var header [4]byte

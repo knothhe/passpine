@@ -1,5 +1,5 @@
 const messages: Record<string, string> = {
-  app_unavailable: '请先打开 PassPine 客户端，再重新连接。',
+  app_unavailable: '请先打开 Passpine 客户端，再重新连接。',
   native_connection_failed: '尚未连接客户端。请在客户端的「浏览器连接」中安装 Native Messaging Host。',
   background_unavailable: '扩展后台未响应，请重新打开扩展或在扩展管理页重新加载。',
   invalid_response: '客户端返回了无法识别的响应，请重新连接客户端。',

@@ -9,6 +9,59 @@ import (
 	"time"
 )
 
+func TestIdleLockDefaultsAndSavedPreferences(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		contents string
+		minutes  int
+	}{
+		{"fresh", "", 1},
+		{"legacy without idle duration", `{"settings":{"theme":"dark"}}`, 1},
+		{"previous preset", `{"settings":{"idleMinutes":5}}`, 5},
+		{"previous default", `{"settings":{"idleMinutes":10}}`, 10},
+		{"custom duration", `{"settings":{"idleMinutes":15}}`, 15},
+		{"longer preset", `{"settings":{"idleMinutes":30}}`, 30},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if test.contents != "" {
+				if err := os.WriteFile(filepath.Join(dir, "preferences.json"), []byte(test.contents), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			s, err := New(Options{DataDir: dir})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = s.Close() })
+			settings := must(t, s, Request{Action: "settings"}).Settings
+			if settings.IdleMinutes != test.minutes {
+				t.Fatalf("loaded idle duration = %d, want %d", settings.IdleMinutes, test.minutes)
+			}
+			v, err := s.newVault(filepath.Join(dir, "vault"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer v.Close()
+			if v.Config().IdleTimeout != time.Duration(test.minutes)*time.Minute {
+				t.Fatal("vault session did not use the configured idle duration")
+			}
+			must(t, s, Request{Action: "settings", Settings: &settings})
+			if err := s.Close(); err != nil {
+				t.Fatal(err)
+			}
+			reopened, err := New(Options{DataDir: dir})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reopened.Close()
+			if got := must(t, reopened, Request{Action: "settings"}).Settings.IdleMinutes; got != test.minutes {
+				t.Fatalf("restart changed saved idle duration to %d, want %d", got, test.minutes)
+			}
+		})
+	}
+}
+
 func TestActivityDefaultsAndLegacyPreferences(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "preferences.json"), []byte(`{"settings":{"theme":"dark","language":"en","clipboardSeconds":45}}`), 0600); err != nil {

@@ -1,8 +1,10 @@
-# PassPine Neo 浏览器伴侣
+# Passpine 浏览器插件
 
-WXT + Vite + TypeScript + React，使用 Radix Themes 可访问组件与 Lucide 图标。颜色、圆角与原生客户端的 Onevra 主题一致；不在扩展内嵌入 WebView 客户端，也不包含 Rust。
+WXT + Vite + TypeScript + React，使用 Radix Themes 可访问组件与 Lucide 图标。支持与客户端一致的陶土橙、黑白两套主题风格，以及跟随系统 / 浅色 / 深色模式；不在扩展内嵌入 WebView 客户端，也不包含 Rust。
 
-工具栏、界面品牌和页签图标统一从客户端 `client/assets/Passpine.icns` 导出，生成方式见 [应用图标说明](../client/assets/README.md)。界面控件使用 Radix Themes，功能操作图标使用 Lucide，配色来源为 Onevra 的公开主题。
+两套植物钥匙图标随主题风格切换：界面品牌和页签使用暖白底 / 陶土橙图形，或白底 / 黑色图形；浏览器工具栏保留主题色底 / 白色图形，黑白风格为黑底 / 白色图形。图标由客户端 `client/assets/generate.swift` 的矢量几何生成，包含 256px 界面资源与 16/32/48/128px 扩展资源；16px 版本简化枝叶细节。生成方式见 [应用图标说明](../client/assets/README.md)。
+
+设置页「外观」中选择主题风格及明暗模式，自动保存到扩展本地存储，并实时更新已打开的弹窗和设置页；工具栏图标在后台启动及设置变化时同步更新。客户端和扩展分别保存外观偏好。主题使用现有 Radix `Theme` 的 `appearance`、`accentColor`、`grayColor`，由 `src/components/theme.css` 集中提供语义色彩；组件及 Radix 弹出层继承主题。陶土橙延续 Onevra，黑白参考 Racomi / Magpie 的中性灰表面并使用黑白主色。
 
 ## 开发与构建
 
@@ -19,8 +21,8 @@ npm run zip
 客户端设置 → 浏览器会检测已安装的浏览器，可逐项注册或修复本机 Native Messaging Host。扩展身份固定为：
 
 - Chrome：`obnlebeedcbbchadakacilopfdaifgjh`
-- Firefox：`passpine-neo@knothhe.com`
-- Native host：`com.knothhe.passpine.neo`
+- Firefox：`passpine@knothhe.com`
+- Native host：`com.knothhe.passpine`
 
 Chrome manifest 的 `key` 是本仓库生成的公钥，仅用于固定开发版 ID；没有保留私钥。
 
@@ -32,6 +34,8 @@ npm run preview
 
 打开 `http://127.0.0.1:5174/`。这是显式 demo 入口，使用独立的虚构数据，不连接 Native Messaging，不读真实密码库。真实扩展的 entrypoints 不导入 demo client；连接失败时只呈现连接失败状态，不会回退到示例数据。
 
+`/?view=options` 预览设置页。`style=onevra|monochrome` 和 `theme=system|light|dark` 可为预览指定初始外观，例如 `/?view=options&style=monochrome&theme=dark`；之后可直接操作设置页切换。预览外观独立保存到当前预览站点的 `localStorage`，不会修改已安装扩展的设置；不带参数重新打开时恢复上次预览外观。
+
 ## 组件边界
 
 `src/components/AccountList.tsx` 负责可复用账号列表，`Primitives.tsx` 包含账号头像、操作按钮及凭证字段；`EditorForm.tsx`、`Generator.tsx`、`ConnectionState.tsx` 分别实现编辑、生成器和连接状态。`App.tsx` 负责弹窗状态与业务编排；`Options.tsx` 负责连接指引。新建、编辑和生成器直接在扩展弹窗内切换页面，使用统一导航、滚动内容和固定操作栏。列表去除品牌标题栏，域名旁放置图标新建按钮；密码库、连接状态、刷新、锁定及设置集中在底部。手动刷新立即显示旋转图标并禁用重复点击，完成后显示成功或失败结果。设置页采用有阅读宽度上限的响应式分区。
@@ -39,6 +43,8 @@ npm run preview
 弹窗与旧插件一致固定为 380×460 CSS px，首帧占位与就绪状态尺寸一致。详情与列表共用 13px 主文字和 50px 信息行，填充、编辑与删除集中在顶部图标操作区；长字段省略并提供完整悬浮提示，展开的长密码和备注在正文滚动。生成器沿用客户端布局：单行密码预览和刷新、长度滑块与可输入数值、四类等宽字符按钮、排除混淆字符，支持 8–128 位；生成期间可继续调整，仅允许复制或使用最新选项对应的结果。
 
 快捷键设置参考 Readomi 的键帽录制交互，支持 Esc 取消、Delete / Backspace 清除。弹窗快捷键可添加、删除并选择搜索、新建、刷新、锁定、设置、复制、填充或编辑操作，检测组合冲突并存储在扩展本地，已打开的弹窗实时更新。浏览器全局命令遵循浏览器限制：Firefox 可直接录制修改，Chromium 点击键帽跳转浏览器快捷键设置。
+
+账号列表支持 `Ctrl+N` / `Ctrl+P` 和上下方向键选择条目。搜索框向下进入首项、向上进入末项，越过列表首尾返回搜索框；筛选结果沿用相同操作。点击条目正文或选中条目后按 Enter 均填充到当前网页，查看详情使用右侧详情图标；填充仍须通过网站关联校验。列表导航优先于相同的自定义弹窗快捷键，编辑表单和更多菜单保留自身的键盘操作。
 
 列表采用连续排列的紧凑布局，网站路径在条目名称上方，当前网站匹配条目优先并显示行内标记，不额外分组。操作结果以内联反馈显示在底部状态区上方，不遮挡账号操作。每个条目依次提供用户名、密码、详情、更多操作，使用 Lucide 图标和当前主题色悬停效果。锁定时默认保留名称和本地搜索；显式读取、复制或填充会自动请求客户端的系统验证弹窗，成功后继续原操作。未配置系统解锁时会唤出客户端；名称列表和 OTP 定时刷新不会触发验证。
 
@@ -61,6 +67,6 @@ npm run preview
 
 视觉检查覆盖列表、详情、新建、编辑及错误、生成器、空库、空搜索、未配置、未连接、锁定、设置和确认框；补齐 Radix 弹出层的亮色 / 暗色主题变量，避免透明背景。
 
-测试覆盖 Native Port 复用与断线不重放、发送者边界、协议字段白名单、域名伪装、路径验证、编辑保留字段、全库搜索，以及真实 DOM 的字段选择、事件触发、不提交和 URL/frame 核验。
+测试覆盖 Native Port 复用与断线不重放、发送者边界、协议字段白名单、域名伪装、路径验证、编辑保留字段、全库搜索，以及真实 DOM 的字段选择、事件触发、不提交和 URL/frame 核验。外观测试覆盖存储恢复与异常值、跨页面实时切换、系统明暗变化、图标 / 页签 / Radix 弹出层主题、保存失败，以及后台启动读取与后续设置更新的竞态。
 
 验证边界：已运行 TypeScript 检查、纯逻辑/DOM 回归测试和 Chrome/Firefox 构建，并通过内置浏览器验收显式 demo 界面。尚未将扩展加载到用户的真实 Chrome/Firefox 配置进行完整 Native Messaging + 真实网站端到端验收。

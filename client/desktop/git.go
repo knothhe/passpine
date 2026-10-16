@@ -3,7 +3,7 @@ package desktop
 import (
 	"time"
 
-	"github.com/knothhe/passpine-neo/client/app"
+	"github.com/knothhe/passpine/client/app"
 )
 
 // Git owns no decrypted UI state and must not hold the desktop's credential

@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/knothhe/passpine-neo/client/app"
+	"github.com/knothhe/passpine/client/app"
 )
 
 type generatorState struct {

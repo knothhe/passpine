@@ -70,7 +70,7 @@ func New(config Config) (*Vault, error) {
 		}
 	}
 	if config.IdleTimeout <= 0 {
-		config.IdleTimeout = 10 * time.Minute
+		config.IdleTimeout = time.Minute
 	}
 	if config.MaximumSession <= 0 {
 		config.MaximumSession = time.Hour

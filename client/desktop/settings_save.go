@@ -3,7 +3,7 @@ package desktop
 import (
 	"time"
 
-	"github.com/knothhe/passpine-neo/client/app"
+	"github.com/knothhe/passpine/client/app"
 )
 
 // Coalesce changes while a save is in flight; keep the latest local values.
