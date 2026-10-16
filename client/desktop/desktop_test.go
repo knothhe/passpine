@@ -50,7 +50,7 @@ func testView(a *application) func(*ui.Context) {
 	return func(c *ui.Context) {
 		c.SetTheme(clientTheme(c))
 		ui.Row(c).Fill().Children(func() {
-			ui.Column(c).Width(310).FillHeight().Background(c.Theme().Surface).Children(func() {
+			ui.Column(c).Width(defaultSidebarWidth).FillHeight().Background(c.Theme().Surface).Children(func() {
 				a.sidebarView(c)
 				ui.Row(c).FillWidth().Height(44).Padding(6, 12).AlignItems(ui.Center).Children(func() { a.sidebarToolbar(c) })
 			})
@@ -60,7 +60,7 @@ func testView(a *application) func(*ui.Context) {
 			a.historyControls(c)
 			iconButton(c, lucide.PanelLeft(), a.t("切换侧栏"), components.ButtonGhost)
 		})
-		ui.Row(c).Absolute().Top(0).Left(310).Right(0).Height(48).Padding(8, 16).Children(func() { a.header(c) })
+		ui.Row(c).Absolute().Top(0).Left(defaultSidebarWidth).Right(0).Height(48).Padding(8, 16).Children(func() { a.header(c) })
 		components.WithLocalization(c, components.Localization{CloseToast: "关闭提示"}, func() { components.Toasts(c) })
 	}
 }

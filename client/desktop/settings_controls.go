@@ -376,7 +376,8 @@ func (a *application) gitSettingsStatus(c *ui.Context) {
 }
 
 func (a *application) gitHeaderStatus(c *ui.Context) {
-	ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(6).Children(func() {
+	status := ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(6).Tooltip(a.gitStatusDescription())
+	status.Children(func() {
 		if a.state.GitSyncing {
 			components.ProgressRing(c, -1).Size(14, 14).Label(a.t("正在同步密码库"))
 		} else {
@@ -386,7 +387,8 @@ func (a *application) gitHeaderStatus(c *ui.Context) {
 			}
 			components.Icon(c, icon).Size(14, 14).TextColor(color)
 		}
-		label := components.Text(c, a.gitStatusLabel()).FontSize(11).TextColor(c.Theme().TextMuted).SingleLine()
-		components.Tooltip(c, label, a.gitStatusDescription())
+		if a.mainContentWidth(c) >= 540 {
+			components.Text(c, a.gitStatusLabel()).FontSize(11).TextColor(c.Theme().TextMuted).SingleLine()
+		}
 	})
 }

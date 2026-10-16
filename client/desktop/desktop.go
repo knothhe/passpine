@@ -24,6 +24,8 @@ type Backend interface {
 	Execute(app.Request) app.Response
 }
 
+const defaultSidebarWidth = 380
+
 type application struct {
 	service                                                              Backend
 	runOnMain                                                            func(func())
@@ -36,6 +38,9 @@ type application struct {
 	activeRequestAction                                                  string
 	initializing                                                         bool
 	detailLoadingStarted                                                 time.Time
+	detailTransition                                                     detailTransitionState
+	detailSelectionSerial                                                uint64
+	detailScroll                                                         ui.ScrollState
 	pendingSelection, pendingSelectionVaultID                            string
 	pendingSelectionGeneration                                           uint64
 	pendingCopyEntry, pendingCopyVaultID                                 string
@@ -167,7 +172,7 @@ func Run(service *app.Service) error {
 		a.initializing = true
 		a.shell = sidebar.NewShell(sidebar.ShellOptions{
 			Hidden: true, Title: "Passpine Neo", Width: 1120, Height: 760, MinWidth: 860, MinHeight: 620,
-			StateKey: "passpine-main", LeftWidth: 310, LeftMinWidth: 260, LeftMaxWidth: 440,
+			StateKey: "passpine-main", LeftWidth: defaultSidebarWidth, LeftMinWidth: 280, LeftMaxWidth: 460,
 			Theme: clientTheme, Left: a.sidebarView, Content: a.contentView,
 			ContentTitle: a.header, LeftToolbar: a.sidebarToolbar,
 			LeadingHeader: a.historyControls, LeadingHeaderWidth: 64,
@@ -280,7 +285,7 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 	if a.closing || generation != a.generation {
 		return
 	}
-	background, pendingCreation := a.backgroundBusy, a.pendingNewEntry
+	background, pendingCreation, requestAction := a.backgroundBusy, a.pendingNewEntry, a.activeRequestAction
 	defer func() {
 		// First paint follows configuration and theme setup, so reopening an
 		// existing vault never briefly displays onboarding or the wrong theme.
@@ -301,6 +306,7 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 	a.activeRequestAction = ""
 	if a.state.VaultID != r.Data.VaultID {
 		a.vaultSelection = r.Data.VaultID
+		a.clearDetailTransition()
 	}
 	if a.state.VaultID != r.Data.VaultID || len(a.state.Entries) != len(r.Data.Entries) {
 		a.cacheReady = false
@@ -320,11 +326,15 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 			}
 		} else {
 			a.detail = app.Data{}
+			a.clearDetailTransition()
 			a.reveal = false
 			a.revealedFields = nil
 		}
 	}
 	if r.Status != "ok" {
+		if requestAction == "fetch" && a.pendingSelection == "" {
+			a.clearDetailTransition()
+		}
 		a.errorText = r.Message
 		if a.errorText == "" {
 			a.errorText = r.Code
@@ -360,7 +370,7 @@ func (a *application) queueMetadataRefresh(changed bool) {
 func (a *application) dropDetail() {
 	a.pendingCopyEntry, a.pendingCopyVaultID = "", ""
 	a.detail = app.Data{}
-	a.detailLoadingStarted = time.Time{}
+	a.clearDetailTransition()
 	a.pendingSelection, a.pendingSelectionVaultID = "", ""
 	a.reveal = false
 	a.revealedFields = nil
@@ -408,7 +418,7 @@ func (a *application) clearSecrets() {
 	a.clearNotifications()
 	a.setShortcutRecording(false)
 	a.detail = app.Data{}
-	a.detailLoadingStarted = time.Time{}
+	a.clearDetailTransition()
 	a.activeRequestAction = ""
 	a.pendingSelection, a.pendingSelectionVaultID = "", ""
 	a.pendingCopyEntry, a.pendingCopyVaultID = "", ""
@@ -560,6 +570,10 @@ func (a *application) selectEntry(path string) {
 		a.pendingCopyEntry, a.pendingCopyVaultID = "", ""
 	}
 	if a.busy {
+		if a.page == "entries" && !a.setup && !a.state.Locked && a.selected == path && a.detail.Entry == path {
+			a.lastInput = time.Now()
+			return
+		}
 		// Keep the latest click through metadata refreshes and earlier reads.
 		// Other foreground operations retain their own navigation context.
 		if (a.backgroundBusy || a.activeRequestAction == "fetch") && !a.state.Locked || a.activeRequestAction == "unlock" {
@@ -571,9 +585,7 @@ func (a *application) selectEntry(path string) {
 			a.page, a.selected = "entries", path
 			a.setup = false
 			a.syncSelectedIndex()
-			a.detail, a.reveal = app.Data{}, false
-			a.revealedFields = nil
-			a.detailLoadingStarted = time.Now()
+			a.beginDetailTransition(path)
 		}
 		return
 	}
@@ -587,18 +599,13 @@ func (a *application) selectEntry(path string) {
 	}
 	a.selected, a.reveal = path, false
 	a.syncSelectedIndex()
-	a.revealedFields = nil
-	a.detail = app.Data{}
-	a.detailLoadingStarted = time.Now()
 	if a.state.Locked {
+		a.detail, a.revealedFields = app.Data{}, nil
+		a.clearDetailTransition()
 		a.beginUnlock("")
 		return
 	}
-	a.call(app.Request{Action: "fetch", Entry: path}, func(d app.Data) {
-		if a.selected == path {
-			a.detail = d
-		}
-	})
+	a.fetchSelectedDetail(path)
 }
 
 func (a *application) flushPendingSelection() {
@@ -620,12 +627,16 @@ func (a *application) flushPendingSelection() {
 }
 
 func (a *application) navigate(page, filter string) {
-	if a.page != page || a.setup || filter != "" && filter != a.filter {
+	keepDetailRead := a.page == "entries" && page == "entries" && !a.setup && !a.editor.open && !a.state.Locked
+	if a.shouldRememberNavigation(page, filter) {
 		a.rememberNavigation()
 	}
 	a.cancelUnlockAction()
 	a.pendingCopyEntry, a.pendingCopyVaultID = "", ""
-	a.pendingSelection, a.pendingSelectionVaultID = "", ""
+	if !keepDetailRead {
+		a.pendingSelection, a.pendingSelectionVaultID = "", ""
+		a.clearDetailTransition()
+	}
 	a.setShortcutRecording(false)
 	a.lastInput = time.Now()
 	a.hidePreferences()
@@ -658,6 +669,7 @@ func (a *application) openSetup() {
 	a.hidePreferences()
 	a.pendingCopyEntry, a.pendingCopyVaultID = "", ""
 	a.pendingSelection, a.pendingSelectionVaultID = "", ""
+	a.clearDetailTransition()
 	a.setShortcutRecording(false)
 	a.setup = true
 	a.invalidate()
@@ -679,7 +691,6 @@ func (a *application) entries() []app.Entry {
 		a.cacheReady = true
 		a.sortedEntries = append([]app.Entry(nil), a.state.Entries...)
 		sort.SliceStable(a.sortedEntries, func(i, j int) bool {
-
 			return strings.ToLower(a.sortedEntries[i].Path) < strings.ToLower(a.sortedEntries[j].Path)
 		})
 		a.searchPaths = make([]string, len(a.sortedEntries))
@@ -758,7 +769,9 @@ func (a *application) header(c *ui.Context) {
 		title = a.t("打开密码库")
 	}
 	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-		components.Text(c, title).Bold()
+		if a.page != "entries" || a.setup || a.mainContentWidth(c) >= 540 {
+			components.Text(c, title).Bold().SingleLine()
+		}
 		ui.Spacer(c)
 		if a.state.Configured {
 			a.vaultSelector(c)
@@ -778,10 +791,23 @@ func (a *application) header(c *ui.Context) {
 				a.call(app.Request{Action: "git-sync"}, func(app.Data) { a.notice = a.t("同步完成") })
 			}
 		}
-		if iconButton(c, lucide.Plus(), a.t("新建条目"), components.ButtonOutline).Clicked() {
-			a.newEntry()
+		if a.page != "entries" || a.setup || !a.state.Configured {
+			if iconButton(c, lucide.Plus(), a.t("新建条目"), components.ButtonOutline).Clicked() {
+				a.newEntry()
+			}
 		}
 	})
+}
+
+func (a *application) mainContentWidth(c *ui.Context) float32 {
+	width, _ := c.Size()
+	if a.shell == nil {
+		return width - defaultSidebarWidth
+	}
+	if a.shell.LeftExpanded() {
+		return width - a.shell.LeftWidth()
+	}
+	return width
 }
 
 func (a *application) vaultSelector(c *ui.Context) {
@@ -789,7 +815,11 @@ func (a *application) vaultSelector(c *ui.Context) {
 		a.vaultSelection = a.state.VaultID
 	}
 	sel := components.Select(c, &a.vaultSelection)
-	sel.Trigger.Width(170).MinWidth(100).Border(0, c.Theme().Border).Background(c.Theme().Background).Disabled(a.busy || a.editor.open).Label(a.t("切换密码库")).Gap(6).Children(func() {
+	width := float32(170)
+	if a.mainContentWidth(c) < 540 {
+		width = 138
+	}
+	sel.Trigger.Width(width).MinWidth(100).Border(0, c.Theme().Border).Background(c.Theme().Background).Disabled(a.busy || a.editor.open).Label(a.t("切换密码库")).Gap(6).Children(func() {
 		components.Icon(c, lucide.FolderKey()).Size(14, 14)
 		components.Text(c, a.state.VaultName).SingleLine()
 	})

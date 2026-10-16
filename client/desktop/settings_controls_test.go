@@ -54,7 +54,7 @@ func TestSettingsReuseSidebarAndSearchAcrossCategories(t *testing.T) {
 		a.page = "settings"
 		view := ui.NewTester(testView(a), width, 760)
 		category, ok := view.Find("安全")
-		if !ok || category.X+category.W > 310 {
+		if !ok || category.X+category.W > defaultSidebarWidth {
 			t.Fatalf("settings navigation created another sidebar at width %d: %v", width, category)
 		}
 		if _, ok := view.Find("搜索条目"); ok {
@@ -64,7 +64,7 @@ func TestSettingsReuseSidebarAndSearchAcrossCategories(t *testing.T) {
 			t.Fatal(err)
 		}
 		control, ok := view.Find("空闲自动锁定")
-		if a.settingsState.Category != "security" || !ok || control.X < 310 {
+		if a.settingsState.Category != "security" || !ok || control.X < defaultSidebarWidth {
 			t.Fatal("settings category did not render beside the existing sidebar")
 		}
 		if err := view.Click("搜索设置"); err != nil {
@@ -104,7 +104,7 @@ func TestSettingsKeepRecoveryAndActivityDestinations(t *testing.T) {
 		awaitMain(t, callbacks)
 		view.Frame()
 		category, ok := view.Find("安全")
-		if !ok || category.X+category.W > 310 {
+		if !ok || category.X+category.W > defaultSidebarWidth {
 			t.Fatal("settings destination did not retain the shared sidebar")
 		}
 	}

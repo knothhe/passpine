@@ -3,6 +3,9 @@ package i18n
 // Chinese source keys keep the original language readable while the English
 // catalog provides the default for unsupported system languages.
 var english = map[string]string{
+	"全部条目":    "All entries",
+	"条目详情":    "Entry details",
+	"账号字段":    "Account fields",
 	"后退":      "Back",
 	"前进":      "Forward",
 	"解锁以复制密码": "Unlock to copy password",

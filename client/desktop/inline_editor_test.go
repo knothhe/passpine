@@ -18,7 +18,7 @@ func TestInlineEditorUsesDetailPaneAndKeepsSearchAvailable(t *testing.T) {
 		t.Fatal(err)
 	}
 	input, ok := view.Find("账号名称")
-	if !ok || input.X < 310 || input.X+input.W > 1120 {
+	if !ok || input.X < defaultSidebarWidth || input.X+input.W > 1120 {
 		t.Fatalf("entry form is outside the right detail pane: %v", input)
 	}
 	contents := a.editor.contents
@@ -286,7 +286,7 @@ func TestInlineNewEntryUsesDetailPaneAndCleanCancelKeepsSelection(t *testing.T) 
 	a.newEntry()
 	view := ui.NewTester(testView(a), 1120, 760)
 	input, ok := view.Find("账号名称")
-	if !ok || input.X < 310 {
+	if !ok || input.X < defaultSidebarWidth {
 		t.Fatal("new entries do not use the inline form")
 	}
 	if err := view.Click("取消"); err != nil {

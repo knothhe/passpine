@@ -401,7 +401,7 @@ func (a *application) editorView(c *ui.Context) {
 							a.editor.fields.add("", "", -1)
 						}
 						if !a.editor.customFieldsValid() {
-							muted(c, a.editorFieldValidationMessage())
+							components.Text(c, a.editorFieldValidationMessage()).Wrap().FontSize(12).TextColor(c.Theme().Danger)
 						}
 					})
 					if changed {
@@ -421,10 +421,8 @@ func (a *application) editorView(c *ui.Context) {
 			if a.editor.showRaw {
 				label = a.t("表单模式")
 			}
-			if components.Button(c, label, components.ButtonGhost).Disabled(a.editorBusy()).Clicked() {
-				if !a.editor.customFieldsValid() {
-					a.errorText = a.editorFieldValidationMessage()
-				} else if a.editor.showRaw {
+			if components.Button(c, label, components.ButtonGhost).Disabled(a.editorBusy() || !a.editor.customFieldsValid()).Clicked() {
+				if a.editor.showRaw {
 					a.editor.readFields()
 					a.editor.showRaw = false
 				} else {

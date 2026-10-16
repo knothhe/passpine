@@ -2,13 +2,14 @@ package desktop
 
 import (
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine-neo/client/app"
 )
 
-func TestNavigationBackForwardRestoresManagerAndSettings(t *testing.T) {
+func TestNavigationBackExitsEntirePreferencesArea(t *testing.T) {
 	a := fixture()
 	a.query = "github"
 	a.settingsState.Category = "general"
@@ -16,28 +17,50 @@ func TestNavigationBackForwardRestoresManagerAndSettings(t *testing.T) {
 	a.navigate("settings", "")
 	a.navigateSettingsCategory("security")
 	a.navigate("recovery", "")
-	if len(a.history.back) != 3 {
-		t.Fatalf("navigation destinations were not recorded: %#v", a.history)
-	}
-	a.moveHistory(-1)
-	if a.page != "settings" || a.settingsState.Category != "security" {
-		t.Fatal("back did not return from recovery to the selected settings category")
-	}
-	a.moveHistory(-1)
-	if a.page != "settings" || a.settingsState.Category != "general" {
-		t.Fatal("back did not restore the previous category")
+	a.recoveryKind = 1
+	a.navigate("activity", "")
+	a.navigateSettingsCategory("browser")
+	a.settingsState.Query = "Firefox"
+	preferences := a.currentLocation()
+	if len(a.history.back) != 1 {
+		t.Fatalf("internal preferences navigation added history entries: %#v", a.history)
 	}
 	a.moveHistory(-1)
 	if a.currentLocation() != before || a.selectedIndex != 0 || len(a.filtered) != 1 {
 		t.Fatal("back did not restore the manager search and selected row")
 	}
 	a.moveHistory(1)
-	if a.page != "settings" || a.settingsState.Category != "general" {
-		t.Fatal("forward did not restore the settings page")
+	if a.currentLocation() != preferences {
+		t.Fatal("forward did not restore the last settings category, search and recovery tab")
 	}
-	a.navigateSettingsCategory("browser")
+	a.moveHistory(-1)
+	if a.currentLocation() != before || len(a.history.back) != 0 {
+		t.Fatal("returning from the restored preferences destination took more than one step")
+	}
+}
+
+func TestPreferencesInternalNavigationPreservesForwardHistory(t *testing.T) {
+	a := fixture()
+	a.navigate("settings", "")
+	a.navigate("entries", "favorites")
+	manager := a.currentLocation()
+	a.moveHistory(-1)
+	a.navigateSettingsCategory("security")
+	a.navigate("activity", "")
+	if len(a.history.back) != 1 || len(a.history.forward) != 1 {
+		t.Fatal("changing preferences contents altered manager history")
+	}
+	a.moveHistory(1)
+	if a.currentLocation() != manager {
+		t.Fatal("changing preferences contents lost the next manager destination")
+	}
+	a.moveHistory(-1)
+	if a.page != "activity" || a.settingsState.Category != "security" {
+		t.Fatal("back did not restore the latest preferences contents")
+	}
+	a.navigate("entries", "all")
 	if len(a.history.forward) != 0 {
-		t.Fatal("a new navigation branch retained stale forward destinations")
+		t.Fatal("leaving preferences through a new manager destination retained stale forward history")
 	}
 }
 
@@ -54,6 +77,10 @@ func TestNavigationRetainsNewAndExistingInlineDrafts(t *testing.T) {
 			a.editor.compose()
 			before := a.editor
 			a.navigate("settings", "")
+			a.navigateSettingsCategory("security")
+			a.navigate("recovery", "")
+			a.navigate("activity", "")
+			a.navigateSettingsCategory("browser")
 			a.moveHistory(-1)
 			view := ui.NewTester(testView(a), 1120, 760)
 			if a.page != "entries" || a.discardOpen || a.editor != before {
@@ -63,7 +90,7 @@ func TestNavigationRetainsNewAndExistingInlineDrafts(t *testing.T) {
 				t.Fatal("the retained inline editor is not visible")
 			}
 			a.moveHistory(1)
-			if a.page != "settings" || a.editor != before {
+			if a.page != "settings" || a.settingsState.Category != "browser" || a.editor != before {
 				t.Fatal("forward navigation discarded the retained draft")
 			}
 		})
@@ -107,6 +134,59 @@ func TestNavigationNeverRestoresSelectionFromAnotherVault(t *testing.T) {
 	a.restoreLocation(navigationLocation{page: "entries", selected: "private/other", vaultID: "old-vault"})
 	if a.selected != "" || a.detail.Entry != "" || a.detail.Contents != "" {
 		t.Fatal("history retained credentials or selection from another vault")
+	}
+}
+
+func TestNavigationDetailReadPreservesStructureAndHistory(t *testing.T) {
+	a := fixture()
+	callbacks := make(chan func(), 1)
+	a.runOnMain = func(callback func()) { callbacks <- callback }
+	state := a.state
+	a.service = backendFunc(func(request app.Request) app.Response {
+		data := state
+		data.Entry, data.Password = request.Entry, "loaded-password"
+		return app.Response{Status: "ok", Data: data}
+	})
+	a.history.back = []navigationLocation{{page: "entries", selected: "工作/Figma", vaultID: state.VaultID}}
+	a.moveHistory(-1)
+	transition := a.detailTransitionPresentation(time.Now())
+	if !transition.Pending || len(transition.Fields) != 3 || !transition.HasNotes || !transition.HasWebsite {
+		t.Fatal("history navigation discarded the detail structure before the next read")
+	}
+	if a.detail.Entry != "" || a.detail.Password != "" || a.detail.Contents != "" {
+		t.Fatal("history navigation retained credentials from the previous entry")
+	}
+	awaitMain(t, callbacks)
+	if a.detail.Entry != "工作/Figma" || len(a.history.back) != 0 || len(a.history.forward) != 1 {
+		t.Fatal("history detail read did not finish at its destination without recording another step")
+	}
+}
+
+func TestNavigationRejectsDetailFromAnEarlierVisitToTheSameEntry(t *testing.T) {
+	a := fixture()
+	callbacks := make(chan func(), 2)
+	a.runOnMain = func(callback func()) { callbacks <- callback }
+	state, reads := a.state, 0
+	a.service = backendFunc(func(request app.Request) app.Response {
+		reads++
+		data := state
+		data.Entry, data.Password = request.Entry, "stale-history-password"
+		if reads == 2 {
+			data.Password = "latest-history-password"
+		}
+		return app.Response{Status: "ok", Data: data}
+	})
+	a.history.back = []navigationLocation{{page: "entries", selected: "工作/Figma", vaultID: state.VaultID}}
+	a.moveHistory(-1)
+	a.moveHistory(1)
+	a.moveHistory(-1)
+	awaitMain(t, callbacks)
+	if a.detail.Entry != "" || !a.busy || a.selected != "工作/Figma" {
+		t.Fatal("an earlier visit repopulated details before the current history read completed")
+	}
+	awaitMain(t, callbacks)
+	if a.detail.Entry != "工作/Figma" || a.detail.Password != "latest-history-password" || len(a.history.back) != 0 || len(a.history.forward) != 1 {
+		t.Fatal("the latest history read did not replace the stale visit exactly once")
 	}
 }
 

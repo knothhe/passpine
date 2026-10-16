@@ -1,11 +1,8 @@
 package desktop
 
 import (
-	"time"
-
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-	"github.com/knothhe/passpine-neo/client/app"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
 )
@@ -90,6 +87,8 @@ func (a *application) moveHistory(delta int) {
 
 func (a *application) restoreLocation(target navigationLocation) {
 	a.cancelUnlockAction()
+	previousTransition := a.detailTransition
+	a.clearDetailTransition()
 	a.pendingCopyEntry, a.pendingCopyVaultID = "", ""
 	a.pendingSelection, a.pendingSelectionVaultID = "", ""
 	a.hidePreferences()
@@ -109,11 +108,14 @@ func (a *application) restoreLocation(target navigationLocation) {
 			path = ""
 		}
 		if a.selected != path || a.detail.Entry != path {
-			a.dropDetail()
-			a.selected = path
 			if path != "" && !a.state.Locked && a.service != nil {
+				a.restoreDetailTransitionStructure(previousTransition)
+				a.selected = path
 				// Navigation restoration must not append a second history entry.
 				a.callEntryForHistory(path)
+			} else {
+				a.dropDetail()
+				a.selected = path
 			}
 		}
 	}
@@ -139,11 +141,19 @@ func isPreferencesPage(page string) bool {
 	return page == "settings" || page == "recovery" || page == "activity"
 }
 
+func (a *application) shouldRememberNavigation(page, filter string) bool {
+	// Preferences are one destination. Categories, recovery and activity replace
+	// its contents so Back returns to the manager in a single step.
+	if !a.setup && isPreferencesPage(a.page) && isPreferencesPage(page) {
+		return false
+	}
+	return a.page != page || a.setup || filter != "" && filter != a.filter
+}
+
 func (a *application) navigateSettingsCategory(category string) {
 	if a.page != "settings" || a.setup {
 		a.navigate("settings", "")
 	} else if a.settingsState.Category != category || a.settingsState.Query != "" {
-		a.rememberNavigation()
 		a.hidePreferences()
 	}
 	a.settingsState.Category, a.settingsState.Query = category, ""
@@ -151,18 +161,13 @@ func (a *application) navigateSettingsCategory(category string) {
 }
 
 func (a *application) callEntryForHistory(path string) {
-	a.reveal, a.revealedFields = false, nil
-	a.detailLoadingStarted = time.Now()
 	if a.busy {
+		a.beginDetailTransition(path)
 		a.pendingSelection, a.pendingSelectionVaultID = path, a.state.VaultID
 		a.pendingSelectionGeneration = a.generation
 		return
 	}
-	a.call(app.Request{Action: "fetch", Entry: path, VaultID: a.state.VaultID}, func(data app.Data) {
-		if a.selected == path && a.page == "entries" && !a.setup && !a.editor.open {
-			a.detail = data
-		}
-	})
+	a.fetchSelectedDetail(path)
 }
 
 func (a *application) handleMainWindowClose(event *mygo.CloseEvent) {

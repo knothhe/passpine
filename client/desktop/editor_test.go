@@ -106,42 +106,73 @@ func TestEditorExistingCustomRowCannotBeSilentlyCleared(t *testing.T) {
 }
 
 func TestEditorInvalidCustomDraftCannotSwitchToRawMode(t *testing.T) {
-	for _, invalid := range []string{"key", "value", "cleared"} {
-		t.Run(invalid, func(t *testing.T) {
-			a := fixture()
-			a.detail.Contents = "secret\napi-key: old-value\n"
-			a.editEntry()
-			row := a.editor.fields.rows[0]
-			switch invalid {
-			case "key":
-				row.key, row.value = "api key", "new-value"
-			case "value":
-				row.value = "new\nvalue"
-			case "cleared":
-				row.key, row.value = "", ""
-			}
-			a.editor.compose()
-			key, value, source := row.key, row.value, a.editor.contents
-			view := ui.NewTester(testView(a), 1120, 760)
-			if err := view.Click("原文模式"); err != nil {
-				t.Fatal(err)
-			}
-			if a.editor.showRaw || a.editor.customFieldsValid() || row.key != key || row.value != value || a.editor.contents != source {
-				t.Fatal("switching modes discarded or bypassed the invalid custom draft")
-			}
-			row.key, row.value = "api-key", "corrected-value"
-			a.editor.compose()
-			if a.editor.contents != "secret\napi-key: corrected-value\n" {
-				t.Fatal("repairing an invalid draft left stale source fragments")
-			}
-			view.Frame()
-			if err := view.Click("原文模式"); err != nil {
-				t.Fatal(err)
-			}
-			if !a.editor.showRaw {
-				t.Fatal("a repaired draft could not enter raw mode")
-			}
-		})
+	for _, viewport := range []struct {
+		name, language string
+		width, height  int
+	}{
+		{"default-zh", "zh-CN", 1120, 760},
+		{"narrow-zh", "zh-CN", 860, 620},
+		{"narrow-en", "en", 860, 620},
+	} {
+		for _, invalid := range []string{"key", "value", "cleared"} {
+			t.Run(viewport.name+"/"+invalid, func(t *testing.T) {
+				a := fixture()
+				a.state.Settings.Language = viewport.language
+				a.detail.Contents = "secret\napi-key: old-value\n"
+				a.editEntry()
+				row := a.editor.fields.rows[0]
+				switch invalid {
+				case "key":
+					row.key, row.value = "api key", "new-value"
+				case "value":
+					row.value = "new\nvalue"
+				case "cleared":
+					row.key, row.value = "", ""
+				}
+				a.editor.compose()
+				key, value, source := row.key, row.value, a.editor.contents
+				view := ui.NewTester(testView(a), viewport.width, viewport.height)
+				keyLabel, valueLabel := a.t("自定义字段名称 %d", row.id), a.t("自定义字段值 %d", row.id)
+				for _, label := range []string{keyLabel, valueLabel, a.t("原文模式"), a.t("保存草稿"), a.t("取消"), a.t("保存")} {
+					box, ok := view.Find(label)
+					if !ok || box.X < defaultSidebarWidth || box.X+box.W > float32(viewport.width) || box.Y+box.H > float32(viewport.height) {
+						t.Fatalf("editor control %q is outside the detail pane: %v", label, box)
+					}
+				}
+				if !view.HasText(a.editorFieldValidationMessage()) {
+					t.Fatal("invalid custom fields have no inline validation reason")
+				}
+				if err := view.Click(a.t("原文模式")); err != nil {
+					t.Fatal(err)
+				}
+				if a.editor.showRaw || a.editor.customFieldsValid() || row.key != key || row.value != value || a.editor.contents != source {
+					t.Fatal("switching modes discarded or bypassed the invalid custom draft")
+				}
+				if view.HasText(a.t("操作未完成")) {
+					t.Fatal("switching an invalid form displayed a toast over the editor actions")
+				}
+				for _, repair := range []struct{ label, value string }{
+					{keyLabel, "api-key"},
+					{valueLabel, "corrected-value"},
+				} {
+					if err := view.Click(repair.label); err != nil {
+						t.Fatal(err)
+					}
+					view.Key(ui.Cmd, ui.KeyA)
+					view.Type(repair.value)
+				}
+				if a.editor.contents != "secret\napi-key: corrected-value\n" {
+					t.Fatal("repairing an invalid draft left stale source fragments")
+				}
+				view.Frame()
+				if err := view.Click(a.t("原文模式")); err != nil {
+					t.Fatal(err)
+				}
+				if !a.editor.showRaw {
+					t.Fatal("a repaired draft could not enter raw mode")
+				}
+			})
+		}
 	}
 }
 

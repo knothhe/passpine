@@ -53,7 +53,7 @@ func TestDetailRevealAllIsImmediatelyBeforeEdit(t *testing.T) {
 		if !found || reveal.X+reveal.W > edit.X || edit.X-(reveal.X+reveal.W) > 8 || reveal.Y != edit.Y {
 			t.Fatalf("show-all is not immediately before Edit: reveal=%v edit=%v", reveal, edit)
 		}
-		if reveal.X < 310 || edit.X+edit.W > float32(size[0]) {
+		if reveal.X < defaultSidebarWidth || edit.X+edit.W > float32(size[0]) {
 			t.Fatalf("detail actions overflowed the detail pane: reveal=%v edit=%v", reveal, edit)
 		}
 	}
@@ -95,8 +95,10 @@ func TestDetailDeleteFollowsEditAndUsesConfirmation(t *testing.T) {
 				copyControls++
 			}
 		}
-		if copyControls != 1 {
-			t.Fatalf("expected one password field copy control, got %d", copyControls)
+		// The labeled copy button also contains its visible text, so the tester
+		// records two occurrences for the single password copy action.
+		if copyControls != 2 {
+			t.Fatalf("expected one labeled password copy button, got %d text occurrences", copyControls)
 		}
 		if err := view.Click(a.t("移到回收站")); err != nil {
 			t.Fatal(err)

@@ -39,11 +39,11 @@ func TestClientManagerHasOnlyEntrySidebarAndDetail(t *testing.T) {
 	a := fixture()
 	view := ui.NewTester(testView(a), 1120, 760)
 	row, ok := view.Find("账号 开发/GitHub")
-	if !ok || row.X < 0 || row.X+row.W > 310 {
+	if !ok || row.X < 0 || row.X+row.W > defaultSidebarWidth {
 		t.Fatalf("account rows are outside the single entry sidebar: %v", row)
 	}
 	detail, ok := view.Find("显示或隐藏密码")
-	if !ok || detail.X < 310 {
+	if !ok || detail.X < defaultSidebarWidth {
 		t.Fatal("detail is not next to the entry sidebar")
 	}
 	if view.HasText("全部账号") || view.HasText("恢复中心") || view.HasText("操作记录") {
@@ -55,7 +55,7 @@ func TestClientManagerHasOnlyEntrySidebarAndDetail(t *testing.T) {
 		}
 	}
 	count, ok := view.Find("条目数量")
-	if !ok || count.X+count.W > 310 || count.Y < 700 {
+	if !ok || count.X+count.W > defaultSidebarWidth || count.Y < 700 {
 		t.Fatalf("entry count is not in the sidebar footer: %v", count)
 	}
 }
@@ -503,7 +503,7 @@ func TestLockedNarrowUnlockControlsFitDetailPane(t *testing.T) {
 			label = "使用 Touch ID 或 Mac 登录密码"
 		}
 		button, ok := view.Find(label)
-		if !ok || button.X < 310 || button.X+button.W > 860 {
+		if !ok || button.X < defaultSidebarWidth || button.X+button.W > 860 {
 			t.Fatalf("narrow unlock control overflowed its detail pane: %q %v", label, button)
 		}
 	}
