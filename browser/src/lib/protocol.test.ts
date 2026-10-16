@@ -22,6 +22,14 @@ describe('extension boundary', () => {
     expect(validUIRequest({ action: 'save', vaultId: 'vault', entry: 'entry', mode: 'edit', contents: 'new', revision: 'old' })).toBe(true);
     expect(validUIRequest({ action: 'fetch', vaultId: 'vault', entry: '../secret' })).toBe(false);
   });
+  it.each(['fill', 'associate', 'dissociate'])('validates the vault, entry and tab for %s', action => {
+    const request = { action, vaultId: 'vault', entry: 'account', tab: { id: 4, url: 'https://example.test/login', hostname: 'example.test', secure: true } };
+    expect(validUIRequest(request)).toBe(true);
+    expect(validUIRequest({ ...request, vaultId: '' })).toBe(false);
+    expect(validUIRequest({ ...request, entry: '../secret' })).toBe(false);
+    expect(validUIRequest({ ...request, tab: { ...request.tab, id: '4' } })).toBe(false);
+    expect(validUIRequest({ ...request, tab: undefined })).toBe(false);
+  });
   it('rejects protocol mismatch and malformed replies', () => {
     expect(() => unwrap({ protocol: 2, status: 'ok', data: {} })).toThrow();
     expect(() => unwrap({ protocol: 1, status: 'ok' })).toThrow();

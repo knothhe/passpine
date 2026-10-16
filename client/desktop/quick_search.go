@@ -559,7 +559,7 @@ func (a *application) callQuickSearch(request app.Request) {
 			a.receiveResponse(generation, response, func(d app.Data) {
 				if request.Action == "unlock" {
 					if !a.state.Locked {
-						a.unlockTime, a.lastInput = time.Now(), time.Now()
+						a.lastInput = time.Now()
 					}
 					if active {
 						a.quick.passphrase = ""

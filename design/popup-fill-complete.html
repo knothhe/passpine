@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Passpine · 填充完成后网页</title>
+  <style>
+    *{box-sizing:border-box}html,body{width:640px;height:460px;margin:0;overflow:hidden}body{font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#33332f;background:#fcfbf9}.browser-bar{display:flex;align-items:center;gap:12px;height:44px;padding:8px 16px;border-bottom:1px solid #deded5;background:#f3f2ee}.address{flex:1;padding:5px 12px;border:1px solid #deded5;border-radius:6px;background:#fcfbf9;color:#72726a}.extension{width:24px;height:24px;display:grid;place-items:center;border-radius:5px;background:#bd481b;color:#fff;font-weight:600}.page{display:flex;justify-content:center;padding:40px 24px}.login{width:280px}h1{margin:0 0 24px;font-size:24px;font-weight:500}label{display:block;margin:0 0 8px}input{width:100%;height:36px;margin-bottom:18px;padding:8px 10px;border:1px solid #deded5;border-radius:6px;font:inherit;background:#fff;color:inherit}button{width:100%;height:36px;border:0;border-radius:6px;font:inherit;background:#33332f;color:#fff;cursor:default}
+  </style>
+</head>
+<body>
+  <header class="browser-bar"><span aria-hidden="true">‹　›</span><div class="address">github.com/login</div><span class="extension" aria-label="Passpine 扩展按钮">P</span></header>
+  <main class="page"><form class="login" onsubmit="return false"><h1>Sign in</h1><label for="username">Username or email address</label><input id="username" name="username" autocomplete="username" value="alex@example.test" readonly><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" value="sample-password" readonly><button type="button">Sign in</button></form></main>
+</body>
+</html>

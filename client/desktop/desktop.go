@@ -83,7 +83,6 @@ type application struct {
 	generation                                                           uint64
 	closing                                                              bool
 	lastInput                                                            time.Time
-	unlockTime                                                           time.Time
 	stop                                                                 chan struct{}
 	lastTouch                                                            time.Time
 	backupOpen                                                           bool
@@ -146,14 +145,7 @@ func Run(service *app.Service) error {
 	service.SetOnGitChange(func() { mygo.RunOnMain(func() { a.queueMetadataRefresh(false) }) })
 	service.SetOnLock(func() {
 		mygo.RunOnMain(func() {
-			if a.closing || !service.IsLocked() {
-				return
-			}
-			a.generation++
-			a.busy = false
-			a.clearSecrets()
-			a.state.Locked = true
-			a.invalidate()
+			a.handleSessionLock()
 		})
 	})
 	service.SetClipboard(func(value string, seconds int) error {
@@ -417,6 +409,38 @@ func (a *application) lock() {
 	a.invalidate()
 }
 
+// The shared vault owns idle and maximum expiry across desktop and browser
+// actions. Desktop timestamps cannot expire a session renewed by the browser.
+func (a *application) refreshSessionLock() {
+	// Polling must not cancel authentication while the UI still shows locked.
+	if a.state.Locked {
+		return
+	}
+	if a.busy {
+		switch a.activeRequestAction {
+		case "create", "open", "switch":
+			// A replacement vault is initially locked. Its response owns the
+			// transition; explicit lock notifications still invalidate it.
+			return
+		}
+	}
+	a.handleSessionLock()
+}
+
+// A lock notification invalidates pending responses even when the UI already
+// shows locked. Recheck the shared vault so late notifications preserve a new session.
+func (a *application) handleSessionLock() {
+	service, ok := a.service.(interface{ IsLocked() bool })
+	if !ok || a.closing || !service.IsLocked() {
+		return
+	}
+	a.generation++
+	a.busy = false
+	a.clearSecrets()
+	a.state.Locked = true
+	a.invalidate()
+}
+
 func (a *application) clearSecrets() {
 	a.cancelUnlockAction()
 	a.preferences.pendingRead = nil
@@ -471,6 +495,7 @@ func (a *application) clock() {
 				a.saveGitRemoteAutomatically()
 			}
 
+			a.refreshSessionLock()
 			if !a.state.Locked && a.state.Configured {
 				if a.detail.Contents != "" {
 					document := vault.ParseDocument(a.detail.Entry, a.detail.Contents, a.detail.Revision)
@@ -492,12 +517,6 @@ func (a *application) clock() {
 				}
 				if a.editor.open && a.editor.dirty() && !a.editor.draftSaved && !a.editor.draftAttempted && a.editor.path != "" && a.editor.contents != "" && time.Since(a.lastInput) > 600*time.Millisecond && !a.busy {
 					a.saveDraft()
-				}
-				s := a.state.Settings
-				idle := s.IdleMinutes > 0 && time.Since(a.lastInput) >= time.Duration(s.IdleMinutes)*time.Minute && mygo.Power.IdleTime() >= time.Duration(s.IdleMinutes)*time.Minute
-				maximum := s.MaxSessionMinutes > 0 && !a.unlockTime.IsZero() && time.Since(a.unlockTime) >= time.Duration(s.MaxSessionMinutes)*time.Minute
-				if idle || maximum {
-					a.lock()
 				}
 			}
 		})

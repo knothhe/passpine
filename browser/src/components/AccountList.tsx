@@ -12,6 +12,6 @@ export function AccountList({ entries, onOpen, onFill, onCopy, onAssociate, webs
     <EntryAction label={`复制用户名 ${entry.title}`} icon="user" onClick={() => onCopy(entry, 'username')} disabled={busy}/>
     <EntryAction label={`复制密码 ${entry.title}`} icon="password" onClick={() => onCopy(entry, 'password')} disabled={busy}/>
     <EntryAction label={`查看 ${entry.title}`} icon="details" onClick={() => onOpen(entry)} disabled={busy}/>
-    <DropdownMenu.Root><DropdownMenu.Trigger><IconButton className="account-action account-more" aria-label={`更多操作 ${entry.title}`} variant="ghost" size="1" disabled={busy}><MoreHorizontal size={18}/></IconButton></DropdownMenu.Trigger><DropdownMenu.Content align="end" size="1"><DropdownMenu.Label>{website || '当前没有网站'}</DropdownMenu.Label><DropdownMenu.Item disabled={!website || entry.matched} onSelect={() => onAssociate(entry)}>{entry.matched ? '已关联当前网站' : '关联到当前网站'}</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Root>
+    <DropdownMenu.Root><DropdownMenu.Trigger><IconButton className="account-action account-more" aria-label={`更多操作 ${entry.title}`} variant="ghost" size="1" disabled={busy}><MoreHorizontal size={18}/></IconButton></DropdownMenu.Trigger><DropdownMenu.Content align="end" size="1"><DropdownMenu.Label>{website || '当前没有网站'}</DropdownMenu.Label><DropdownMenu.Item disabled={!website || busy} onSelect={() => onAssociate(entry)}>{entry.matched ? '取消关联当前网站' : '关联到当前网站'}</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Root>
   </div></div>)}</section>;
 }

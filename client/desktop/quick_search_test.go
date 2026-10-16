@@ -117,7 +117,7 @@ func TestQuickSearchLockedDoesNotExposeNamesAndUnlocksInPanel(t *testing.T) {
 		t.Fatalf("wrong unlock request: %#v", request)
 	}
 	view.Frame()
-	if a.state.Locked || a.quick.passphrase != "" || !view.HasText("GitHub") || a.unlockTime.IsZero() {
+	if a.state.Locked || a.quick.passphrase != "" || !view.HasText("GitHub") || a.lastInput.IsZero() {
 		t.Fatal("unlock did not return to search or clear the private key passphrase")
 	}
 }
@@ -502,7 +502,7 @@ func TestQuickSearchLockDiscardsLateUnlockResponse(t *testing.T) {
 	a.generation++
 	a.busy = false
 	awaitMain(t, callbacks)
-	if !a.state.Locked || a.quick.passphrase != "" || !a.unlockTime.IsZero() {
+	if !a.state.Locked || a.quick.passphrase != "" {
 		t.Fatal("a stale unlock response revived a locked session")
 	}
 }

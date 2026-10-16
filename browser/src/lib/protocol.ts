@@ -2,7 +2,7 @@ import { PassPineError } from './errors';
 import { validateEntry } from './model';
 import { PROTOCOL, type NativeRequest, type NativeResponse, type UIRequest } from './types';
 
-export function nativeRequest(request: Exclude<UIRequest, { action: 'snapshot' | 'status' | 'lock' | 'unlock' } | { action: 'fill' | 'associate' }>): NativeRequest {
+export function nativeRequest(request: Exclude<UIRequest, { action: 'snapshot' | 'status' | 'lock' | 'unlock' } | { action: 'fill' | 'associate' | 'dissociate' }>): NativeRequest {
   if (request.action === 'generate') return { protocol: PROTOCOL, action: 'generate', length: request.options.length, lowercase: request.options.lowercase, uppercase: request.options.uppercase, numbers: request.options.numbers, symbols: request.options.symbols, excludeAmbiguous: request.options.excludeAmbiguous };
   if (request.action === 'fetch') return { protocol: PROTOCOL, action: 'fetch', vaultId: request.vaultId, entry: request.entry, purpose: 'view', ...(request.interactive === true ? { interactive: true } : {}) };
   if (request.action === 'copy') return { protocol: PROTOCOL, action: 'copy', vaultId: request.vaultId, entry: request.entry, field: request.field, interactive: true };
@@ -48,7 +48,7 @@ export function validUIRequest(value: unknown): value is UIRequest {
   if (request.action === 'save') return typeof request.contents === 'string' && request.contents.length <= 512_000 &&
     ['create', 'edit'].includes(String(request.mode)) && (request.mode === 'create' || typeof request.revision === 'string') &&
     (request.destination === undefined || (typeof request.destination === 'string' && validateEntry(request.destination)));
-  if (['fill', 'associate'].includes(String(request.action))) {
+  if (['fill', 'associate', 'dissociate'].includes(String(request.action))) {
     const tab = request.tab as Record<string, unknown> | undefined;
     return !!tab && Number.isInteger(tab.id) && typeof tab.url === 'string' && typeof tab.hostname === 'string';
   }

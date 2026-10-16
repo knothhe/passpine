@@ -165,7 +165,6 @@ func (a *application) submitSetup() {
 		a.page = "entries"
 		a.filter = "all"
 		a.selected = ""
-		a.unlockTime = time.Now()
 		a.settings = d.Settings
 		a.applyTheme()
 		a.notice = a.t("密码库已打开")
@@ -218,7 +217,6 @@ func (a *application) unlock(mode string) {
 	}
 	a.call(req, func(d app.Data) {
 		a.passphrase = ""
-		a.unlockTime = time.Now()
 		a.lastInput = time.Now()
 		a.warn(d.DeviceUnlockNotice)
 		if a.resumeUnlockAction() {

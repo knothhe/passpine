@@ -33,6 +33,7 @@ export interface Snapshot extends VaultState { tab?: TabContext; matches: string
 export interface EntryDocument { contents: string; revision: string; otp?: string; otpSeconds?: number; session?: SessionStatus }
 export interface Credentials { password: string; username: string; urls: string[]; otp?: string; notes: string; fields: Array<{ key: string; value: string }> }
 export interface GeneratorOptions { length: number; lowercase: boolean; uppercase: boolean; numbers: boolean; symbols: boolean; excludeAmbiguous: boolean }
+export interface FillResult { filled: number; associated: boolean }
 export type UIRequest =
   | { action: 'snapshot' }
   | { action: 'status' }
@@ -43,6 +44,7 @@ export type UIRequest =
   | { action: 'delete'; vaultId: string; entry: string; revision: string }
   | { action: 'fill'; vaultId: string; entry: string; tab: TabContext }
   | { action: 'associate'; vaultId: string; entry: string; tab: TabContext }
+  | { action: 'dissociate'; vaultId: string; entry: string; tab: TabContext }
   | { action: 'generate'; options: GeneratorOptions }
   | { action: 'copy'; vaultId: string; entry: string; field: 'password' | 'username' | 'otp' };
 

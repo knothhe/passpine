@@ -1,12 +1,12 @@
 import { browser } from 'wxt/browser';
 import { PassPineError, errorMessage } from '../src/lib/errors';
-import { associationKey, credentialMatchesHost, parseDocument, pathMatchesHost, sameTab, tabContext } from '../src/lib/model';
+import { associationKey, parseDocument, pathMatchesHost, sameTab, tabContext } from '../src/lib/model';
 import { fillPage } from '../src/lib/fill';
 import { nativeRequest, trustedSender, validUIRequest } from '../src/lib/protocol';
 import { NativeConnection } from '../src/lib/native';
 import { FILL_COMMAND } from '../src/lib/shortcuts';
 import { initializeToolbarAppearance } from '../src/lib/appearance';
-import { HOST, PROTOCOL, type EntryDocument, type NativeRequest, type SessionStatus, type Snapshot, type TabContext, type UIRequest, type VaultState } from '../src/lib/types';
+import { HOST, PROTOCOL, type EntryDocument, type FillResult, type NativeRequest, type SessionStatus, type Snapshot, type TabContext, type UIRequest, type VaultState } from '../src/lib/types';
 
 export default defineBackground(() => {
   initializeToolbarAppearance();
@@ -20,16 +20,33 @@ export default defineBackground(() => {
   };
   const associations = async (): Promise<Record<string, boolean>> => {
     const data = await browser.storage.local.get('associations');
-    return data.associations && typeof data.associations === 'object' && !Array.isArray(data.associations) ? Object.fromEntries(Object.entries(data.associations).filter(([key, value]) => /^[a-f0-9]{64}$/.test(key) && value === true)) : {};
+    return data.associations && typeof data.associations === 'object' && !Array.isArray(data.associations) ? Object.fromEntries(Object.entries(data.associations).filter(([key, value]) => /^[a-f0-9]{64}$/.test(key) && typeof value === 'boolean')) : {};
   };
   const snapshot = async (): Promise<Snapshot> => {
     const [state, tab, links] = await Promise.all([native<VaultState>({ protocol: PROTOCOL, action: 'configure', includeEntries: true }), activeTab(), associations()]);
     const context = tab && tabContext(tab);
     const entries = Array.isArray(state.entries) ? state.entries : [];
-    const matches = context ? (await Promise.all(entries.map(async entry => pathMatchesHost(entry.path, context.hostname) || links[await associationKey(state.vaultId, entry.path, context.hostname)] ? entry.path : undefined))).filter((value): value is string => !!value) : [];
+    const matches = context ? (await Promise.all(entries.map(async entry => {
+      const linked = links[await associationKey(state.vaultId, entry.path, context.hostname)];
+      return (linked ?? pathMatchesHost(entry.path, context.hostname)) ? entry.path : undefined;
+    }))).filter((value): value is string => !!value) : [];
     return { ...state, entries, capabilities: state.capabilities ?? [], tab: context, matches };
   };
   let pendingAssociation: Promise<unknown> = Promise.resolve();
+  const setAssociation = (request: Extract<UIRequest, { action: 'fill' | 'associate' | 'dissociate' }>, associated: boolean): Promise<void> => {
+    const write = pendingAssociation.then(async () => {
+      const context = await currentTab(request.tab);
+      const state = await native<VaultState>({ protocol: PROTOCOL, action: 'list', vaultId: request.vaultId });
+      if (state.vaultId !== request.vaultId || !state.entries.some(entry => entry.path === request.entry)) throw new PassPineError('vault_changed');
+      const key = await associationKey(request.vaultId, request.entry, context.hostname);
+      const links = await associations();
+      await currentTab(request.tab);
+      links[key] = associated;
+      await browser.storage.local.set({ associations: links });
+    });
+    pendingAssociation = write.catch(() => {});
+    return write;
+  };
   const dispatch = async (request: UIRequest): Promise<unknown> => {
     if (request.action === 'snapshot') return snapshot();
     if (request.action === 'status' || request.action === 'lock') return native({ protocol: PROTOCOL, action: request.action });
@@ -39,34 +56,24 @@ export default defineBackground(() => {
       const { configured, locked, vaultId, vaultName, entriesVersion } = detail;
       return { ...detail, session: { configured, locked, vaultId, vaultName, entriesVersion } };
     }
-    if (request.action === 'associate') {
-      const context = await currentTab(request.tab);
-      const state = await native<VaultState>({ protocol: PROTOCOL, action: 'list', vaultId: request.vaultId });
-      if (state.vaultId !== request.vaultId || !state.entries.some(entry => entry.path === request.entry)) throw new PassPineError('vault_changed');
-      const key = await associationKey(request.vaultId, request.entry, context.hostname);
-      const write = pendingAssociation.then(async () => {
-        await currentTab(request.tab);
-        const links = await associations();
-        links[key] = true;
-        await browser.storage.local.set({ associations: links });
-      });
-      pendingAssociation = write.catch(() => {});
-      await write;
+    if (request.action === 'associate' || request.action === 'dissociate') {
+      await setAssociation(request, request.action === 'associate');
       return {};
     }
     if (request.action === 'fill') {
       const context = await currentTab(request.tab);
-      const links = await associations();
       const detail = await native<EntryDocument>({ protocol: PROTOCOL, action: 'fetch', vaultId: request.vaultId, entry: request.entry, purpose: 'fill', interactive: true });
       const credentials = parseDocument(detail.contents);
-      const linked = links[await associationKey(request.vaultId, request.entry, context.hostname)];
-      if (!linked && !pathMatchesHost(request.entry, context.hostname) && !credentialMatchesHost(credentials, context.hostname)) throw new PassPineError('domain_mismatch');
       await currentTab(request.tab);
       const results = await browser.scripting.executeScript({ target: { tabId: context.id, frameIds: [0] }, func: fillPage,
         args: [context.url, { username: credentials.username, password: credentials.password, otp: detail.otp }] });
       const result = results.find(result => result.frameId === 0)?.result;
       if (result?.code || !result?.filled) throw new PassPineError(result?.code ?? 'no_fields');
-      return result;
+      // Filling has already succeeded. A later navigation or association failure
+      // must not turn that completed action into a reported fill failure.
+      let associated = false;
+      try { await setAssociation(request, true); associated = true; } catch {}
+      return { filled: result.filled, associated } satisfies FillResult;
     }
     return native(nativeRequest(request));
   };

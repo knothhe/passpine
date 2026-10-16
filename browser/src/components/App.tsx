@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, MotionConfig, useIsPresent } from 'motion/react';
 import { AlertDialog, Badge, Button, Flex, Heading, IconButton, Separator, Spinner, Text, TextField } from '@radix-ui/themes';
-import { ArrowDownToLine, Check, CircleAlert, Copy, Eye, EyeOff, Globe2, KeyRound, Link2, LockKeyhole, Pencil, Plus, RefreshCw, Search, Settings2, Trash2, X } from 'lucide-react';
+import { ArrowDownToLine, Check, CircleAlert, Copy, Eye, EyeOff, Globe2, KeyRound, Link2, Link2Off, LockKeyhole, Pencil, Plus, RefreshCw, Search, Settings2, Trash2, X } from 'lucide-react';
 import { entriesFor, parseDocument } from '../lib/model';
 import { errorMessage } from '../lib/errors';
-import type { Client, Entry, EntryDocument, SessionStatus, Snapshot } from '../lib/types';
+import type { Client, Entry, EntryDocument, FillResult, SessionStatus, Snapshot } from '../lib/types';
 import { ActionIcon, ApplicationIcon, PageHeader, SecretField } from './Primitives';
 import { ConnectionState } from './ConnectionState';
 import { AccountList } from './AccountList';
@@ -84,6 +84,7 @@ export function App({ client }: { client: Client }) {
         const next = await client.request<Snapshot>({ action: 'snapshot' });
         if (!observe(next, sequence).accepted) return { ok: false };
         latestSnapshot.current = next; setSnapshot(next); setConnectionError('');
+        setDetail(previous => previous?.vaultId === next.vaultId ? { ...previous, entry: { ...previous.entry, matched: next.matches.includes(previous.entry.path) } } : previous);
         return { ok: true };
       } catch (error) { disconnected(error); return { ok: false, error: errorMessage(error) }; }
       finally { setLoading(false); }
@@ -205,9 +206,13 @@ export function App({ client }: { client: Client }) {
   });
   const fill = (entry: Entry) => void run(async () => {
     if (!snapshot?.tab) return;
+    const tab = snapshot.tab;
     await ensureUnlocked(snapshot.vaultId);
-    const result = await client.request<{ filled: number }>({ action: 'fill', vaultId: snapshot.vaultId, entry: entry.path, tab: snapshot.tab });
-    setNotice({ text: client.demo ? `演示：将填写 ${result.filled} 个登录字段` : `已填写 ${result.filled} 个登录字段` });
+    const result = await client.request<FillResult>({ action: 'fill', vaultId: snapshot.vaultId, entry: entry.path, tab });
+    if (!client.demo && result.filled > 0) { window.close(); return; }
+    await refresh();
+    const text = `已填写 ${result.filled} 个登录字段${result.associated ? `，已关联 ${tab.hostname}` : `，但未能关联 ${tab.hostname}，请重试。`}`;
+    setNotice({ text: client.demo ? `演示：${text}` : text, error: !result.associated });
   });
   const copy = (field: 'password' | 'username' | 'otp') => void run(async () => {
     if (!detail) return;
@@ -221,8 +226,8 @@ export function App({ client }: { client: Client }) {
   const entries = snapshot ? entriesFor(snapshot, query) : [];
   const associate = (entry: Entry) => void run(async () => {
     if (!snapshot?.tab) return;
-    await client.request({ action: 'associate', vaultId: snapshot.vaultId, entry: entry.path, tab: snapshot.tab });
-    await refresh(); setNotice({ text: `已关联 ${snapshot.tab.hostname}` });
+    await client.request({ action: entry.matched ? 'dissociate' : 'associate', vaultId: snapshot.vaultId, entry: entry.path, tab: snapshot.tab });
+    await refresh(); setNotice({ text: `${entry.matched ? '已取消关联' : '已关联'} ${snapshot.tab.hostname}` });
   });
   const newAccount = () => void run(async () => { if (!snapshot?.configured || editor) return; await ensureUnlocked(snapshot.vaultId); setEditor({ vaultId: snapshot.vaultId }); });
   useEffect(() => {
@@ -238,7 +243,7 @@ export function App({ client }: { client: Client }) {
       else if (binding.action === 'settings') void client.openOptions();
       else if (binding.action === 'lock' && snapshot?.configured && !snapshot.locked) lock();
       else if (binding.action === 'copy') copy('password');
-      else if (binding.action === 'fill' && detail?.entry.matched && snapshot?.tab) fill(detail.entry);
+      else if (binding.action === 'fill' && detail && snapshot?.tab) fill(detail.entry);
       else if (binding.action === 'edit' && detail && !busy) setEditor({ vaultId: detail.vaultId, original: detail });
     };
     window.addEventListener('keydown', handle); return () => window.removeEventListener('keydown', handle);
@@ -269,7 +274,7 @@ export function App({ client }: { client: Client }) {
     <div className="popup-pages"><AnimatePresence initial={false} mode="sync"><PopupPage key={page} view={page} listScroll={listScroll.current} returnEntry={returnEntry.current}>
     {editor ? <EditorForm client={client} value={editor} defaultURL={snapshot?.tab ? `https://${snapshot.tab.hostname}` : ''} close={() => setEditor(undefined)} saved={async () => { setEditor(undefined); cancelDetails(); await refresh(); setNotice({ text: '账号已加密保存' }); }}/>
     : detailEntry ? <>
-      <PageHeader title="账号详情" back={cancelDetails}><ActionIcon label={snapshot?.tab ? '填充账号' : '请先打开网站'} disabled={busy || !detail || !snapshot?.tab || !detail.entry.matched} onClick={() => detail && fill(detail.entry)}><ArrowDownToLine size={16}/></ActionIcon><ActionIcon label="编辑账号" disabled={!detail || busy} onClick={() => detail && setEditor({ vaultId: detail.vaultId, original: detail })}><Pencil size={16}/></ActionIcon><ActionIcon label="删除账号" disabled={!detail || busy} onClick={() => setDeleteOpen(true)}><Trash2 size={16}/></ActionIcon></PageHeader>
+      <PageHeader title="账号详情" back={cancelDetails}><ActionIcon label={snapshot?.tab ? '填充账号' : '请先打开网站'} disabled={busy || !detail || !snapshot?.tab} onClick={() => detail && fill(detail.entry)}><ArrowDownToLine size={16}/></ActionIcon><ActionIcon label="编辑账号" disabled={!detail || busy} onClick={() => detail && setEditor({ vaultId: detail.vaultId, original: detail })}><Pencil size={16}/></ActionIcon><ActionIcon label="删除账号" disabled={!detail || busy} onClick={() => setDeleteOpen(true)}><Trash2 size={16}/></ActionIcon></PageHeader>
       <main className="screen-content detail-content" aria-busy={!detail}>
         <div className="entry-summary"><div className="entry-text"><span className="entry-path" title={detailEntry.path}>{detailEntry.folder || '密码库'}</span><Heading as="h2" size="2" title={detailEntry.title}>{detailEntry.title}</Heading></div></div>
         <div className="detail-content-swap"><AnimatePresence initial={false}>{!detail && <motion.div className="detail-loading-layer" key="loading" exit={{ opacity: 0 }} transition={{ duration: .1 }}><DetailSkeleton/></motion.div>}</AnimatePresence>
@@ -282,10 +287,7 @@ export function App({ client }: { client: Client }) {
           <Separator size="4"/>
           <div className="credential-field site-detail"><div><Text as="div" size="1" color="gray" className="credential-label">网站</Text><Text as="div" size="2" className="credential-value truncate" title={document.urls[0]}>{document.urls[0] || (detail.entry.matched ? snapshot?.tab?.hostname : '尚未设置网站')}</Text></div>{detail.entry.matched && <Check size={15} className="accent" aria-label="已关联当前网站"/>}</div>
         </div>
-        {snapshot?.tab && !detail.entry.matched && <Button className="detail-associate" variant="ghost" size="1" title={`关联到 ${snapshot.tab.hostname}`} onClick={() => void run(async () => {
-          await client.request({ action: 'associate', vaultId: detail.vaultId, entry: detail.entry.path, tab: snapshot.tab! });
-          setDetail(previous => previous?.entry.path === detail.entry.path && previous.vaultId === detail.vaultId ? { ...previous, entry: { ...previous.entry, matched: true } } : previous); await refresh(); setNotice({ text: `已关联 ${snapshot.tab!.hostname}` });
-        })}><Link2 size={14}/><span className="truncate">关联到 {snapshot.tab.hostname}</span></Button>}
+        {snapshot?.tab && <Button className="detail-associate" variant="ghost" size="1" disabled={busy} title={`${detail.entry.matched ? '取消关联' : '关联到'} ${snapshot.tab.hostname}`} onClick={() => associate(detail.entry)}>{detail.entry.matched ? <Link2Off size={14}/> : <Link2 size={14}/>}<span className="truncate">{detail.entry.matched ? '取消关联当前网站' : `关联到 ${snapshot.tab.hostname}`}</span></Button>}
         {document.notes && <div className="detail-notes"><Text as="div" size="1" color="gray" className="credential-label">备注</Text><Text as="p" size="2" className="notes">{document.notes}</Text></div>}
         </motion.div>}</div>
       </main>

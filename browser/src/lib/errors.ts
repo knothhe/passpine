@@ -13,7 +13,6 @@ const messages: Record<string, string> = {
   revision_required: '请重新打开此条目后再修改。',
   transport_error: '与客户端的连接中断。此操作不会自动重试，请检查客户端。',
   tab_changed: '页面已经变化，请重新打开扩展后再填充。',
-  domain_mismatch: '此账号尚未关联当前网站，请先确认并关联网站。',
   no_fields: '当前页面没有可填写的登录表单。',
   invalid_request: '请求格式不正确，请刷新后重试。',
 };
