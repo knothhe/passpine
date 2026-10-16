@@ -16,10 +16,10 @@ var AppIconMonochromePNG []byte
 
 // IconForStyle returns the brand artwork paired with a theme style.
 func IconForStyle(style string) []byte {
-	if style == "monochrome" {
-		return AppIconMonochromePNG
+	if style == "onevra" {
+		return AppIconPNG
 	}
-	return AppIconPNG
+	return AppIconMonochromePNG
 }
 
 // MenuBarTemplatePNG is the botanical key drawn in black on transparency.

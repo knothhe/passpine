@@ -2,10 +2,41 @@ package desktop
 
 import (
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
 )
+
+func TestFeedbackExpiresWhileWindowIsUnfocusedAndReplacementRestartsDeadline(t *testing.T) {
+	a := fixture()
+	v := ui.NewTester(testView(a), 1120, 760)
+	v.SetPreferences(ui.Preferences{ReduceMotion: true})
+	a.notice = "已复制密码"
+	v.Frame()
+	first := a.notifications.expiresAt
+	if first.IsZero() || !v.HasText("已复制密码") {
+		t.Fatal("copy feedback did not start its deadline")
+	}
+	v.SetFocused(false)
+	// Simulate a frame after the deadline without sleeping or relying on the
+	// underlying toolkit's focus-paused toast timer.
+	a.notifications.expiresAt = time.Now().Add(-time.Second)
+	v.Frame()
+	if v.HasText("已复制密码") || !a.notifications.expiresAt.IsZero() {
+		t.Fatal("background focus paused operation feedback expiry")
+	}
+	a.warn("请先保存或关闭当前编辑的条目。")
+	v.Frame()
+	if !a.notifications.expiresAt.After(first) {
+		t.Fatal("new feedback inherited an earlier deadline")
+	}
+	a.errorText = "保存失败，请重试。"
+	v.Frame()
+	if !a.notifications.expiresAt.IsZero() || !v.HasText(a.t("保存失败，请重试。")) {
+		t.Fatal("persistent failure inherited the previous success deadline")
+	}
+}
 
 func TestNotificationsNeverMoveContentAndReplaceEarlierOutcome(t *testing.T) {
 	a := fixture()

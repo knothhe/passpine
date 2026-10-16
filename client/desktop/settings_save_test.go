@@ -22,9 +22,7 @@ func TestSettingsSaveOnChangeWithoutSaveButton(t *testing.T) {
 	if view.HasText("保存设置") {
 		t.Fatal("settings still require a manual save")
 	}
-	if err := view.Click("关闭后继续运行"); err != nil {
-		t.Fatal(err)
-	}
+	clickBooleanSettingSegment(t, view, "关闭后继续运行", false)
 	awaitMain(t, callbacks)
 	request := <-requests
 	if request.Action != "settings" || request.Settings.CloseToTray {

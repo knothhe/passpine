@@ -1,6 +1,6 @@
 # Passpine
 
-用 Go 重写的 pass 兼容密码管理器，以及 WXT 浏览器插件。客户端通过 [MyGo](https://github.com/egoist/mygo) 的原生 GPU UI 和 [Onevra](https://github.com/oneo-me/onevra) 组件构建；不包含 WebView 前端或 Rust 应用代码。浏览器使用 Vite、WXT、TypeScript、React 和 Radix Themes。两端设置页提供陶土橙与黑白两套主题及配套图标，并可独立选择跟随系统、浅色或深色外观。
+用 Go 重写的 pass 兼容密码管理器，以及 WXT 浏览器插件。客户端通过 [MyGo](https://github.com/egoist/mygo) 的原生 GPU UI 和 [Onevra](https://github.com/oneo-me/onevra) 组件构建；不包含 WebView 前端或 Rust 应用代码。浏览器使用 Vite、WXT、TypeScript、React 和 Radix Themes。两端默认使用黑白（monochrome）主题及配套图标，设置页也可切换陶土橙主题，并可独立选择跟随系统、浅色或深色外观。两端都提供 80%–120% 文字大小，默认 100%；桌面基础字号为 12px。
 
 ## 目录
 
@@ -36,15 +36,15 @@ open -n 'dist/Passpine.app' --args --preview
 浏览器交互预览：
 
 ```sh
-npm --prefix browser ci
-npm run preview:browser
+pnpm --dir browser install --frozen-lockfile
+pnpm run preview:browser
 ```
 
 访问 `http://127.0.0.1:5174/`，可以体验搜索、详情、编辑、生成器、锁定和断线状态。这个网页使用独立的示例客户端，**不是**浏览器 Native Messaging 的替代运行模式；正式扩展不会在连接失败时回退到示例数据。
 
 ## 构建与检查
 
-需要 Make、Go 1.27.1+、Node.js 22.12+ 和 npm。macOS 构建还需要 Xcode Command Line Tools（Swift 编译器）。首次打开已有 pass 密码库需要系统 GPG，自动读取匹配密钥后，日常加解密由 Go 完成；Git 同步使用系统 `git` 和已有 SSH / HTTPS 凭据。
+需要 Make、Go 1.27.1+、Node.js 22.12+ 和 pnpm 12.11.2。macOS 构建还需要 Xcode Command Line Tools（Swift 编译器）。首次打开已有 pass 密码库需要系统 GPG，自动读取匹配密钥后，日常加解密由 Go 完成；Git 同步使用系统 `git` 和已有 SSH / HTTPS 凭据。
 
 ```sh
 make                            # 原生客户端 + Chrome / Firefox 扩展
@@ -55,14 +55,20 @@ make browser:install            # 构建并安装配置所选的浏览器扩展
 make install                    # 构建并安装客户端和配置所选的扩展
 make help                       # 查看命令及可配置参数
 bash scripts/check.sh            # Go race/vet、真实Host进程、TS、扩展测试
-npm run package:browser          # Chrome / Firefox ZIP
-npm run preview                  # 从源码运行隔离原生演示
-npm run dev                      # 从源码运行正式客户端
+pnpm run package:browser          # Chrome / Firefox ZIP
+pnpm run preview                  # 从源码运行隔离原生演示
+pnpm run dev                      # 从源码运行正式客户端
+make version:show                # 查看当前统一版本
+make version:check               # 检查客户端 / 扩展版本一致性
 ```
 
-Make 自动安装或更新浏览器构建依赖。`client:` 和 `browser:` 前缀分别限定客户端和扩展，不加前缀的 `build` / `install` 同时处理两者；旧的 npm 构建命令仍可使用。
+Make 自动安装或更新浏览器构建依赖。`client:` 和 `browser:` 前缀分别限定客户端和扩展，不加前缀的 `build` / `install` 同时处理两者；根目录 pnpm 脚本提供对应入口。
 
 macOS 脚本生成独立的 `.app`，内含 Go 客户端、Go Host 和 Swift 系统解锁辅助程序，使用本地 ad-hoc 签名。客户端默认安装到 `~/Applications/Passpine.app`，Linux 安装到 `~/.local/bin`，安装后自动注册 Native Messaging Host。可通过 `make client:install CLIENT_INSTALL_DIR="/Applications"` 指定安装目录。分发到其他 Mac 时，系统可能要求确认本地构建的应用；本项目未配置 Developer ID 公证。
+
+## 版本与发布
+
+[版本同步命令、SemVer 选择与 h2 发布流程](docs/versioning.md)。根目录 `package.json` 为版本源，桌面应用、Native Messaging Host、macOS 包和扩展共用同一版本。
 
 ## 正式使用与原库迁移
 

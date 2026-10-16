@@ -1,0 +1,19 @@
+{
+  "version_file": "package.json",
+  "branch": "main",
+  "remote": "origin",
+  "tag_prefix": "v",
+  "checks": [
+    [
+      "pnpm",
+      "run",
+      "version:check"
+    ],
+    [
+      "pnpm",
+      "test"
+    ]
+  ],
+  "check_phase": "before-bump",
+  "github_release": false
+}

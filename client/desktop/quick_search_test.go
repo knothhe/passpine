@@ -420,6 +420,8 @@ func TestQuickSearchRender(t *testing.T) {
 		dark, locked   bool
 		hideNames      bool
 		copyUnlock     bool
+		tray           bool
+		fontScale      int
 	}{
 		{name: "quick-search", language: "zh-CN", width: 660},
 		{name: "quick-search-en", language: "en", width: 660},
@@ -430,15 +432,30 @@ func TestQuickSearchRender(t *testing.T) {
 		{name: "quick-search-locked-hidden", language: "zh-CN", width: 660, locked: true, hideNames: true},
 		{name: "quick-search-copy-unlock", language: "zh-CN", width: 660, locked: true, copyUnlock: true},
 		{name: "quick-search-copy-unlock-en", language: "en", width: 600, locked: true, copyUnlock: true},
+		{name: "tray-panel-light", language: "zh-CN", width: 420, tray: true, fontScale: 100},
+		{name: "tray-panel-dark", language: "zh-CN", width: 420, tray: true, fontScale: 100, dark: true},
+		{name: "tray-panel-light-80", language: "zh-CN", width: 420, tray: true, fontScale: 80},
+		{name: "tray-panel-dark-80", language: "zh-CN", width: 420, tray: true, fontScale: 80, dark: true},
+		{name: "tray-panel-light-120", language: "zh-CN", width: 420, tray: true, fontScale: 120},
+		{name: "tray-panel-dark-120", language: "zh-CN", width: 420, tray: true, fontScale: 120, dark: true},
 	} {
 		a, _ := quickSearchFixture()
 		a.state.Locked, a.state.Settings.Language = screen.locked, screen.language
+		if screen.fontScale != 0 {
+			a.state.Settings.FontScale = screen.fontScale
+		}
+		height := 460
+		if screen.tray {
+			a.quick.mode, height = quickSearchTray, 440
+		}
 		a.state.Settings.BrowseWhileLocked = !screen.hideNames
 		if screen.copyUnlock {
 			a.prepareQuickSearchList()
 			a.copyQuickSearchResult()
 		}
-		view := ui.NewTester(a.quickSearchView, screen.width, 460)
+		snapshot := a.state
+		a.service = backendFunc(func(app.Request) app.Response { return app.Response{Status: "ok", Data: snapshot} })
+		view := ui.NewTester(a.quickSearchView, screen.width, height)
 		if screen.dark {
 			view.SetDark(true)
 		}

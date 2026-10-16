@@ -2,7 +2,7 @@
 .shortcut-settings-list dd { min-width:0; }
 .shortcut-recorder { appearance:none; display:inline-flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:4px; min-height:32px; max-width:100%; padding:2px 0; border:0; border-radius:5px; background:none; color:var(--pine-text); }
 .shortcut-recorder:focus-visible { outline:2px solid var(--pine-accent); outline-offset:4px; }
-.shortcut-recorder kbd,.shortcut-placeholder { display:inline-flex; align-items:center; justify-content:center; min-width:28px; height:25px; padding:0 7px; border:1px solid var(--pine-border); border-radius:5px; background:var(--pine-hover); font-size:11px; font-weight:400; line-height:1; box-shadow:0 2px 0 var(--pine-border); color:var(--pine-muted); }
+.shortcut-recorder kbd,.shortcut-placeholder { display:inline-flex; align-items:center; justify-content:center; min-width:28px; height:25px; padding:0 7px; border:1px solid var(--pine-border); border-radius:5px; background:var(--pine-hover); font-size:calc(11px * var(--pine-font-scale,1)); font-weight:400; line-height:1; box-shadow:0 2px 0 var(--pine-border); color:var(--pine-muted); }
 .shortcut-recorder:hover kbd { border-color:color-mix(in srgb,var(--pine-accent) 45%,var(--pine-border)); }
 .shortcut-placeholder { min-width:76px; }
 .shortcut-recorder[data-recording="true"] .shortcut-placeholder { background:color-mix(in srgb,var(--pine-accent) 10%,var(--pine-background)); border-color:var(--pine-accent); color:var(--pine-accent); }
@@ -11,10 +11,10 @@
 .shortcut-group-heading { display:flex; justify-content:space-between; gap:12px; margin:28px 0 10px; }
 .popup-shortcut-list { display:flex; flex-direction:column; }
 .popup-shortcut-row { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:50px; border-bottom:1px solid color-mix(in srgb,var(--pine-border) 65%,transparent); }
-.popup-shortcut-row .rt-SelectTrigger { max-width:55%; margin:0; font-size:13px; }
+.popup-shortcut-row .rt-SelectTrigger { max-width:55%; margin:0; font-size:calc(12.5px * var(--pine-font-scale,1)); }
 .popup-shortcut-controls { display:flex; align-items:center; justify-content:flex-end; gap:14px; min-width:0; }
 .popup-shortcut-controls>.rt-IconButton { width:26px; height:28px; margin:0; }
 .shortcut-bottom-actions { display:flex; justify-content:space-between; gap:12px; margin-top:14px; }
-.shortcut-bottom-actions .rt-Button { margin:0; font-size:12px; }
+.shortcut-bottom-actions .rt-Button { margin:0; font-size:calc(11.5px * var(--pine-font-scale,1)); }
 .shortcut-recording-help { margin:14px 0 0; line-height:1.7; }
 @media(max-width:520px) { .shortcut-settings-list>div { grid-template-columns:minmax(0,1fr) auto; gap:12px; } .popup-shortcut-row { gap:10px; } .popup-shortcut-controls { gap:8px; } }

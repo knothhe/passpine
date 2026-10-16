@@ -1,6 +1,6 @@
 # 本地安装
 
-需要 Make、Go 1.27.1+、Node.js 22.12+ 和 npm。macOS 还需要 Xcode Command Line Tools，构建会将 Swift 系统解锁辅助程序一并打包。在仓库根目录运行命令；Make 会按锁文件安装浏览器构建依赖。客户端和扩展通过不同前缀选择，无前缀的命令同时处理两者。
+需要 Make、Go 1.27.1+、Node.js 22.12+ 和 pnpm 12.11.2。macOS 还需要 Xcode Command Line Tools，构建会将 Swift 系统解锁辅助程序一并打包。在仓库根目录运行命令；Make 会按锁文件安装浏览器构建依赖。客户端和扩展通过不同前缀选择，无前缀的命令同时处理两者。
 
 | 操作 | 客户端 | 浏览器扩展 | 两者 |
 | --- | --- | --- | --- |
@@ -57,7 +57,7 @@ make browser:install BROWSER=chrome INSTALL_ARGS='--dir "~/ChromeExtensions" --n
 
 # CLI 选项优先于配置；也可选择另一份配置
 make browser:install INSTALL_ARGS='--config .install-local.custom.json'
-npm run install:local -- firefox --dir "~/FirefoxExtensions" --name passpine
+pnpm run install:local firefox --dir "~/FirefoxExtensions" --name passpine
 node scripts/install-local.mjs --help
 ```
 
@@ -67,7 +67,7 @@ node scripts/install-local.mjs --help
 
 `make browser:build` 构建 Chrome 和 Firefox。单独构建使用 `make browser:build:chrome`、`make browser:build:firefox` 或 `make browser:build:edge`。Chrome / Edge 共用 `browser/.output/chrome-mv3`，Firefox 使用 `browser/.output/firefox-mv3`。安装只构建所选浏览器，默认使用配置中的 `browser`，省略时为 Chrome。
 
-沿用 skill 的可选配置：`package_manager` 支持 `npm` / `pnpm`；`build_scripts` 按浏览器指定仓库根目录 `package.json` 的脚本名；`output_directories` 指定对应的 MV3 解包目录。默认构建脚本为 `build:browser:chrome`、`build:browser:firefox`、`build:browser:edge`，均调用 Make。
+沿用 skill 的可选配置：`package_manager` 兼容 `npm` / `pnpm`，本项目依据根目录 `packageManager` 默认使用 `pnpm`；`build_scripts` 按浏览器指定仓库根目录 `package.json` 的脚本名；`output_directories` 指定对应的 MV3 解包目录。默认构建脚本为 `build:browser:chrome`、`build:browser:firefox`、`build:browser:edge`，均调用 Make。
 
 安装只替换具名插件子目录，保留父目录文件和其他插件。新目录、空目录以及同一项目、同一浏览器的 schema 2 受管目录可直接更新；其他非空目录先显示完整目标路径，并要求确认覆盖 `[Y/n]`。输入回车 / `Y` / `yes` 确认，`n` / `no` 或关闭输入取消。插件目录中的旧资源会被删除，请不要混放个人文件。
 

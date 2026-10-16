@@ -807,7 +807,7 @@ func (a *application) sidebarToolbar(c *ui.Context) {
 			label = fmt.Sprintf(a.t("%d / %d 个条目"), len(a.filtered), len(a.state.Entries))
 		}
 		ui.Row(c).Label(a.t("条目数量")).Children(func() {
-			components.Text(c, label).FontSize(11).TextColor(c.Theme().TextMuted)
+			components.Text(c, label).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 		})
 	}
 }
@@ -912,37 +912,44 @@ func (a *application) contentView(c *ui.Context) {
 		c.OnShortcut(ui.Cmd, ui.KeyComma, func() { a.navigate("settings", "") })
 		c.OnShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
 	}
-	ui.Column(c).Fill().Padding(sidebar.HeaderHeight(c), 0, 0, 0).Children(func() {
-		if !a.state.Configured || a.setup {
-			a.setupView(c)
-			return
-		}
-		if a.state.Locked && a.pendingUnlock.action == "export" {
-			a.unlockView(c)
-			return
-		}
-		if a.page == "entries" && a.editor.open && !a.state.Locked {
-			a.editorView(c)
-			return
-		}
-		if a.page != "settings" && a.page != "recovery" && a.page != "activity" {
-			a.vaultView(c)
-			return
-		}
-		if a.state.Locked && a.page != "settings" && a.page != "activity" {
-			a.unlockView(c)
-			return
-		}
-		switch a.page {
-		case "recovery":
-			a.recoveryView(c)
-		case "settings":
-			a.settingsView(c)
-		case "activity":
-			a.activityView(c)
-		default:
-			a.vaultView(c)
-		}
+	ui.Column(c).Fill().Clip().Children(func() {
+		page := ui.Column(c).Key(a.pagePresentationKey()).Fill().Padding(sidebar.HeaderHeight(c), 0, 0, 0).Transition(a.pageTransition(c))
+		// History changes within the entries page fade without rebuilding its
+		// descendants, preserving pending-detail geometry, scroll and focus.
+		timeline := page.Timeline("navigation-feedback", ui.TimelineOptions{Run: a.history.revision})
+		page.Opacity(timeline.Tween(ui.Tween{From: .72, To: 1, Duration: 150 * time.Millisecond}))
+		page.Children(func() {
+			if !a.state.Configured || a.setup {
+				a.setupView(c)
+				return
+			}
+			if a.state.Locked && a.pendingUnlock.action == "export" {
+				a.unlockView(c)
+				return
+			}
+			if a.page == "entries" && a.editor.open && !a.state.Locked {
+				a.editorView(c)
+				return
+			}
+			if a.page != "settings" && a.page != "recovery" && a.page != "activity" {
+				a.vaultView(c)
+				return
+			}
+			if a.state.Locked && a.page != "settings" && a.page != "activity" {
+				a.unlockView(c)
+				return
+			}
+			switch a.page {
+			case "recovery":
+				a.recoveryView(c)
+			case "settings":
+				a.settingsView(c)
+			case "activity":
+				a.activityView(c)
+			default:
+				a.vaultView(c)
+			}
+		})
 	})
 	a.dialogs(c)
 	if isPreferencesPage(a.page) {
@@ -993,8 +1000,8 @@ func (a *application) installMenu() {
 func field(c *ui.Context, label string, value *string, placeholder string, password bool) ui.Element {
 	var input ui.Element
 	ui.Column(c).FillWidth().Gap(6).Children(func() {
-		components.Text(c, label).FontSize(12).TextColor(c.Theme().TextMuted)
-		input = components.TextBox(c, value, components.TextBoxOptions{}).FillWidth().Label(label).Placeholder(placeholder)
+		components.Text(c, label).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
+		input = textBox(c, value, components.TextBoxOptions{}).FillWidth().Label(label).Placeholder(placeholder)
 		if password {
 			input.Password()
 		}
@@ -1003,9 +1010,9 @@ func field(c *ui.Context, label string, value *string, placeholder string, passw
 }
 func section(c *ui.Context, title, description string, build func()) {
 	ui.Column(c).FillWidth().Gap(14).Children(func() {
-		components.Text(c, title).FontSize(20).Bold()
+		components.Text(c, title).FontSize(scaledFontSize(c, 20)).Bold()
 		if description != "" {
-			components.Text(c, description).Wrap().FontSize(12).TextColor(c.Theme().TextMuted)
+			components.Text(c, description).Wrap().FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
 		}
 		if build != nil {
 			build()
@@ -1013,7 +1020,7 @@ func section(c *ui.Context, title, description string, build func()) {
 	})
 }
 func muted(c *ui.Context, text string) {
-	components.Text(c, text).Wrap().FontSize(12).TextColor(c.Theme().TextMuted)
+	components.Text(c, text).Wrap().FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
 }
 
 // Released Onevra exposes Button and Icon independently. Compose them without

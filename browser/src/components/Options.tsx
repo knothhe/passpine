@@ -6,13 +6,14 @@ import { ShortcutSettings } from './ShortcutSettings';
 import { AppearanceSettings } from './AppearanceSettings';
 import { errorMessage } from '../lib/errors';
 import { HOST, type Client, type Snapshot } from '../lib/types';
+import { useExpiringValue } from '../lib/use-expiring-value';
 
 export function Options({ client, extensionId, firefox = false }: { client: Client; extensionId: string; firefox?: boolean }) {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(true);
-  const [copied, setCopied] = useState(false);
-  const [notice, setNotice] = useState('');
+  const [copied, setCopied] = useExpiringValue(false, 2000);
+  const [notice, setNotice] = useExpiringValue('', 4500);
   const refreshSequence = useRef(0);
   const refresh = async (manual = false) => {
     const sequence = ++refreshSequence.current;
@@ -29,8 +30,8 @@ export function Options({ client, extensionId, firefox = false }: { client: Clie
     }
   };
   useEffect(() => { void refresh(); return () => { refreshSequence.current++; }; }, [client]);
-  useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(false), 2000); return () => clearTimeout(timer); }, [copied]);
   const copyId = async () => {
+    setCopied(false);
     try { await client.copy(extensionId); setCopied(true); }
     catch (error) { setError(errorMessage(error)); }
   };

@@ -3,6 +3,9 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 test_dir="$(mktemp -d "${TMPDIR:-/tmp}/passpine-check.XXXXXX")"
 trap 'rm -rf "$test_dir"' EXIT
+cd "$root_dir"
+node scripts/version.mjs check
+node --test scripts/version.test.mjs scripts/release.test.mjs
 cd "$root_dir/client"
 if [[ "$(uname -s)" == "Darwin" ]]; then
   xcrun swiftc -O -parse-as-library -swift-version 5 \
@@ -15,5 +18,5 @@ go build -o "$test_dir/passpine-host-test" ./cmd/passpine-host
 PASSPINE_TEST_HOST="$test_dir/passpine-host-test" go test -race ./...
 go vet ./...
 cd "$root_dir/browser"
-npm run typecheck
-npm test
+pnpm run typecheck
+pnpm test

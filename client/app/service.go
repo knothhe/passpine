@@ -63,7 +63,7 @@ type Service struct {
 }
 
 func DefaultSettings() Settings {
-	return Settings{Theme: "system", ThemeStyle: ThemeStyleOnevra, Language: "system", IdleMinutes: 1, MaxSessionMinutes: 60, ClipboardSeconds: 30, CloseToTray: true, DockIcon: DockIconShow, TrayClickAction: TrayClickQuickPanel, BrowseWhileLocked: true, DeviceUnlock: true, AutoSync: false, SyncMinutes: 0, RecordActivity: true, ActivityMaxEntries: 1000, ActivityRetentionDays: 7, GlobalShortcut: DefaultGlobalShortcut}
+	return Settings{Theme: "system", ThemeStyle: ThemeStyleMonochrome, FontScale: DefaultFontScale, Language: "system", IdleMinutes: 1, MaxSessionMinutes: 60, ClipboardSeconds: 30, CloseToTray: true, DockIcon: DockIconShow, TrayClickAction: TrayClickQuickPanel, BrowseWhileLocked: true, DeviceUnlock: true, AutoSync: false, SyncMinutes: 0, RecordActivity: true, ActivityMaxEntries: 1000, ActivityRetentionDays: 7, GlobalShortcut: DefaultGlobalShortcut}
 }
 func New(o Options) (*Service, error) {
 	var err error
@@ -116,6 +116,7 @@ func New(o Options) (*Service, error) {
 
 	s.prefs.Settings.ThemeStyle = NormalizeThemeStyle(s.prefs.Settings.ThemeStyle)
 	normalizeLifecycleSettings(&s.prefs.Settings, DefaultSettings())
+	normalizeTypographySettings(&s.prefs.Settings, DefaultSettings())
 	if e := validateSettings(s.prefs.Settings); e != nil {
 		s.prefs.Settings = DefaultSettings()
 	}
@@ -564,6 +565,7 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 		}
 		settings := *r.Settings
 		normalizeLifecycleSettings(&settings, s.prefs.Settings)
+		normalizeTypographySettings(&settings, s.prefs.Settings)
 		// Older clients omit this preference; preserve the user's current style.
 		if settings.ThemeStyle == "" {
 			settings.ThemeStyle = NormalizeThemeStyle(s.prefs.Settings.ThemeStyle)
@@ -804,6 +806,9 @@ func (s *Service) autoSync() {
 	go func() { _ = s.Execute(Request{Action: "git-sync", VaultID: id}) }()
 }
 func validateSettings(v Settings) error {
+	if !ValidFontScale(v.FontScale) {
+		return errors.New("invalid text size")
+	}
 	if v.DockIcon != DockIconShow && v.DockIcon != DockIconHide && v.DockIcon != DockIconFollowWindow {
 		return errors.New("invalid dock icon behavior")
 	}

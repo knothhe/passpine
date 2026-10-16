@@ -1,4 +1,4 @@
 /* Loaded before JavaScript so the browser measures the final popup on its first paint. */
-:root { color-scheme: light dark; background: #fcfbf9; }
+:root { color-scheme: light dark; background: #f2f2f5; }
 html, body, #root { box-sizing: border-box; width: 380px; min-width: 380px; height: 460px; min-height: 460px; margin: 0; overflow: hidden; }
-@media (prefers-color-scheme: dark) { :root { background: #211f1c; } }
+@media (prefers-color-scheme: dark) { :root { background: #2b2c30; } }

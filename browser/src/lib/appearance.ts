@@ -2,19 +2,22 @@ import { browser } from 'wxt/browser';
 
 export const appearanceStorageKey = 'appearancePreferences';
 export const themeStyles = [
-  { id: 'onevra', label: '陶土橙', description: '温暖的米白与陶土橙' },
   { id: 'monochrome', label: '黑白', description: '简洁的中性灰与黑白' },
+  { id: 'onevra', label: '陶土橙', description: '温暖的米白与陶土橙' },
 ] as const;
 export type ThemeStyle = typeof themeStyles[number]['id'];
 export type Appearance = 'system' | 'light' | 'dark';
-export interface AppearancePreferences { style: ThemeStyle; appearance: Appearance }
-export const defaultAppearancePreferences: AppearancePreferences = { style: 'onevra', appearance: 'system' };
+export const fontScales = [80, 90, 100, 110, 120] as const;
+export type FontScale = typeof fontScales[number];
+export interface AppearancePreferences { style: ThemeStyle; appearance: Appearance; fontScale: FontScale }
+export const defaultAppearancePreferences: AppearancePreferences = { style: 'monochrome', appearance: 'system', fontScale: 100 };
 
 export function normalizeAppearancePreferences(value: unknown): AppearancePreferences {
   const candidate = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   return {
-    style: candidate.style === 'monochrome' ? 'monochrome' : 'onevra',
+    style: candidate.style === 'onevra' ? 'onevra' : 'monochrome',
     appearance: candidate.appearance === 'light' || candidate.appearance === 'dark' ? candidate.appearance : 'system',
+    fontScale: fontScales.includes(candidate.fontScale as FontScale) ? candidate.fontScale as FontScale : 100,
   };
 }
 

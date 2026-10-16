@@ -42,7 +42,7 @@ func (a *application) folderSelect(c *ui.Context, selected, query *string, label
 					components.Text(c, a.t("新建文件夹：%s", candidate)).SingleLine()
 				})
 			} else if matches == 0 && candidate != "" {
-				components.Text(c, a.t("没有找到文件夹")).Padding(10).FontSize(12).TextColor(c.Theme().TextMuted)
+				components.Text(c, a.t("没有找到文件夹")).Padding(10).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
 			}
 		})
 	})

@@ -116,8 +116,12 @@ describe('entry editor', () => {
     await change(container.querySelector<HTMLInputElement>('input[aria-label="字段 1 值"]')!, 'production');
     await click('重新生成密码');
     expect(container.querySelector('.generator-screen')?.textContent).toContain('密码生成器');
-    expect(container.querySelector<HTMLElement>('form')?.style.display).toBe('none');
+    expect(container.querySelector('form')?.getAttribute('aria-hidden')).toBe('true');
+    expect(container.querySelector('form')?.hasAttribute('inert')).toBe(true);
     await click('使用此密码');
+    expect(container.querySelector('form')?.getAttribute('aria-hidden')).toBe('false');
+    expect(container.querySelector('form')?.hasAttribute('inert')).toBe(false);
+    expect(container.querySelector('.generator-screen')).toBeNull();
     expect(path.value).toBe('work/renamed');
     const password = container.querySelector<HTMLInputElement>('#entry-password')!;
     expect(password.value).toBe('generated-password');

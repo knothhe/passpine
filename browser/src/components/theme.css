@@ -1,11 +1,21 @@
 /* Theme palettes belong here; components consume Radix or semantic tokens. */
-:root { --onevra-light-background:#fcfbf9; --onevra-dark-background:#211f1c; --monochrome-light-background:#f4f4f6; --monochrome-dark-background:#1a1a1e; }
+:root { --onevra-light-background:#fcfbf9; --onevra-dark-background:#211f1c; --monochrome-light-background:#f2f2f5; --monochrome-dark-background:#2b2c30; }
 html[data-theme-style="onevra"][data-appearance="light"] { background:var(--onevra-light-background); }
 html[data-theme-style="onevra"][data-appearance="dark"] { background:var(--onevra-dark-background); }
 html[data-theme-style="monochrome"][data-appearance="light"] { background:var(--monochrome-light-background); }
 html[data-theme-style="monochrome"][data-appearance="dark"] { background:var(--monochrome-dark-background); }
 .radix-themes {
   --default-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  /* Text scaling is independent of control spacing, including Radix portals. */
+  --font-size-1:calc(11px * var(--pine-font-scale,1)); --font-size-2:calc(13px * var(--pine-font-scale,1)); --font-size-3:calc(15px * var(--pine-font-scale,1));
+  --font-size-4:calc(17px * var(--pine-font-scale,1)); --font-size-5:calc(19px * var(--pine-font-scale,1)); --font-size-6:calc(22px * var(--pine-font-scale,1));
+  --font-size-7:calc(26px * var(--pine-font-scale,1)); --font-size-8:calc(33px * var(--pine-font-scale,1)); --font-size-9:calc(56px * var(--pine-font-scale,1));
+  --line-height-1:calc(16px * var(--pine-font-scale,1)); --line-height-2:calc(19px * var(--pine-font-scale,1)); --line-height-3:calc(23px * var(--pine-font-scale,1));
+  --line-height-4:calc(25px * var(--pine-font-scale,1)); --line-height-5:calc(27px * var(--pine-font-scale,1)); --line-height-6:calc(29px * var(--pine-font-scale,1));
+  --line-height-7:calc(34px * var(--pine-font-scale,1)); --line-height-8:calc(38px * var(--pine-font-scale,1)); --line-height-9:calc(56px * var(--pine-font-scale,1));
+  --heading-line-height-1:var(--line-height-1); --heading-line-height-2:var(--line-height-2); --heading-line-height-3:var(--line-height-3);
+  --heading-line-height-4:var(--line-height-4); --heading-line-height-5:var(--line-height-5); --heading-line-height-6:var(--line-height-6);
+  --heading-line-height-7:var(--line-height-7); --heading-line-height-8:var(--line-height-8); --heading-line-height-9:var(--line-height-9);
   --radius-3:8px; --radius-4:10px;
   --pine-background:var(--color-background); --pine-surface:var(--color-panel-solid);
   --pine-hover:var(--gray-3); --pine-border:var(--gray-6);
@@ -30,22 +40,27 @@ html[data-theme-style="monochrome"][data-appearance="dark"] { background:var(--m
   --accent-a10:#efaa87; --accent-a11:#ed986e; --accent-a12:#ffd9c7; --accent-contrast:#291b14;
   --focus-8:#ed986e90;
 }
-/* Neutral surfaces follow Racomi/Magpie; gray accent supplies monochrome controls. */
+/* Magpie panel surfaces, with the dark background matched to its rendered
+   frosted panel. Quiet text and icons use its readable control foreground. */
 .radix-themes[data-accent-color="gray"] {
   --color-background:var(--monochrome-light-background); --color-panel-solid:#fff; --color-panel-translucent:#fff;
-  --gray-2:#f9f9fb; --gray-3:#f1f1f4; --gray-6:#e3e3e8; --gray-11:#686872; --gray-12:#1c1c21;
+  --gray-2:#f8f8fa; --gray-3:#f4f4f7; --gray-4:#e9e9ee; --gray-6:#e3e3e8; --gray-11:#63636b; --gray-12:#1c1c21;
+  --pine-secondary:#4b4b53; --pine-muted:#63636b; --gray-contrast:#fff;
   --accent-9:#1c1c21; --accent-10:#35353d; --accent-11:#1c1c21; --accent-12:#1c1c21;
   --accent-a3:#1c1c2109; --accent-a4:#1c1c2112; --accent-a5:#1c1c211b;
   --accent-a9:#1c1c21; --accent-a10:#35353d; --accent-a11:#1c1c21; --accent-a12:#1c1c21;
   --accent-contrast:#fff; --focus-8:#69697390;
 }
 .radix-themes[data-accent-color="gray"].dark {
-  --color-background:var(--monochrome-dark-background); --color-panel-solid:#232327; --color-panel-translucent:#232327;
-  --gray-2:#1f1f23; --gray-3:#2d2d33; --gray-6:#333339; --gray-11:#a1a1aa; --gray-12:#ededf1;
+  --color-background:var(--monochrome-dark-background); --color-panel-solid:#25262c; --color-panel-translucent:#25262c;
+  --gray-2:#212227; --gray-3:#323338; --gray-4:#3b3c42; --gray-6:#404145; --gray-11:#b9b9c1; --gray-12:#ededf1;
+  --pine-secondary:#b9b9c1; --pine-muted:#a1a1aa; --gray-contrast:#1c1c21;
   --accent-9:#ededf1; --accent-10:#fff; --accent-11:#ededf1; --accent-12:#fff;
   --accent-a3:#ededf10d; --accent-a4:#ededf118; --accent-a5:#ededf124;
   --accent-a9:#ededf1; --accent-a10:#fff; --accent-a11:#ededf1; --accent-a12:#fff;
-  --accent-contrast:#1a1a1e; --focus-8:#a1a1aa90;
+  --accent-contrast:#1c1c21; --focus-8:#a1a1aa90;
 }
 .radix-themes.light { color-scheme:light; }
 .radix-themes.dark { color-scheme:dark; }
+/* Solid gray buttons resolve their foreground through --gray-contrast. */
+.rt-Button.rt-variant-solid svg,.rt-IconButton.rt-variant-solid svg { color:inherit; }

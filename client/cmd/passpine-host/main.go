@@ -6,7 +6,13 @@ import (
 	"os"
 )
 
+var version = "development"
+
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Println("Passpine Host " + version)
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "--register" {
 		p, e := os.Executable()
 		if e == nil {

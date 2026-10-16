@@ -5,6 +5,7 @@ import { errorMessage } from '../lib/errors';
 import type { Client, GeneratorOptions } from '../lib/types';
 import { PageHeader } from './Primitives';
 import './generator.css';
+import { useExpiringValue } from '../lib/use-expiring-value';
 
 export const initialGenerator: GeneratorOptions = { length: 24, lowercase: true, uppercase: true, numbers: true, symbols: true, excludeAmbiguous: true };
 
@@ -16,7 +17,8 @@ export function Generator({ client, open, close, usePassword, canSave, useLabel 
   const [options, setOptions] = useState(initialGenerator);
   const [lengthDraft, setLengthDraft] = useState(String(initialGenerator.length));
   const [result, setResult] = useState<{ password: string; key: string; request: number }>();
-  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [copied, setCopied] = useExpiringValue(false, 2000);
   const generation = useRef(0), visible = useRef(open), latestKey = useRef(optionsKey(options));
   const screen = useRef<HTMLElement>(null);
   const key = optionsKey(options);

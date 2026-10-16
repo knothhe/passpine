@@ -19,7 +19,7 @@ func TestThemeStyleLegacyPreferencesPreserveExistingSettings(t *testing.T) {
 		}
 		settings := must(t, s, Request{Action: "settings"}).Settings
 		_ = s.Close()
-		if settings.ThemeStyle != ThemeStyleOnevra || settings.Theme != "dark" || settings.Language != "en" || settings.ClipboardSeconds != 45 {
+		if settings.ThemeStyle != ThemeStyleMonochrome || settings.Theme != "dark" || settings.Language != "en" || settings.ClipboardSeconds != 45 {
 			t.Fatalf("legacy style reset other preferences: %+v", settings)
 		}
 	}

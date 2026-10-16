@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 
 	"github.com/knothhe/passpine/client/app"
@@ -10,10 +11,17 @@ import (
 	"github.com/knothhe/passpine/client/nativehost"
 )
 
+var version = "development"
+
 func main() {
+	showVersion := flag.Bool("version", false, "Print the application version and exit")
 	preview := flag.Bool("preview", false, "Create and open an isolated vault with fictional entries")
 	dataDir := flag.String("data-dir", "", "Override the application data directory")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("Passpine " + version)
+		return
+	}
 	service, err := app.New(app.Options{DataDir: *dataDir, Preview: *preview})
 	if errors.Is(err, nativehost.ErrAlreadyRunning) {
 		directory := *dataDir

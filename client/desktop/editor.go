@@ -319,9 +319,9 @@ func (a *application) editorView(c *ui.Context) {
 		}
 		ui.Row(c).FillWidth().AlignItems(ui.Start).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
-				components.Text(c, title).FontSize(22).Bold()
+				components.Text(c, title).FontSize(scaledFontSize(c, 22)).Bold()
 				if a.editor.originalPath != "" {
-					components.Text(c, a.editor.originalPath).FontSize(11).TextColor(c.Theme().TextMuted).Wrap()
+					components.Text(c, a.editor.originalPath).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).Wrap()
 				}
 			})
 			if iconButton(c, lucide.X(), a.t("关闭编辑器"), components.ButtonGhost).Disabled(a.editorBusy()).Clicked() {
@@ -341,14 +341,14 @@ func (a *application) editorView(c *ui.Context) {
 					a.lastInput = time.Now()
 				}
 				ui.Column(c).FillWidth().Gap(6).Children(func() {
-					components.Text(c, a.t("文件夹")).FontSize(12).TextColor(c.Theme().TextMuted)
+					components.Text(c, a.t("文件夹")).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
 					if a.folderSelect(c, &a.editor.folder, &a.editor.folderQuery, a.t("选择文件夹"), a.t("密码库根目录"), true).Changed() {
 						a.editor.setPath(a.editor.folder, a.editor.name)
 					}
 				})
 				if a.editor.showRaw {
-					components.Text(c, a.t("完整内容")).FontSize(12).TextColor(c.Theme().TextMuted)
-					if components.TextBox(c, &a.editor.contents, components.TextBoxOptions{Multiline: true}).FillWidth().Height(230).Label(a.t("完整条目内容")).Changed() {
+					components.Text(c, a.t("完整内容")).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
+					if textBox(c, &a.editor.contents, components.TextBoxOptions{Multiline: true}).FillWidth().Height(230).Label(a.t("完整条目内容")).Changed() {
 						a.editor.draftSaved = false
 						a.editor.draftAttempted = false
 						a.lastInput = time.Now()
@@ -380,16 +380,16 @@ func (a *application) editorView(c *ui.Context) {
 						changed = true
 					}
 					ui.Column(c).Key("editor-custom-fields").FillWidth().Gap(8).Children(func() {
-						components.Text(c, a.t("自定义字段")).FontSize(12).TextColor(c.Theme().TextMuted)
+						components.Text(c, a.t("自定义字段")).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
 						for _, row := range a.editor.fields.rows {
 							if row.deleted {
 								continue
 							}
 							ui.Row(c).Key(row.id).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-								if components.TextBox(c, &row.key, components.TextBoxOptions{}).Width(150).Label(a.t("自定义字段名称 %d", row.id)).Placeholder(a.t("字段名")).Changed() {
+								if textBox(c, &row.key, components.TextBoxOptions{}).Width(150).Label(a.t("自定义字段名称 %d", row.id)).Placeholder(a.t("字段名")).Changed() {
 									changed = true
 								}
-								if components.TextBox(c, &row.value, components.TextBoxOptions{}).Grow(1).Label(a.t("自定义字段值 %d", row.id)).Placeholder(a.t("字段值")).Changed() {
+								if textBox(c, &row.value, components.TextBoxOptions{}).Grow(1).Label(a.t("自定义字段值 %d", row.id)).Placeholder(a.t("字段值")).Changed() {
 									changed = true
 								}
 								if iconButton(c, lucide.Trash(), a.t("删除自定义字段 %d", row.id), components.ButtonGhost).Clicked() {
@@ -401,7 +401,7 @@ func (a *application) editorView(c *ui.Context) {
 							a.editor.fields.add("", "", -1)
 						}
 						if !a.editor.customFieldsValid() {
-							components.Text(c, a.editorFieldValidationMessage()).Wrap().FontSize(12).TextColor(c.Theme().Danger)
+							components.Text(c, a.editorFieldValidationMessage()).Wrap().FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().Danger)
 						}
 					})
 					if changed {
@@ -415,7 +415,7 @@ func (a *application) editorView(c *ui.Context) {
 		if a.editor.draftSaved {
 			draftStatus = a.t("已保存加密草稿")
 		}
-		components.Text(c, draftStatus).Height(16).FontSize(11).TextColor(c.Theme().Success)
+		components.Text(c, draftStatus).Height(16).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().Success)
 		ui.Row(c).Key("editor-actions").FillWidth().Wrap().Gap(8).AlignItems(ui.Center).Children(func() {
 			label := a.t("原文模式")
 			if a.editor.showRaw {

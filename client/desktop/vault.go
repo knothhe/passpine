@@ -24,13 +24,13 @@ func (a *application) listView(c *ui.Context) {
 	a.filtered = a.entries()
 	ui.Column(c).Fill().Padding(18, 16, 12, 16).Gap(14).Children(func() {
 		ui.Row(c).FillWidth().MinHeight(32).AlignItems(ui.Center).Gap(8).Children(func() {
-			components.Text(c, a.t("全部条目")).FontSize(18).Bold()
+			components.Text(c, a.t("全部条目")).FontSize(scaledFontSize(c, 18)).Bold()
 			ui.Spacer(c)
 			if iconButton(c, lucide.Plus(), a.t("新建条目"), components.ButtonGhost).Tooltip(a.t("新建条目")).Clicked() {
 				a.newEntry()
 			}
 		})
-		input := components.TextBox(c, &a.query, components.TextBoxOptions{LeadingIcon: lucide.Search()}).Ref(&a.searchRef).FillWidth().Label(a.t("搜索条目")).Placeholder(a.t("搜索名称或文件夹…"))
+		input := textBox(c, &a.query, components.TextBoxOptions{LeadingIcon: lucide.Search()}).Ref(&a.searchRef).FillWidth().Label(a.t("搜索条目")).Placeholder(a.t("搜索名称或文件夹…"))
 		if input.Changed() {
 			a.lastInput = time.Now()
 			a.selectedIndex = -1
@@ -57,16 +57,20 @@ func (a *application) listView(c *ui.Context) {
 				selected := e.Path == a.selected
 				showCopy := row.Hovered() || row.FocusWithin() || i == a.selectedIndex && a.list.Focused(c)
 				if selected {
-					row.Background(c.Theme().Accent.Alpha(.10))
+					if c.Theme().Accent == c.Theme().Text {
+						row.Background(c.Theme().Selection)
+					} else {
+						row.Background(c.Theme().Accent.Alpha(.10))
+					}
 				} else if row.Hovered() {
 					row.Background(c.Theme().Text.Alpha(.04))
 				}
 				row.Children(func() {
 					entryAvatar(c, e.Path, 34, selected)
 					ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-						components.Text(c, e.Name).SingleLine().FontSize(13).Bold()
+						components.Text(c, e.Name).SingleLine().FontSize(scaledFontSize(c, 13)).Bold()
 						if e.Folder != "" {
-							components.Text(c, e.Path).SingleLine().FontSize(11).TextColor(c.Theme().TextMuted)
+							components.Text(c, e.Path).SingleLine().FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 						}
 					})
 					copy := iconButton(c, lucide.Copy(), a.t("复制密码 %s", e.Name), components.ButtonGhost).Size(30, 30).Disabled(a.busy)
@@ -92,7 +96,7 @@ func entryAvatar(c *ui.Context, path string, size float32, selected bool) {
 		initials = initials[:2]
 	}
 	ui.Box(c).Size(size, size).Shrink(0).Radius(size / 4).Background(background).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-		components.Text(c, string(initials)).FontSize(size / 3).Bold().TextColor(color).SingleLine()
+		components.Text(c, string(initials)).FontSize(scaledFontSize(c, size/3)).Bold().TextColor(color).SingleLine()
 	})
 }
 
@@ -101,7 +105,7 @@ func (a *application) detailView(c *ui.Context) {
 	if a.detail.Entry == "" && !pending.Pending {
 		ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Padding(24).Gap(12).Children(func() {
 			components.Icon(c, lucide.ShieldCheck).Size(36, 36).TextColor(c.Theme().TextMuted)
-			components.Text(c, a.t("选择一个条目")).FontSize(18).Bold()
+			components.Text(c, a.t("选择一个条目")).FontSize(scaledFontSize(c, 18)).Bold()
 			if components.Button(c, a.t("新建条目"), components.ButtonGhost).Clicked() {
 				a.newEntry()
 			}
@@ -126,9 +130,9 @@ func (a *application) detailView(c *ui.Context) {
 			ui.Column(c).Key("entry-detail").FillWidth().MaxWidth(560).Children(func() {
 				ui.Row(c).Key("account-heading").FillWidth().Margin(0, 0, 26, 0).AlignItems(ui.Start).Gap(12).Children(func() {
 					ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
-						components.Text(c, entryName(path)).FontSize(22).FontWeight(500).Wrap()
+						components.Text(c, entryName(path)).FontSize(scaledFontSize(c, 22)).FontWeight(500).Wrap()
 						ui.Row(c).Key("detail-path").FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-							components.Text(c, path).Grow(1).MinWidth(0).FontSize(11).TextColor(c.Theme().TextMuted).Wrap()
+							components.Text(c, path).Grow(1).MinWidth(0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).Wrap()
 						})
 					})
 					ui.Row(c).Key("detail-actions").Margin(-4, 0, 0, 0).Shrink(0).AlignItems(ui.Center).Children(func() {
@@ -149,7 +153,7 @@ func (a *application) detailView(c *ui.Context) {
 						}
 					})
 					if pending.Delayed {
-						components.Text(c, a.t("正在读取账号…")).Absolute().Left(0).Bottom(-20).FontSize(11).TextColor(c.Theme().TextMuted).SingleLine()
+						components.Text(c, a.t("正在读取账号…")).Absolute().Left(0).Bottom(-20).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).SingleLine()
 					}
 				})
 				ui.Column(c).Key("credential-card").Label(a.t("账号字段")).FillWidth().Children(func() {
@@ -183,11 +187,11 @@ func (a *application) detailView(c *ui.Context) {
 						notes.MinHeight(notes.LayoutBounds().H)
 					}
 					notes.Children(func() {
-						components.Text(c, a.t("备注")).FontSize(11).TextColor(c.Theme().TextMuted)
+						components.Text(c, a.t("备注")).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 						if pending.Pending {
 							detailPlaceholder(c, 240)
 						} else {
-							components.Text(c, d.Notes).Wrap().FontSize(13)
+							components.Text(c, d.Notes).Wrap().FontSize(scaledFontSize(c, 13))
 						}
 					})
 				}
@@ -196,7 +200,7 @@ func (a *application) detailView(c *ui.Context) {
 						open := components.Button(c, "", components.ButtonOutline).Label(a.t("打开网站")).Height(32).Padding(6, 10).Gap(6).Disabled(pending.Pending)
 						open.Children(func() {
 							components.Icon(c, lucide.ArrowUpRight()).Size(16, 16)
-							components.Text(c, a.t("打开网站")).FontSize(12).SingleLine()
+							components.Text(c, a.t("打开网站")).FontSize(scaledFontSize(c, 12)).SingleLine()
 						})
 						if open.Clicked() {
 							if safeWebsite(d.URL) {
@@ -216,7 +220,7 @@ func (a *application) detailView(c *ui.Context) {
 
 func detailPlaceholder(c *ui.Context, width float32) {
 	ui.Box(c).Width(width).MaxWidthPercent(100).Children(func() {
-		components.Text(c, " ").FontSize(13)
+		components.Text(c, " ").FontSize(scaledFontSize(c, 13))
 		ui.Box(c).Absolute().Left(0).Right(0).Top(4).Height(8).Radius(4).Background(c.Theme().Text.Alpha(.08))
 	})
 }
@@ -255,7 +259,7 @@ func (a *application) detailField(c *ui.Context, key, label, value string, secre
 	row.MinHeight(minimumHeight)
 	row.Children(func() {
 		ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
-			components.Text(c, label).FontSize(11).TextColor(c.Theme().TextMuted)
+			components.Text(c, label).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 			if pending {
 				detailPlaceholder(c, 164)
 			} else {
@@ -263,7 +267,7 @@ func (a *application) detailField(c *ui.Context, key, label, value string, secre
 				if secret && !revealed {
 					shown = "••••••••••••"
 				}
-				text := components.Text(c, shown).Wrap().FontSize(13)
+				text := components.Text(c, shown).Wrap().FontSize(scaledFontSize(c, 13))
 				if secret {
 					text.Font("monospace")
 				}
@@ -289,7 +293,7 @@ func (a *application) detailField(c *ui.Context, key, label, value string, secre
 			copy := components.Button(c, "", components.ButtonGhost).Label(a.t("复制%s", label)).Height(32).Shrink(0).Padding(0, 9).Gap(6).Border(0, c.Theme().Border).TextColor(c.Theme().TextMuted).Disabled(pending)
 			copy.Children(func() {
 				components.Icon(c, lucide.Copy()).Size(16, 16)
-				components.Text(c, copyText).FontSize(12).SingleLine()
+				components.Text(c, copyText).FontSize(scaledFontSize(c, 12)).SingleLine()
 			})
 			if copy.Clicked() {
 				copyLabel := label

@@ -76,6 +76,7 @@ type Settings struct {
 	LaunchAtLogin         bool   `json:"launchAtLogin"`
 	Theme                 string `json:"theme"`
 	ThemeStyle            string `json:"themeStyle"`
+	FontScale             int    `json:"fontScale"`
 	Language              string `json:"language"`
 	IdleMinutes           int    `json:"idleMinutes"`
 	MaxSessionMinutes     int    `json:"maxSessionMinutes"`

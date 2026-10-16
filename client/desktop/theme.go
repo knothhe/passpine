@@ -13,6 +13,9 @@ import (
 // Appearance (system/light/dark) remains owned by mygo.Theme.SetSource.
 func clientPalette(style string, dark bool) *ui.Theme {
 	t := theme.Palette(dark)
+	// A compact default; the user's percentage and system accessibility scale
+	// are applied together when the frame's palette is installed.
+	t.FontSize = 12
 	if app.NormalizeThemeStyle(style) == app.ThemeStyleOnevra {
 		// Preserve Passpine's existing opaque navigation surfaces.
 		if dark {
@@ -23,30 +26,35 @@ func clientPalette(style string, dark bool) *ui.Theme {
 		return t
 	}
 	if dark {
-		t.Background = ui.Hex("#1a1a1e")
-		t.Surface = ui.Hex("#232327")
-		t.SurfaceHover = ui.Hex("#2d2d33")
+		// Magpie's frosted panel renders brighter than its raw CSS tint. Use
+		// the supplied reference's composited color for our opaque surface.
+		t.Background = ui.Hex("#2b2c30")
+		t.Surface = ui.Hex("#25262c")
+		t.SurfaceHover = ui.Hex("#323338")
 		t.SurfacePressed = ui.Hex("#36363d")
-		t.Border = ui.Hex("#333339")
+		t.Border = ui.Hex("#404145")
 		t.Text = ui.Hex("#ededf1")
 		t.TextMuted = ui.Hex("#a1a1aa")
-		t.AccentText = t.Background
+		t.AccentText = ui.Hex("#1c1c21")
 		t.AccentHover = ui.Hex("#ffffff")
 		t.AccentPressed = ui.Hex("#cbcbd2")
 	} else {
-		t.Background = ui.Hex("#f4f4f6")
+		t.Background = ui.Hex("#f2f2f5")
 		t.Surface = ui.Hex("#ffffff")
-		t.SurfaceHover = ui.Hex("#f1f1f4")
+		t.SurfaceHover = ui.Hex("#f4f4f7")
 		t.SurfacePressed = ui.Hex("#e9e9ee")
 		t.Border = ui.Hex("#e3e3e8")
 		t.Text = ui.Hex("#1c1c21")
-		t.TextMuted = ui.Hex("#686872")
+		t.TextMuted = ui.Hex("#63636b")
 		t.AccentText = t.Surface
 		t.AccentHover = ui.Hex("#35353d")
 		t.AccentPressed = ui.Hex("#0f0f13")
 	}
 	t.Accent = t.Text
-	t.Selection = t.Accent.Alpha(.08)
+	t.Selection = t.SurfacePressed
+	if dark {
+		t.Selection = t.SurfaceHover
+	}
 	t.Focus = t.Accent.Alpha(.65)
 	t.Scrollbar = t.Text.Alpha(.32)
 	t.Inverse, t.InverseText = t.Text, t.Background
@@ -54,6 +62,10 @@ func clientPalette(style string, dark bool) *ui.Theme {
 }
 
 func clientThemeForStyle(c *ui.Context, style string) *ui.Theme {
+	return clientThemeForPreferences(c, style, app.DefaultFontScale)
+}
+
+func clientThemeForPreferences(c *ui.Context, style string, fontScale int) *ui.Theme {
 	t := clientPalette(style, c.Theme().Dark)
 	// Match Onevra's native accessibility preferences for both palettes.
 	p := c.Preferences()
@@ -63,14 +75,12 @@ func clientThemeForStyle(c *ui.Context, style string) *ui.Theme {
 		t.Focus.A = 255
 		t.Scrollbar = t.Scrollbar.Alpha(1.6)
 	}
-	if scale := p.TextScale; scale > 0 && scale != 1 {
-		t.FontSize *= scale
-	}
+	applyTypography(c, t, fontScale)
 	return t
 }
 
 func clientTheme(c *ui.Context) *ui.Theme {
-	return clientThemeForStyle(c, app.ThemeStyleOnevra)
+	return clientThemeForStyle(c, app.ThemeStyleMonochrome)
 }
 
 func (a *application) themeSettings() app.Settings {
@@ -81,7 +91,8 @@ func (a *application) themeSettings() app.Settings {
 }
 
 func (a *application) clientTheme(c *ui.Context) *ui.Theme {
-	return clientThemeForStyle(c, a.themeSettings().ThemeStyle)
+	settings := a.themeSettings()
+	return clientThemeForPreferences(c, settings.ThemeStyle, settings.FontScale)
 }
 
 func nativeThemeBackground(style string) string {

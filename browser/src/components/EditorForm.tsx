@@ -51,7 +51,7 @@ export function EditorForm({ client, value, defaultURL, close, saved }: { client
     } catch (error) { if (current === session.current) setError(errorMessage(error)); }
     finally { savingRequest.current = false; if (current === session.current) setSaving(false); }
   };
-  return <><form className="popup-screen editor-screen" style={generatorOpen ? { display: 'none' } : undefined} inert={generatorOpen} aria-hidden={generatorOpen} onSubmit={event => void save(event)}>
+  return <><form className="popup-screen editor-screen" inert={generatorOpen} aria-hidden={generatorOpen} onSubmit={event => void save(event)}>
     <PageHeader title={value.original ? '编辑账号' : '新建账号'} backLabel={value.original ? '返回账号详情' : '返回密码库'} back={close} disabled={saving}/>
     <main className="screen-content editor-content">
       <fieldset className="editor-fields" disabled={saving}>

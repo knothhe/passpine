@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Callout, Heading, RadioCards, SegmentedControl, Text, Theme } from '@radix-ui/themes';
 import { Monitor, Moon, Palette, Sun } from 'lucide-react';
-import { themeStyles, type Appearance, type AppearancePreferences, type ThemeStyle } from '../lib/appearance';
+import { fontScales, themeStyles, type Appearance, type AppearancePreferences, type FontScale, type ThemeStyle } from '../lib/appearance';
 import { errorMessage } from '../lib/errors';
 import { ApplicationIcon } from './Primitives';
 import { useAppearance } from './Provider';
@@ -25,8 +25,11 @@ export function AppearanceSettings() {
         <div className="style-choice-caption"><Text as="span" size="2" weight="medium">{style.label}</Text><Text as="span" size="1" color="gray">{style.description}</Text></div>
       </RadioCards.Item>)}
     </RadioCards.Root>
-    <div className="appearance-mode-row"><div><Text as="div" size="2" weight="medium">明暗模式</Text><Text as="p" size="1" color="gray">跟随系统，或固定使用浅色、深色。</Text></div><SegmentedControl.Root value={preferences.appearance} onValueChange={appearance => change({ ...preferences, appearance: appearance as Appearance })} aria-label="明暗模式" disabled={saving}>
+    <div className="appearance-mode-row"><div><Text as="div" size="2" weight="medium">明暗模式</Text><Text as="p" size="1" color="gray">跟随系统，或固定使用浅色、深色。</Text></div><SegmentedControl.Root size="1" value={preferences.appearance} onValueChange={appearance => change({ ...preferences, appearance: appearance as Appearance })} aria-label="明暗模式" disabled={saving}>
       <SegmentedControl.Item value="system"><Monitor size={14}/>跟随系统</SegmentedControl.Item><SegmentedControl.Item value="light"><Sun size={14}/>浅色</SegmentedControl.Item><SegmentedControl.Item value="dark"><Moon size={14}/>深色</SegmentedControl.Item>
+    </SegmentedControl.Root></div>
+    <div className="appearance-mode-row font-scale-row"><div><Text as="div" size="2" weight="medium">文字大小</Text><Text as="p" size="1" color="gray">调整弹窗和设置页面的文字大小。</Text></div><SegmentedControl.Root size="1" value={String(preferences.fontScale)} onValueChange={value => change({ ...preferences, fontScale: Number(value) as FontScale })} aria-label="文字大小" disabled={saving}>
+      {fontScales.map(scale => <SegmentedControl.Item key={scale} value={String(scale)}>{scale}%</SegmentedControl.Item>)}
     </SegmentedControl.Root></div>
     <Text as="p" size="1" color="gray" className="appearance-help">设置自动保存，并同步到已打开的扩展页面。客户端外观可在客户端设置中选择。</Text>
     {error && <Callout.Root mt="3" size="1" color="red" role="alert"><Callout.Text>{error}</Callout.Text></Callout.Root>}

@@ -432,6 +432,23 @@ async function clickAction(label: string) {
 }
 
 describe('responsive detail navigation and session safety', () => {
+  it('animates forward into details and editing, then reverses direction when going back', async () => {
+    const fixture = detailFixture();
+    await render(fixture.client); await clickAction('查看 Alex');
+    expect(currentPage().dataset.navigationDirection).toBe('forward');
+    await act(async () => fixture.fetch.resolve(credentials));
+    await clickAction('编辑账号');
+    expect(currentPage().dataset.popupPage).toBe('editor');
+    expect(currentPage().dataset.navigationDirection).toBe('forward');
+    await clickAction('返回账号详情');
+    expect(currentPage().dataset.popupPage).toBe('detail');
+    expect(currentPage().dataset.navigationDirection).toBe('back');
+    await clickAction('返回密码库');
+    expect(currentPage().dataset.popupPage).toBe('list');
+    expect(currentPage().dataset.navigationDirection).toBe('back');
+    expect(container.textContent).not.toContain('private-user');
+  });
+
   it('shows a non-secret detail shell immediately and still waits for the status safety check', async () => {
     const fixture = detailFixture(); fixture.deferStatus();
     await render(fixture.client);

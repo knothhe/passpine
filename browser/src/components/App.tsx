@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion, MotionConfig, useIsPresent } from 'motion/react';
+import { AnimatePresence, motion, MotionConfig, useIsPresent, useReducedMotion } from 'motion/react';
 import { AlertDialog, Badge, Button, Flex, Heading, IconButton, Separator, Spinner, Text, TextField } from '@radix-ui/themes';
 import { ArrowDownToLine, Check, CircleAlert, Copy, Eye, EyeOff, Globe2, KeyRound, Link2, Link2Off, LockKeyhole, Pencil, Plus, RefreshCw, Search, Settings2, Trash2, X } from 'lucide-react';
 import { entriesFor, parseDocument } from '../lib/model';
@@ -12,11 +12,13 @@ import { EditorForm } from './EditorForm';
 import { SessionGuard } from '../lib/session';
 import { matchesPopupShortcut, usePopupShortcuts } from '../lib/popup-shortcuts';
 import { ShortcutKeys } from './ShortcutRecorder';
+import { useExpiringValue } from '../lib/use-expiring-value';
 
 export type Detail = EntryDocument & { entry: Entry; vaultId: string; receivedAt: number };
 export type EditorValue = { vaultId: string; original?: Detail; password?: string };
 type DetailTarget = { entry: Entry; vaultId: string };
 type RefreshResult = { ok: boolean; error?: string };
+type PopupView = 'list' | 'detail' | 'editor';
 
 export function App({ client }: { client: Client }) {
   const [snapshot, setSnapshot] = useState<Snapshot>();
@@ -26,7 +28,7 @@ export function App({ client }: { client: Client }) {
   const [refreshing, setRefreshing] = useState(false);
   const shortcuts = usePopupShortcuts(client.demo);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<{ text: string; error?: boolean }>();
+  const [notice, setNotice] = useExpiringValue<{ text: string; error?: boolean } | undefined>(undefined, 4500);
   const [detail, setDetail] = useState<Detail>();
   const [detailTarget, setDetailTarget] = useState<DetailTarget>();
   const [revealed, setRevealed] = useState(false);
@@ -123,7 +125,6 @@ export function App({ client }: { client: Client }) {
     window.document.addEventListener('visibilitychange', visibility);
     return () => { clearInterval(timer); window.document.removeEventListener('visibilitychange', visibility); session.current.disconnect(); };
   }, [checkStatus, disconnected, clearSecrets]);
-  useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(undefined), 4500); return () => clearTimeout(timer); }, [notice]);
   useEffect(() => { setRevealed(false); }, [detail?.entry.path]);
   useEffect(() => {
     if (!detail?.otp || !detail.otpSeconds || editor) { setOtpRemaining(0); return; }
@@ -250,7 +251,9 @@ export function App({ client }: { client: Client }) {
   });
   const document = detail ? parseDocument(detail.contents) : undefined;
   const detailEntry = detail?.entry ?? detailTarget?.entry;
-  const page = editor ? 'editor' : detailEntry ? 'detail' : 'list';
+  const page: PopupView = editor ? 'editor' : detailEntry ? 'detail' : 'list';
+  const [navigation, setNavigation] = useState<{ page: PopupView; direction: number }>({ page, direction: 1 });
+  if (navigation.page !== page) setNavigation({ page, direction: pageOrder[page] > pageOrder[navigation.page] ? 1 : -1 });
   const navigateEntries = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (page !== 'list' || busy || deleteOpen || window.document.hidden || event.defaultPrevented || event.nativeEvent.isComposing) return;
     const control = event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
@@ -271,7 +274,7 @@ export function App({ client }: { client: Client }) {
   };
 
   return <MotionConfig reducedMotion="user" transition={{ duration: .16, ease: [.2, .8, .2, 1] }}><div className="popup-shell" onKeyDown={navigateEntries}>
-    <div className="popup-pages"><AnimatePresence initial={false} mode="sync"><PopupPage key={page} view={page} listScroll={listScroll.current} returnEntry={returnEntry.current}>
+    <div className="popup-pages"><AnimatePresence initial={false} mode="sync" custom={navigation.direction}><PopupPage key={page} view={page} direction={navigation.direction} listScroll={listScroll.current} returnEntry={returnEntry.current}>
     {editor ? <EditorForm client={client} value={editor} defaultURL={snapshot?.tab ? `https://${snapshot.tab.hostname}` : ''} close={() => setEditor(undefined)} saved={async () => { setEditor(undefined); cancelDetails(); await refresh(); setNotice({ text: '账号已加密保存' }); }}/>
     : detailEntry ? <>
       <PageHeader title="账号详情" back={cancelDetails}><ActionIcon label={snapshot?.tab ? '填充账号' : '请先打开网站'} disabled={busy || !detail || !snapshot?.tab} onClick={() => detail && fill(detail.entry)}><ArrowDownToLine size={16}/></ActionIcon><ActionIcon label="编辑账号" disabled={!detail || busy} onClick={() => detail && setEditor({ vaultId: detail.vaultId, original: detail })}><Pencil size={16}/></ActionIcon><ActionIcon label="删除账号" disabled={!detail || busy} onClick={() => setDeleteOpen(true)}><Trash2 size={16}/></ActionIcon></PageHeader>
@@ -314,8 +317,16 @@ export function App({ client }: { client: Client }) {
   </div></MotionConfig>;
 }
 
-function PopupPage({ view, children, listScroll, returnEntry }: { view: 'list' | 'detail' | 'editor'; children: React.ReactNode; listScroll: number; returnEntry?: string }) {
+const pageOrder = { list: 0, detail: 1, editor: 2 };
+const pageVariants = {
+  enter: (direction: number) => ({ opacity: 0, x: direction * 18 }),
+  active: { opacity: 1, x: 0 },
+  leave: (direction: number) => ({ opacity: 0, x: direction * -18 }),
+};
+
+function PopupPage({ view, direction, children, listScroll, returnEntry }: { view: PopupView; direction: number; children: React.ReactNode; listScroll: number; returnEntry?: string }) {
   const present = useIsPresent();
+  const reduceMotion = useReducedMotion();
   const ref = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     if (!present || window.document.hidden) return;
@@ -328,11 +339,10 @@ function PopupPage({ view, children, listScroll, returnEntry }: { view: 'list' |
       (entry ?? page?.querySelector<HTMLInputElement>('input[aria-label="搜索密码库"]'))?.focus({ preventScroll: true });
     }
   }, [present, view]);
-  const offset = view === 'list' ? -12 : 12;
-  return <motion.section ref={ref} className={`popup-page popup-page-${view}`} data-popup-page={view} inert={!present} aria-hidden={!present} initial={{ opacity: 0, x: offset }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: offset, transition: { duration: .1 } }}>
+  return <motion.section ref={ref} className={`popup-page popup-page-${view}`} data-popup-page={view} data-navigation-direction={direction > 0 ? 'forward' : 'back'} inert={!present} aria-hidden={!present} custom={direction} variants={pageVariants} initial="enter" animate="active" exit="leave" transition={{ duration: reduceMotion ? 0 : .18, ease: [.2, .8, .2, 1] }}>
     {/* AnimatePresence retains removed children. Drop credentials immediately,
-        leaving only an empty surface to animate after navigation or a lock. */}
-    {present || view === 'list' ? children : <div className="page-transition-mask"/>}
+        retaining a neutral skeleton so the outgoing page does not flash blank. */}
+    {present || view === 'list' ? children : <div className="page-transition-mask"><PageHeader title={view === 'detail' ? '账号详情' : '编辑账号'} back={() => {}} disabled/><div className="screen-content"><DetailSkeleton/></div></div>}
   </motion.section>;
 }
 

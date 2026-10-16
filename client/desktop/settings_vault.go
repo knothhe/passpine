@@ -35,7 +35,7 @@ func (a *application) vaultNameControls(c *ui.Context) {
 		a.vaultNameID, a.vaultNameDraft = a.state.VaultID, a.state.VaultName
 	}
 	ui.Row(c).Width(300).MaxWidth(360).Gap(6).AlignItems(ui.Center).Children(func() {
-		input := components.TextBox(c, &a.vaultNameDraft, components.TextBoxOptions{}).Grow(1).MinWidth(0).Label(a.t("编辑密码库名称")).Placeholder(displayVaultDirectory(a.state.Directory)).Disabled(!a.state.Configured || a.busy)
+		input := textBox(c, &a.vaultNameDraft, components.TextBoxOptions{}).Grow(1).MinWidth(0).Label(a.t("编辑密码库名称")).Placeholder(displayVaultDirectory(a.state.Directory)).Disabled(!a.state.Configured || a.busy)
 		if iconButton(c, lucide.Check(), a.t("保存密码库名称"), components.ButtonGhost).Disabled(!a.state.Configured || a.busy || a.vaultNameDraft == a.state.VaultName).Clicked() || input.Submitted() {
 			a.call(app.Request{Action: "vault-rename", ID: a.state.VaultID, Name: a.vaultNameDraft}, func(d app.Data) {
 				a.vaultNameDraft = d.VaultName
@@ -65,10 +65,10 @@ func (a *application) browserRegistrationView(c *ui.Context) {
 				}
 				components.Icon(c, icon).Size(16, 16).TextColor(color)
 				ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
-					components.Text(c, registration.Name).FontSize(13)
-					components.Text(c, registration.ExtensionID).FontSize(11).TextColor(c.Theme().TextMuted).Wrap()
+					components.Text(c, registration.Name).FontSize(scaledFontSize(c, 13))
+					components.Text(c, registration.ExtensionID).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).Wrap()
 				})
-				components.Text(c, status).FontSize(12).TextColor(color)
+				components.Text(c, status).FontSize(scaledFontSize(c, 12)).TextColor(color)
 				if !registration.Registered {
 					label := a.t("注册")
 					if registration.Status == "invalid" || registration.Status == "helper_missing" {

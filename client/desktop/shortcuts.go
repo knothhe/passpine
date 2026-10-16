@@ -30,7 +30,7 @@ func (a *application) shortcutControls(c *ui.Context) {
 	ui.Column(c).AlignSelf(ui.Center).Shrink(0).Gap(6).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			value, _ := app.NormalizeGlobalShortcut(a.settings.GlobalShortcut)
-			components.Text(c, strings.ReplaceAll(value, "+", " + ")).FontSize(12).SingleLine().Shrink(0)
+			components.Text(c, strings.ReplaceAll(value, "+", " + ")).FontSize(scaledFontSize(c, 12)).SingleLine().Shrink(0)
 			label := a.t("录制快捷键")
 			if a.shortcut.recording {
 				label = a.t("请按下组合键…")
@@ -52,7 +52,7 @@ func (a *application) shortcutControls(c *ui.Context) {
 			}
 		})
 		if a.shortcut.errorText != "" {
-			components.Text(c, a.t(a.shortcut.errorText)).FontSize(11).TextColor(c.Theme().Danger).Wrap().MaxWidth(340)
+			components.Text(c, a.t(a.shortcut.errorText)).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().Danger).Wrap().MaxWidth(340)
 		}
 	})
 }

@@ -18,7 +18,7 @@ func (a *application) generatorDialog(c *ui.Context) {
 	components.Dialog(c, &a.generator.open, components.DialogOptions{Label: a.t("密码生成器"), DisableBackdropClose: true, DisableEscapeClose: true}, func(panel ui.Element) {
 		panel.Width(420).Padding(18).Gap(12)
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-			components.Text(c, a.t("密码生成器")).FontSize(16).Bold()
+			components.Text(c, a.t("密码生成器")).FontSize(scaledFontSize(c, 16)).Bold()
 			ui.Spacer(c)
 			if iconButton(c, lucide.X(), a.t("关闭密码生成器"), components.ButtonGhost).Size(26, 26).Padding(5).Clicked() {
 				a.closeGenerator()
@@ -26,9 +26,9 @@ func (a *application) generatorDialog(c *ui.Context) {
 		})
 		ui.Row(c).Key("generator-preview").FillWidth().MinWidth(0).Height(42).Padding(0, 6).Gap(4).AlignItems(ui.Center).
 			Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(c.Theme().Radius).Children(func() {
-			components.TextBox(c, &a.generator.password, components.TextBoxOptions{ReadOnly: true}).
+			textBox(c, &a.generator.password, components.TextBoxOptions{ReadOnly: true}).
 				Width(0).Grow(1).MinWidth(0).Height(40).Padding(10, 6).Clip().Border(0, c.Theme().Border).
-				Font("monospace").FontSize(13).Background(ui.Color{}).TextColor(c.Theme().Text).
+				Font("monospace").FontSize(scaledFontSize(c, 13)).Background(ui.Color{}).TextColor(c.Theme().Text).
 				Label(a.t("生成的密码")).Placeholder(a.t("点击重新生成密码"))
 			if iconButton(c, lucide.RefreshCw(), a.t("重新生成密码"), components.ButtonGhost).
 				Size(28, 28).Shrink(0).Padding(6).Tooltip(a.t("重新生成密码")).Clicked() {
@@ -37,7 +37,7 @@ func (a *application) generatorDialog(c *ui.Context) {
 		})
 		changed := false
 		ui.Row(c).Key("generator-length").FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
-			components.Text(c, a.t("长度")).FontSize(11).TextColor(c.Theme().TextMuted).SingleLine()
+			components.Text(c, a.t("长度")).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).SingleLine()
 			slider := components.Slider(c, &a.generator.length, 8, 128, components.SliderOptions{Step: 1})
 			slider.Label(a.t("密码长度")).Grow(1).MinWidth(60).Height(24)
 			if slider.Changed() {
@@ -70,7 +70,7 @@ func (a *application) generatorDialog(c *ui.Context) {
 			} {
 				ui.Box(c).Key(option.key).Width(0).Grow(1).MinWidth(0).Disabled(*option.on && count == 1).Children(func() {
 					button := components.ToggleButton(c, option.on, option.sample).Label(a.t(option.label)).Tooltip(a.t(option.label)).
-						FillWidth().Height(30).Padding(5, 8).FontSize(12)
+						FillWidth().Height(30).Padding(5, 8).FontSize(scaledFontSize(c, 12))
 					if *option.on {
 						button.Background(c.Theme().Accent.Alpha(.14)).TextColor(c.Theme().Accent).Border(1, c.Theme().Accent.Alpha(.4))
 					}
@@ -81,21 +81,21 @@ func (a *application) generatorDialog(c *ui.Context) {
 			}
 		})
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-			if components.Checkbox(c, &a.generator.exclude, a.t("排除易混淆字符")).FontSize(11).Changed() {
+			if components.Checkbox(c, &a.generator.exclude, a.t("排除易混淆字符")).FontSize(scaledFontSize(c, 11)).Changed() {
 				changed = true
 			}
 			ui.Spacer(c)
-			components.Text(c, "I l 1 O 0").Font("monospace").FontSize(10).TextColor(c.Theme().TextMuted).SingleLine()
+			components.Text(c, "I l 1 O 0").Font("monospace").FontSize(scaledFontSize(c, 10)).TextColor(c.Theme().TextMuted).SingleLine()
 		})
 		if changed {
 			a.requestGeneratorUpdate()
 		}
 		ui.Row(c).FillWidth().Gap(6).Children(func() {
 			ui.Spacer(c)
-			if components.Button(c, a.t("取消"), components.ButtonGhost).FontSize(12).Height(30).Padding(5, 12).Clicked() {
+			if components.Button(c, a.t("取消"), components.ButtonGhost).FontSize(scaledFontSize(c, 12)).Height(30).Padding(5, 12).Clicked() {
 				a.closeGenerator()
 			}
-			if components.Button(c, a.t("使用此密码"), components.ButtonPrimary).FontSize(12).Height(30).Padding(5, 14).Disabled(!a.generatorReady()).Clicked() {
+			if components.Button(c, a.t("使用此密码"), components.ButtonPrimary).FontSize(scaledFontSize(c, 12)).Height(30).Padding(5, 14).Disabled(!a.generatorReady()).Clicked() {
 				a.applyGeneratedPassword()
 			}
 		})
@@ -139,7 +139,7 @@ func (a *application) recoveryView(c *ui.Context) {
 						components.Icon(c, lucide.FileKey).Size(22, 22).TextColor(c.Theme().Accent)
 						ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
 							components.Text(c, item.Path).Bold().Wrap()
-							components.Text(c, item.CreatedAt).FontSize(11).TextColor(c.Theme().TextMuted)
+							components.Text(c, item.CreatedAt).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 						})
 						label := a.t("恢复")
 						if a.recoveryKind == 1 {
@@ -207,16 +207,22 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 	}
 	general := []components.SettingsItem{
 		{ID: "theme-style", Title: a.t("主题风格"), Description: a.t("主题配色和应用图标一起切换。"), Build: func(c *ui.Context) {
-			selectValue(c, &a.settings.ThemeStyle, a.t("主题风格"), []string{app.ThemeStyleOnevra, app.ThemeStyleMonochrome}, []string{a.t("陶土橙"), a.t("黑白")})
+			selectValue(c, &a.settings.ThemeStyle, a.t("主题风格"), []string{app.ThemeStyleMonochrome, app.ThemeStyleOnevra}, []string{a.t("黑白"), a.t("陶土橙")})
 		}},
 		{ID: "theme", Title: a.t("外观"), Build: func(c *ui.Context) {
 			selectValue(c, &a.settings.Theme, a.t("外观"), []string{"system", "light", "dark"}, []string{a.t("跟随系统"), a.t("浅色"), a.t("深色")})
+		}},
+		{ID: "font-size", Title: a.t("文字大小"), Description: a.t("调整客户端、全局搜索和快捷面板的文字大小。"), Build: func(c *ui.Context) {
+			selected := (app.NormalizeFontScale(a.settings.FontScale) - 80) / 10
+			if ui.Segmented(c, &selected, "80%", "90%", "100%", "110%", "120%").Label(a.t("文字大小")).AlignSelf(ui.Center).Changed() {
+				a.settings.FontScale = 80 + selected*10
+			}
 		}},
 		{ID: "language", Title: a.t("语言"), Build: func(c *ui.Context) {
 			selectValue(c, &a.settings.Language, a.t("语言"), []string{"system", "en", "zh-CN"}, []string{a.t("跟随系统"), "English", a.t("简体中文")})
 		}},
 		{ID: "close", Title: a.t("关闭窗口后继续运行"), Build: func(c *ui.Context) {
-			settingSwitch(c, &a.settings.CloseToTray, a.t("关闭后继续运行"))
+			a.booleanSettingSegments(c, &a.settings.CloseToTray, a.t("关闭后继续运行"))
 		}},
 		{ID: "shortcut", Title: a.t("全局搜索快捷键"), Description: a.t("点击录制后按下组合键，Esc 取消。保存后立即生效。"), Build: a.shortcutControls},
 	}
@@ -239,7 +245,7 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 	security := []components.SettingsItem{
 		{ID: "device", Title: a.t("使用 Touch ID 或 Mac 登录密码解锁"), Description: a.deviceUnlockDescription(), Build: func(c *ui.Context) {
 			ui.Column(c).AlignSelf(ui.Center).Disabled(!a.state.DeviceUnlockAvailable && !a.state.DeviceUnlockEnrolled).Children(func() {
-				settingSwitch(c, &a.settings.DeviceUnlock, a.t("使用 Touch ID 或 Mac 登录密码解锁"))
+				a.booleanSettingSegments(c, &a.settings.DeviceUnlock, a.t("使用 Touch ID 或 Mac 登录密码解锁"))
 			})
 		}},
 		{ID: "idle", Title: a.t("空闲自动锁定"), Build: func(c *ui.Context) {
@@ -252,7 +258,7 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 			a.durationSegments(c, &a.settings.ClipboardSeconds, a.t("清理剪贴板"), []int{15, 30, 60}, a.t("秒"))
 		}},
 		{ID: "locked", Title: a.t("锁定时允许列出名称"), Build: func(c *ui.Context) {
-			settingSwitch(c, &a.settings.BrowseWhileLocked, a.t("锁定时允许列出名称"))
+			a.booleanSettingSegments(c, &a.settings.BrowseWhileLocked, a.t("锁定时允许列出名称"))
 		}},
 	}
 	vaultItems := []components.SettingsItem{
@@ -281,11 +287,11 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 	syncItems := []components.SettingsItem{
 		{ID: "remote", Title: a.t("Git 远端地址"), Build: func(c *ui.Context) {
 			ui.Column(c).Width(320).MaxWidth(420).AlignSelf(ui.Center).Gap(8).Children(func() {
-				components.TextBox(c, &a.gitRemote, components.TextBoxOptions{}).FillWidth().Disabled(!a.state.GitInitialized || a.state.GitSyncing).Label(a.t("Git 远端地址")).Placeholder("git@github.com:you/store.git")
+				textBox(c, &a.gitRemote, components.TextBoxOptions{}).FillWidth().Disabled(!a.state.GitInitialized || a.state.GitSyncing).Label(a.t("Git 远端地址")).Placeholder("git@github.com:you/store.git")
 			})
 		}},
 		{ID: "auto", Title: a.t("自动同步"), Build: func(c *ui.Context) {
-			settingSwitch(c, &a.settings.AutoSync, a.t("自动同步"))
+			a.booleanSettingSegments(c, &a.settings.AutoSync, a.t("自动同步"))
 		}},
 		{ID: "interval", Title: a.t("定时同步间隔"), Build: func(c *ui.Context) {
 			a.durationSegments(c, &a.settings.SyncMinutes, a.t("定时同步间隔"), []int{0, 15, 30}, a.t("分钟"))
@@ -304,7 +310,7 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 	}
 	activityItems := []components.SettingsItem{
 		{ID: "activity", Title: a.t("本机操作记录"), Build: func(c *ui.Context) {
-			settingSwitch(c, &a.settings.RecordActivity, a.t("本机操作记录"))
+			a.booleanSettingSegments(c, &a.settings.RecordActivity, a.t("本机操作记录"))
 		}},
 		{ID: "activity-count", Title: a.t("最多保留记录"), Build: func(c *ui.Context) {
 			a.durationSegments(c, &a.settings.ActivityMaxEntries, a.t("最多保留记录"), []int{500, 1000, 5000}, a.t("条"))
@@ -341,7 +347,7 @@ func (a *application) settingsView(c *ui.Context) {
 		a.setShortcutRecording(false)
 	}
 	if a.settings != a.settingsObserved {
-		if a.settings.Theme != a.settingsObserved.Theme || a.settings.ThemeStyle != a.settingsObserved.ThemeStyle {
+		if a.settings.Theme != a.settingsObserved.Theme || a.settings.ThemeStyle != a.settingsObserved.ThemeStyle || a.settings.FontScale != a.settingsObserved.FontScale {
 			a.applyTheme()
 		}
 		a.settingsObserved = a.settings
@@ -417,10 +423,10 @@ func (a *application) activityView(c *ui.Context) {
 			ui.Column(c).FillWidth().Gap(8).Children(func() {
 				for _, entry := range a.activity {
 					ui.Row(c).FillWidth().Padding(12).Gap(12).Background(c.Theme().Surface).Radius(8).Children(func() {
-						components.Text(c, entry.Time).FontSize(11).TextColor(c.Theme().TextMuted)
+						components.Text(c, entry.Time).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 						components.Text(c, a.activityLabel("action", entry.Action)).Grow(1).MinWidth(0).Wrap().Bold()
 						components.Badge(c, a.activityLabel("source", entry.Source))
-						components.Text(c, a.activityLabel("outcome", entry.Outcome)).FontSize(12)
+						components.Text(c, a.activityLabel("outcome", entry.Outcome)).FontSize(scaledFontSize(c, 12))
 					})
 				}
 			})

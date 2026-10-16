@@ -114,7 +114,7 @@ func (a *application) setupView(c *ui.Context) {
 					})
 				})
 				if len(a.state.Vaults) > 0 {
-					components.Text(c, a.t("最近打开")).Bold().FontSize(12)
+					components.Text(c, a.t("最近打开")).Bold().FontSize(scaledFontSize(c, 12))
 					for _, v := range a.state.Vaults {
 						v := v
 						if components.Button(c, v.Name, components.ButtonOutline).FillWidth().Clicked() {

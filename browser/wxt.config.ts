@@ -1,7 +1,7 @@
 import { defineConfig } from 'wxt';
 import { extensionCommands } from './src/lib/shortcuts';
 
-const toolbarIcons = { 16: '/icon16.png', 32: '/icon32.png', 48: '/icon48.png', 128: '/icon128.png' };
+const toolbarIcons = { 16: '/icon16-monochrome.png', 32: '/icon32-monochrome.png', 48: '/icon48-monochrome.png', 128: '/icon128-monochrome.png' };
 
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],

@@ -3,6 +3,8 @@ package i18n
 // Chinese source keys keep the original language readable while the English
 // catalog provides the default for unsupported system languages.
 var english = map[string]string{
+	"文字大小": "Text size",
+	"调整客户端、全局搜索和快捷面板的文字大小。": "Adjust text size in the client, global search and quick panel.",
 	"Passpine 快捷面板": "Passpine Quick Panel",
 	"快捷面板…":         "Quick panel…",
 	"启用轻量模式":        "Enable lightweight mode",
@@ -285,6 +287,10 @@ var english = map[string]string{
 	"打开主窗口创建或选择密码库":         "Open the main window to create or choose a vault",
 	"↑ ↓ 选择 · Enter 复制":     "↑ ↓ Select · Enter Copy",
 	"打开主窗口":                 "Open main window",
+	"打开设置":                  "Open settings",
+	"刷新条目":                  "Refresh entries",
+	"正在刷新…":                 "Refreshing…",
+	"已刷新":                   "Refreshed",
 	"开启":                    "On",
 	"正在复制…":                 "Copying…",
 	"操作未完成":                 "Operation failed",

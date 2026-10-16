@@ -1,19 +1,21 @@
 # Passpine 浏览器插件
 
-WXT + Vite + TypeScript + React，使用 Radix Themes 可访问组件与 Lucide 图标。支持与客户端一致的陶土橙、黑白两套主题风格，以及跟随系统 / 浅色 / 深色模式；不在扩展内嵌入 WebView 客户端，也不包含 Rust。
+WXT + Vite + TypeScript + React，使用 Radix Themes 可访问组件与 Lucide 图标。默认使用与客户端一致的黑白（monochrome）主题和图标，设置页可选择陶土橙风格，以及跟随系统 / 浅色 / 深色模式；不在扩展内嵌入 WebView 客户端，也不包含 Rust。
 
 两套植物钥匙图标随主题风格切换：界面品牌和页签使用暖白底 / 陶土橙图形，或白底 / 黑色图形；浏览器工具栏保留主题色底 / 白色图形，黑白风格为黑底 / 白色图形。图标由客户端 `client/assets/generate.swift` 的矢量几何生成，包含 256px 界面资源与 16/32/48/128px 扩展资源；16px 版本简化枝叶细节。生成方式见 [应用图标说明](../client/assets/README.md)。
 
-设置页「外观」中选择主题风格及明暗模式，自动保存到扩展本地存储，并实时更新已打开的弹窗和设置页；工具栏图标在后台启动及设置变化时同步更新。客户端和扩展分别保存外观偏好。主题使用现有 Radix `Theme` 的 `appearance`、`accentColor`、`grayColor`，由 `src/components/theme.css` 集中提供语义色彩；组件及 Radix 弹出层继承主题。陶土橙延续 Onevra，黑白参考 Racomi / Magpie 的中性灰表面并使用黑白主色。
+设置页「外观」中选择主题风格、明暗模式及文字大小（80%、90%、100%、110%、120%，默认 100%），自动保存到扩展本地存储，并实时更新已打开的弹窗和设置页；工具栏图标在后台启动及设置变化时同步更新。文字大小覆盖弹窗与设置页的文字，修改后立即更新当前已打开的扩展页面；弹窗保留 380×460 的尺寸，较大字号下内容在正文滚动。客户端和扩展分别保存外观与字号偏好，互不覆盖。主题使用现有 Radix `Theme` 的 `appearance`、`accentColor`、`grayColor`，由 `src/components/theme.css` 集中提供语义色彩；组件及 Radix 弹出层继承主题。陶土橙延续 Onevra，黑白参考 Racomi / Magpie 的中性灰表面并使用黑白主色。
 
 ## 开发与构建
 
+使用 pnpm 12.11.2，扩展的 `pnpm-lock.yaml` 固定依赖，根目录锁文件固定包管理器自身；`packageManager` 在根目录和扩展包中声明同一版本。迁移前的 `package-lock.json` 已由 `pnpm import` 转换，日常开发不再运行 npm 安装。
+
 ```sh
-npm ci
-npm run typecheck
-npm test
+pnpm install --frozen-lockfile
+pnpm run typecheck
+pnpm test
 make -C .. browser:build
-npm run zip
+pnpm run zip
 ```
 
 [本地安装、配置与浏览器加载说明](../docs/install-local.md)
@@ -29,7 +31,7 @@ Chrome manifest 的 `key` 是本仓库生成的公钥，仅用于固定开发版
 ## 独立交互预览
 
 ```sh
-npm run preview
+pnpm run preview
 ```
 
 打开 `http://127.0.0.1:5174/`。这是显式 demo 入口，使用独立的虚构数据，不连接 Native Messaging，不读真实密码库。真实扩展的 entrypoints 不导入 demo client；连接失败时只呈现连接失败状态，不会回退到示例数据。

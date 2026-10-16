@@ -10,6 +10,7 @@ import (
 type notificationState struct {
 	kind, typedMessage string
 	clear              bool
+	expiresAt          time.Time
 }
 
 func (a *application) inform(message string) {
@@ -44,6 +45,17 @@ func (a *application) flushNotifications(c *ui.Context) {
 	if a.notifications.clear {
 		c.CloseToast(id)
 		a.notifications.clear = false
+		a.notifications.expiresAt = time.Time{}
+	}
+	// MyGo pauses its toast timer when the window loses focus. Operation
+	// feedback instead expires by wall time, including while in the background.
+	if deadline := a.notifications.expiresAt; !deadline.IsZero() {
+		if remaining := deadline.Sub(c.Now()); remaining > 0 {
+			c.After(remaining)
+		} else {
+			c.CloseToast(id)
+			a.notifications.expiresAt = time.Time{}
+		}
 	}
 	if a.errorText != "" {
 		c.AddToast(ui.Toast{ID: id, Title: a.t("操作未完成"), Description: a.t(a.errorText), Type: components.ToastError, Timeout: -1})
@@ -62,7 +74,13 @@ func (a *application) flushNotifications(c *ui.Context) {
 	if kind != components.ToastSuccess {
 		timeout = 6 * time.Second
 	}
-	c.AddToast(ui.Toast{ID: id, Title: a.t(a.notice), Type: kind, Timeout: timeout})
+	deadline := c.Now().Add(timeout)
+	c.AddToast(ui.Toast{ID: id, Title: a.t(a.notice), Type: kind, Timeout: -1, OnClose: func() {
+		if a.notifications.expiresAt == deadline {
+			a.notifications.expiresAt = time.Time{}
+		}
+	}})
+	c.After(timeout)
 	a.notice = ""
-	a.notifications = notificationState{}
+	a.notifications = notificationState{expiresAt: deadline}
 }

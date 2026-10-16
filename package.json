@@ -14,10 +14,21 @@
     "build": "make build",
     "install:local": "node scripts/install-local.mjs",
     "test:client": "cd client && go test -race ./...",
-    "test:browser": "npm --prefix browser run typecheck && npm --prefix browser test",
+    "test:browser": "pnpm --dir browser run typecheck && pnpm --dir browser test",
     "test": "bash scripts/check.sh",
-    "preview:browser": "npm --prefix browser run preview",
-    "package:browser": "npm --prefix browser run zip"
+    "preview:browser": "pnpm --dir browser run preview",
+    "package:browser": "pnpm --dir browser run zip",
+    "version:show": "node scripts/version.mjs show",
+    "version:check": "node scripts/version.mjs check",
+    "version:patch": "node scripts/version.mjs patch",
+    "version:minor": "node scripts/version.mjs minor",
+    "version:major": "node scripts/version.mjs major",
+    "version:set": "node scripts/version.mjs set",
+    "release": "node scripts/release.mjs",
+    "test:tooling": "node --test scripts/version.test.mjs scripts/release.test.mjs"
   },
-  "engines": {"node": ">=22.12.0"}
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@12.11.2"
 }

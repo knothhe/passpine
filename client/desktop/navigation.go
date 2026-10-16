@@ -19,6 +19,7 @@ type navigationLocation struct {
 type navigationState struct {
 	back, forward []navigationLocation
 	revision      uint64
+	direction     int
 }
 
 func (a *application) currentLocation() navigationLocation {
@@ -38,6 +39,7 @@ func (a *application) rememberNavigation() {
 	}
 	h.forward = nil
 	h.revision++
+	h.direction = 1
 }
 
 func (a *application) historyControls(c *ui.Context) {
@@ -82,6 +84,7 @@ func (a *application) moveHistory(delta int) {
 		h.forward = append(h.forward, current)
 	}
 	h.revision++
+	h.direction = delta
 	a.restoreLocation(target)
 }
 

@@ -32,11 +32,27 @@ func quickSearchKeycap(c *ui.Context, key string, primary bool) {
 	t := c.Theme()
 	foreground, background, border := t.TextMuted, t.Text.Alpha(.04), t.Border.Alpha(.65)
 	if primary {
-		foreground, background, border = t.AccentText.Alpha(.8), t.AccentText.Alpha(.08), t.AccentText.Alpha(.12)
+		foreground, background, border = t.AccentText, t.AccentText.Alpha(.08), t.AccentText.Alpha(.16)
 	}
-	components.Badge(c, key).FontSize(10).FontWeight(500).Height(20).MinWidth(22).
-		Padding(2, 5).Radius(4).AlignSelf(ui.Center).TextAlign(ui.Center).
-		TextColor(foreground).Background(background).Border(1, border)
+	ui.Row(c).Height(20).MinWidth(22).Padding(2, 5).Radius(4).Shrink(0).
+		AlignSelf(ui.Center).AlignItems(ui.Center).Justify(ui.Center).Label(key).Role(ui.RoleNone).
+		TextColor(foreground).Background(background).Border(1, border).Children(func() {
+		var icon *ui.SVG
+		switch key {
+		case "↑":
+			icon = lucide.ArrowUp()
+		case "↓":
+			icon = lucide.ArrowDown()
+		case "↵":
+			icon = lucide.CornerDownLeft()
+		}
+		if icon != nil {
+			size := scaledFontSize(c, 12)
+			components.Icon(c, icon).Size(size, size).TextColor(foreground).Role(ui.RoleNone)
+		} else {
+			components.Text(c, key).FontSize(scaledFontSize(c, 10)).FontWeight(500).SingleLine().Unselectable().TextColor(foreground)
+		}
+	})
 }
 
 // A panel has its own navigation and focus. Opening it must never change the
@@ -59,6 +75,7 @@ type quickSearchState struct {
 	clearFeedback            bool
 	query, passphrase        string
 	errorText, operation     string
+	refreshedUntil           time.Time
 	selected                 int
 	results                  []app.Entry
 	list                     components.ListState
@@ -147,7 +164,7 @@ func quickSearchOptions(area mygo.Rectangle) mygo.WindowOptions {
 		Title: "Passpine Quick Search", Width: bounds.Width, Height: bounds.Height,
 		X: bounds.X, Y: bounds.Y, Hidden: true, Panel: true, Frameless: true,
 		DisableResize:   true,
-		BackgroundColor: nativeThemeBackground(app.ThemeStyleOnevra),
+		BackgroundColor: nativeThemeBackground(app.ThemeStyleMonochrome),
 	}
 }
 
@@ -229,6 +246,7 @@ func (a *application) openQuickSearch(mode string) {
 	a.quick.visible, a.quick.focusPending = true, true
 	a.updateLightweightTimer(time.Now())
 	a.quick.errorText, a.quick.clearFeedback = "", true
+	a.quick.refreshedUntil = time.Time{}
 	a.placeQuickSearchWindow()
 	if window, ok := a.quick.window.(*mygo.Window); ok {
 		window.SetTitle(a.quickSearchTitle())
@@ -254,6 +272,7 @@ func (a *application) hideQuickSearch() {
 	a.quick.passphrase = ""
 	a.quick.pendingCopy = quickSearchCopy{}
 	a.quick.errorText, a.quick.clearFeedback = "", true
+	a.quick.refreshedUntil = time.Time{}
 	a.quick.request++
 	if a.quick.window != nil {
 		a.quick.window.Hide()
@@ -275,6 +294,7 @@ func (a *application) closeQuickSearch() {
 func (a *application) clearQuickSearchSecrets() {
 	a.quick.passphrase = ""
 	a.quick.errorText, a.quick.clearFeedback = "", true
+	a.quick.refreshedUntil = time.Time{}
 	a.quick.results, a.quick.cachedResults = nil, nil
 	a.quick.cacheReady = false
 	a.quick.selected = 0
@@ -354,12 +374,13 @@ func (a *application) quickSearchView(c *ui.Context) {
 		}
 		header.Children(func() {
 			components.Icon(c, lucide.KeyRound()).Size(13, 13).TextColor(c.Theme().TextMuted)
-			components.Text(c, "Passpine").FontSize(11).TextColor(c.Theme().TextMuted)
-			ui.Spacer(c)
-			components.Text(c, a.state.VaultName).FontSize(11).TextColor(c.Theme().TextMuted).SingleLine()
-			if components.Button(c, "esc", components.ButtonGhost).Label(a.t("关闭快速搜索")).Height(25).Clicked() {
+			components.Text(c, "Passpine").FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).Shrink(0)
+			if components.Button(c, "esc", components.ButtonGhost).Label(a.t("关闭快速搜索")).Tooltip(a.t("关闭快速搜索")).Height(25).Padding(3, 5).FontSize(scaledFontSize(c, 10)).TextColor(c.Theme().TextMuted).Shrink(0).Clicked() {
 				a.hideQuickSearch()
 			}
+			ui.Spacer(c)
+			components.Text(c, a.state.VaultName).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).SingleLine().MinWidth(0).MaxWidth(110).Tooltip(a.state.VaultName)
+			a.quickSearchHeaderActions(c)
 		})
 		if !a.state.Configured {
 			a.quickSearchEmptyView(c, a.t("先设置一个密码库"), a.t("打开主窗口创建或选择密码库"))
@@ -382,12 +403,12 @@ func (a *application) quickSearchView(c *ui.Context) {
 							quickSearchKeycap(c, quickSearchControlShortcut("P"), false)
 						})
 					}
-					components.Text(c, a.t("选择")).FontSize(11).SingleLine().TextColor(c.Theme().TextMuted)
+					components.Text(c, a.t("选择")).FontSize(scaledFontSize(c, 11)).SingleLine().TextColor(c.Theme().TextMuted)
 				})
 			}
 			ui.Spacer(c)
 			if !tray && components.Button(c, "", components.ButtonGhost).Label(a.t("打开主窗口")).Height(30).Padding(5, 9).Gap(9).Shrink(0).Children(func() {
-				components.Text(c, a.t("打开主窗口")).FontSize(12).SingleLine()
+				components.Text(c, a.t("打开主窗口")).FontSize(scaledFontSize(c, 12)).SingleLine()
 				quickSearchKeycap(c, quickSearchOpenShortcut(), false)
 			}).Clicked() {
 				a.openQuickSearchInManager()
@@ -398,7 +419,7 @@ func (a *application) quickSearchView(c *ui.Context) {
 					label = a.t("正在复制…")
 				}
 				if components.Button(c, "", components.ButtonPrimary).Label(label).Height(30).Padding(5, 12).Gap(10).Shrink(0).Disabled(a.busy || len(a.quick.results) == 0).Children(func() {
-					components.Text(c, label).FontSize(12).SingleLine()
+					components.Text(c, label).FontSize(scaledFontSize(c, 12)).SingleLine()
 					quickSearchKeycap(c, "↵", true)
 				}).Clicked() {
 					a.copyQuickSearchResult()
@@ -422,8 +443,8 @@ func (a *application) quickSearchView(c *ui.Context) {
 func (a *application) quickSearchResultsView(c *ui.Context) {
 	q := &a.quick
 	ui.Column(c).FillWidth().Grow(1).MinHeight(0).Padding(0, 14, 10, 14).Gap(10).Children(func() {
-		input := components.TextBox(c, &q.query, components.TextBoxOptions{LeadingIcon: lucide.Search()}).
-			Ref(&q.searchRef).Label(a.t("快速搜索条目")).Placeholder(a.t("搜索名称或路径…")).FillWidth().Height(48).FontSize(17)
+		input := textBox(c, &q.query, components.TextBoxOptions{LeadingIcon: lucide.Search()}).
+			Ref(&q.searchRef).Label(a.t("快速搜索条目")).Placeholder(a.t("搜索名称或路径…")).FillWidth().Height(36).FontSize(scaledFontSize(c, 14))
 		input.OnShortcut(0, ui.KeyDown, func() { a.moveQuickSearchSelection(1) })
 		input.OnShortcut(0, ui.KeyUp, func() { a.moveQuickSearchSelection(-1) })
 		// macOS text fields consume Control N/P as caret navigation before
@@ -453,7 +474,14 @@ func (a *application) quickSearchResultsView(c *ui.Context) {
 			a.copyQuickSearchResult()
 		}
 		ui.Row(c).FillWidth().Padding(0, 6).Children(func() {
-			components.Text(c, a.countLabel(len(q.results))).FontSize(11).TextColor(c.Theme().TextMuted)
+			label := a.countLabel(len(q.results))
+			if q.operation == "configure" {
+				label = a.t("正在刷新…")
+			} else if remaining := q.refreshedUntil.Sub(c.Now()); remaining > 0 {
+				label += " · " + a.t("已刷新")
+				c.After(remaining)
+			}
+			components.Text(c, label).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 		})
 		if len(q.results) == 0 {
 			ui.Column(c).FillWidth().Grow(1).AlignItems(ui.Center).Justify(ui.Center).Gap(10).Children(func() {
@@ -464,15 +492,19 @@ func (a *application) quickSearchResultsView(c *ui.Context) {
 		}
 		components.List(c, &q.list, len(q.results), func(i int) {
 			entry := q.results[i]
-			ui.Row(c).FillWidth().Height(58).Padding(9, 12).Gap(12).AlignItems(ui.Center).Children(func() {
+			row := ui.Row(c).FillWidth().Height(58).Padding(9, 12).Gap(12).AlignItems(ui.Center).Radius(c.Theme().Radius)
+			if i == q.selected && c.Theme().Accent == c.Theme().Text {
+				row.Background(c.Theme().Selection)
+			}
+			row.Children(func() {
 				components.Icon(c, lucide.KeyRound()).Size(18, 18).TextColor(c.Theme().TextMuted)
 				ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-					components.Text(c, entry.Name).FontSize(14).SingleLine()
+					components.Text(c, entry.Name).FontSize(scaledFontSize(c, 14)).SingleLine()
 					folder := entry.Folder
 					if folder == "" {
 						folder = a.state.VaultName
 					}
-					components.Text(c, folder).FontSize(11).TextColor(c.Theme().TextMuted).SingleLine()
+					components.Text(c, folder).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).SingleLine()
 				})
 				if i == q.selected {
 					components.Icon(c, lucide.CornerDownLeft()).Size(14, 14).TextColor(c.Theme().TextMuted)
@@ -485,7 +517,7 @@ func (a *application) quickSearchResultsView(c *ui.Context) {
 func (a *application) quickSearchEmptyView(c *ui.Context, title, description string) {
 	ui.Column(c).FillWidth().Grow(1).Padding(30).AlignItems(ui.Center).Justify(ui.Center).Gap(12).Children(func() {
 		components.Icon(c, lucide.FolderKey()).Size(32, 32).TextColor(c.Theme().Accent)
-		components.Text(c, title).FontSize(19).Bold()
+		components.Text(c, title).FontSize(scaledFontSize(c, 19)).Bold()
 		muted(c, description)
 	})
 }
@@ -497,7 +529,7 @@ func (a *application) quickSearchUnlockView(c *ui.Context) {
 		if a.quick.pendingCopy.entry != "" {
 			title = a.t("解锁以复制密码")
 		}
-		components.Text(c, title).FontSize(20).Bold()
+		components.Text(c, title).FontSize(scaledFontSize(c, 20)).Bold()
 		muted(c, a.t("验证后即可搜索并复制密码"))
 		if a.quick.pendingCopy.entry != "" && a.state.Settings.BrowseWhileLocked {
 			components.Text(c, entryName(a.quick.pendingCopy.entry)).Bold().SingleLine()
@@ -510,7 +542,7 @@ func (a *application) quickSearchUnlockView(c *ui.Context) {
 				muted(c, a.t("系统解锁暂不可用，请打开主窗口检查安全设置"))
 			}
 		} else {
-			input := components.TextBox(c, &a.quick.passphrase, components.TextBoxOptions{}).Ref(&a.quick.passphraseRef).
+			input := textBox(c, &a.quick.passphrase, components.TextBoxOptions{}).Ref(&a.quick.passphraseRef).
 				Password().Label(a.t("快速搜索私钥口令")).Placeholder(a.t("私钥口令")).FillWidth().Disabled(a.busy)
 			if a.quick.focusPending {
 				a.quick.passphraseRef.Focus()
@@ -591,6 +623,12 @@ func (a *application) callQuickSearch(request app.Request) {
 	a.quick.errorText, a.quick.clearFeedback = "", true
 	a.quick.request++
 	id, generation, pendingCopy := a.quick.request, a.generation, a.quick.pendingCopy
+	entriesVersion := a.state.EntriesVersion
+	query := a.quick.query
+	selectedPath := ""
+	if request.Action == "configure" && a.quick.selected >= 0 && a.quick.selected < len(a.quick.results) {
+		selectedPath = a.quick.results[a.quick.selected].Path
+	}
 	a.lastInput = time.Now()
 	go func() {
 		response := a.service.Execute(request)
@@ -609,6 +647,27 @@ func (a *application) callQuickSearch(request app.Request) {
 			active := a.quick.visible && a.quick.request == id && a.state.VaultID == request.VaultID
 			a.quick.operation = ""
 			a.receiveResponse(generation, response, func(d app.Data) {
+				if request.Action == "configure" {
+					if d.EntriesVersion != entriesVersion {
+						a.metadataEpoch++
+						a.dropDetail()
+						a.cacheReady = false
+					}
+					if active && a.quick.visible && a.quick.request == id {
+						a.quick.cacheReady = false
+						a.prepareQuickSearchList()
+						if a.quick.query == query {
+							for i, entry := range a.quick.results {
+								if entry.Path == selectedPath {
+									a.quick.selected = i
+									a.quick.list.ScrollIntoView(i)
+									break
+								}
+							}
+						}
+						a.quick.refreshedUntil = time.Now().Add(3 * time.Second)
+					}
+				}
 				if request.Action == "unlock" {
 					if !a.state.Locked {
 						a.lastInput = time.Now()

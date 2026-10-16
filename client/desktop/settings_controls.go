@@ -19,8 +19,8 @@ func (a *application) settingsSidebar(c *ui.Context) {
 	a.selectedSettingsCategory(categories)
 	ui.Column(c).Fill().Children(func() {
 		ui.Column(c).FillWidth().Padding(14, 16, 18, 16).Gap(12).Children(func() {
-			components.Text(c, a.t("设置")).Bold().FontSize(18)
-			search := components.TextBox(c, &a.settingsState.Query, components.TextBoxOptions{LeadingIcon: lucide.Search()}).Label(a.t("搜索设置")).Placeholder(a.t("搜索设置…")).FillWidth()
+			components.Text(c, a.t("设置")).Bold().FontSize(scaledFontSize(c, 18))
+			search := textBox(c, &a.settingsState.Query, components.TextBoxOptions{LeadingIcon: lucide.Search()}).Label(a.t("搜索设置")).Placeholder(a.t("搜索设置…")).FillWidth()
 			if search.Changed() && a.preferencesPage() != "settings" {
 				a.navigate("settings", "")
 			}
@@ -70,7 +70,7 @@ func (a *application) settingsContent(c *ui.Context, categories []components.Set
 	ui.Column(c).Fill().MinWidth(0).Children(func() {
 		ui.Row(c).FillWidth().Shrink(0).Padding(24, 28, 20, 28).AlignItems(ui.Center).Gap(16).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
-				components.Text(c, title).FontSize(21).Bold()
+				components.Text(c, title).FontSize(scaledFontSize(c, 21)).Bold()
 				if description != "" {
 					muted(c, description)
 				}
@@ -108,7 +108,7 @@ func (a *application) settingsContent(c *ui.Context, categories []components.Set
 					count++
 					if item.ID == "git" || item.ID == "browser-status" {
 						if item.ID == "browser-status" {
-							components.Text(c, item.Title).FontSize(14).Bold()
+							components.Text(c, item.Title).FontSize(scaledFontSize(c, 14)).Bold()
 							muted(c, item.Description)
 						}
 						item.Build(c)
@@ -124,7 +124,7 @@ func (a *application) settingsContent(c *ui.Context, categories []components.Set
 						ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
 							components.Text(c, item.Title).Wrap()
 							if item.Description != "" {
-								components.Text(c, item.Description).FontSize(12).TextColor(c.Theme().TextMuted).Wrap()
+								components.Text(c, item.Description).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted).Wrap()
 							}
 						})
 						if item.Build != nil {
@@ -248,10 +248,6 @@ func choiceSettingSegments(c *ui.Context, value *string, label string, values, l
 		*value = values[selected]
 	}
 	return control
-}
-
-func settingSwitch(c *ui.Context, value *bool, label string) ui.Element {
-	return components.Switch(c, value, label, components.SwitchOptions{HideLabel: true}).AlignSelf(ui.Center).Shrink(0)
 }
 
 func gitTime(value string) string {
@@ -389,13 +385,13 @@ func (a *application) gitSettingsStatus(c *ui.Context) {
 				})
 			}
 		})
-		components.Text(c, a.gitStatusHint()).FontSize(12).TextColor(t.TextMuted).Wrap()
+		components.Text(c, a.gitStatusHint()).FontSize(scaledFontSize(c, 12)).TextColor(t.TextMuted).Wrap()
 		if summary := a.gitPendingSummary(); summary != "" {
-			components.Text(c, summary).FontSize(12).Wrap()
+			components.Text(c, summary).FontSize(scaledFontSize(c, 12)).Wrap()
 		}
 		if a.state.GitError != "" {
 			ui.Column(c).FillWidth().MinWidth(0).Padding(10, 12).Background(t.Danger.Alpha(.06)).Radius(6).Children(func() {
-				components.Text(c, a.state.GitError).FontSize(12).TextColor(t.Danger).Wrap()
+				components.Text(c, a.state.GitError).FontSize(scaledFontSize(c, 12)).TextColor(t.Danger).Wrap()
 			})
 		}
 		metadata := []string{}
@@ -411,7 +407,7 @@ func (a *application) gitSettingsStatus(c *ui.Context) {
 		}
 		if len(metadata) > 0 {
 			ui.Box(c).FillWidth().Height(1).Background(t.Border)
-			components.Text(c, strings.Join(metadata, " · ")).FontSize(11).TextColor(t.TextMuted).Wrap()
+			components.Text(c, strings.Join(metadata, " · ")).FontSize(scaledFontSize(c, 11)).TextColor(t.TextMuted).Wrap()
 		}
 	})
 }
@@ -429,7 +425,7 @@ func (a *application) gitHeaderStatus(c *ui.Context) {
 			components.Icon(c, icon).Size(14, 14).TextColor(color)
 		}
 		if a.mainContentWidth(c) >= 540 {
-			components.Text(c, a.gitStatusLabel()).FontSize(11).TextColor(c.Theme().TextMuted).SingleLine()
+			components.Text(c, a.gitStatusLabel()).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).SingleLine()
 		}
 	})
 }
