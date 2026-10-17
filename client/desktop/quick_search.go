@@ -359,6 +359,7 @@ func (a *application) quickSearchView(c *ui.Context) {
 	c.SetTheme(a.clientTheme(c))
 	a.prepareQuickSearchList()
 	c.OnShortcut(0, ui.KeyEscape, a.hideQuickSearch)
+	c.OnShortcut(ui.Cmd, ui.KeyW, a.hideQuickSearch)
 	c.OnShortcut(ui.Cmd, ui.KeyF, func() { a.quick.searchRef.Focus() })
 	tray := a.quick.mode == quickSearchTray
 	if !tray {

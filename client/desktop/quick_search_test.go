@@ -33,6 +33,31 @@ func quickSearchFixture() (*application, *fakeQuickSearchWindow) {
 	return a, window
 }
 
+func TestCloseShortcutDismissesOnlyFocusedSearchPanel(t *testing.T) {
+	for _, mode := range []string{quickSearchGlobal, quickSearchTray} {
+		t.Run(mode, func(t *testing.T) {
+			a, window := quickSearchFixture()
+			a.quick.mode = mode
+			a.page, a.query = "settings", "manager search"
+			a.editor = editorState{open: true, contents: "unsaved document"}
+			editor := a.editor
+			view := ui.NewTester(a.quickSearchView, 660, 460)
+			if err := view.Click("快速搜索条目"); err != nil {
+				t.Fatal(err)
+			}
+			a.quick.passphrase = "private"
+			a.quick.pendingCopy = quickSearchCopy{entry: "开发/GitHub", vaultID: a.state.VaultID}
+			view.Key(ui.Cmd, ui.KeyW)
+			if a.quick.visible || window.hidden != 1 || a.quick.passphrase != "" || a.quick.pendingCopy != (quickSearchCopy{}) {
+				t.Fatal("close shortcut did not dismiss the panel and clear pending secrets")
+			}
+			if a.page != "settings" || a.query != "manager search" || a.editor != editor || a.closing {
+				t.Fatal("closing the search panel changed the manager or its unsaved editor")
+			}
+		})
+	}
+}
+
 func TestGlobalShortcutTogglesIndependentPanelWithoutChangingManager(t *testing.T) {
 	a, window := quickSearchFixture()
 	a.quick.visible = false

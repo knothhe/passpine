@@ -79,11 +79,13 @@ func (a *application) localizedEditMenu() *mygo.MenuItem {
 }
 
 func (a *application) localizedWindowMenu() *mygo.MenuItem {
-	items := []*mygo.MenuItem{{Role: mygo.RoleMinimize, Label: a.t("最小化")}}
+	items := []*mygo.MenuItem{
+		{Role: mygo.RoleClose, Label: a.t("关闭窗口"), Accelerator: "CmdOrCtrl+W"},
+		mygo.Separator(),
+		{Role: mygo.RoleMinimize, Label: a.t("最小化")},
+	}
 	if runtime.GOOS == "darwin" {
 		items = append(items, &mygo.MenuItem{Role: mygo.RoleZoom, Label: a.t("缩放窗口")}, mygo.Separator(), &mygo.MenuItem{Role: mygo.RoleFront, Label: a.t("前置全部窗口")})
-	} else {
-		items = append(items, &mygo.MenuItem{Role: mygo.RoleClose, Label: a.t("关闭窗口")})
 	}
 	return &mygo.MenuItem{Role: mygo.RoleWindowMenu, Label: a.t("窗口"), Submenu: items}
 }
