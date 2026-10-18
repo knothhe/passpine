@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Theme } from '@radix-ui/themes';
+import { LanguageProvider } from './LanguageProvider';
 import { defaultAppearancePreferences, normalizeAppearancePreferences, readAppearancePreferences, watchAppearancePreferences, writeAppearancePreferences, type AppearancePreferences } from '../lib/appearance';
 import appIconURL from '../assets/app-icon.png';
 import monochromeIconURL from '../assets/app-icon-monochrome.png';
@@ -59,5 +60,5 @@ export function Provider({ children, demo = false, initialPreferences }: { child
     }
     finally { setSaving(false); }
   };
-  return <AppearanceContext.Provider value={{ preferences, resolvedAppearance, saving, setPreferences: save }}><Theme appearance={resolvedAppearance} accentColor={preferences.style === 'monochrome' ? 'gray' : 'orange'} grayColor={preferences.style === 'monochrome' ? 'gray' : 'sand'} radius="medium" scaling="100%">{children}</Theme></AppearanceContext.Provider>;
+  return <LanguageProvider demo={demo}><AppearanceContext.Provider value={{ preferences, resolvedAppearance, saving, setPreferences: save }}><Theme appearance={resolvedAppearance} accentColor={preferences.style === 'monochrome' ? 'gray' : 'orange'} grayColor={preferences.style === 'monochrome' ? 'gray' : 'sand'} radius="medium" scaling="100%">{children}</Theme></AppearanceContext.Provider></LanguageProvider>;
 }

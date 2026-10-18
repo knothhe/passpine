@@ -41,7 +41,7 @@ export const demoClient: Client = {
     else if (request.action === 'generate') {
       const alphabets = [request.options.lowercase ? 'abcdefghijkmnpqrstuvwxyz' : '', request.options.uppercase ? 'ABCDEFGHJKLMNPQRSTUVWXYZ' : '', request.options.numbers ? '23456789' : '', request.options.symbols ? '!@#$%&*_-+=' : ''].filter(Boolean);
       const pool = alphabets.join('');
-      if (!pool) throw new Error('请至少选择一种字符类型。');
+      if (!pool) throw new PassPineError('no_character_groups');
       const bytes = crypto.getRandomValues(new Uint8Array(request.options.length));
       result = { password: Array.from(bytes, byte => pool[byte % pool.length]).join('') };
     } else {
@@ -50,7 +50,7 @@ export const demoClient: Client = {
         const rich = new URLSearchParams(location.search).get('fixture') === 'rich';
         result = { contents: rich ? `${'preview-only-'.repeat(10)}\nusername: long-account-name.for-compact-layout@example.test\nurl: https://accounts.example.test/organizations/design-team/settings\n\n${'用于检查长备注和滚动，内容仅为演示。\n'.repeat(14)}` : examples[request.entry] ?? '', revision: String(revision), ...(rich ? { otp: '123456', otpSeconds: 30 } : {}) } satisfies EntryDocument;
       }
-      else if (request.action === 'save') { if (request.mode === 'create' && examples[request.entry]) throw new Error('此名称已存在。'); if (request.destination) delete examples[request.entry]; examples[request.destination ?? request.entry] = request.contents; revision++; }
+      else if (request.action === 'save') { if (request.mode === 'create' && examples[request.entry]) throw new PassPineError('entry_exists'); if (request.destination) delete examples[request.entry]; examples[request.destination ?? request.entry] = request.contents; revision++; }
       else if (request.action === 'delete') { delete examples[request.entry]; revision++; }
       else if (request.action === 'associate') matches.add(request.entry);
       else if (request.action === 'dissociate') matches.delete(request.entry);

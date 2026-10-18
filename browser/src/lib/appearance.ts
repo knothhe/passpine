@@ -2,8 +2,8 @@ import { browser } from 'wxt/browser';
 
 export const appearanceStorageKey = 'appearancePreferences';
 export const themeStyles = [
-  { id: 'monochrome', label: '黑白', description: '简洁的中性灰与黑白' },
-  { id: 'onevra', label: '陶土橙', description: '温暖的米白与陶土橙' },
+  { id: 'monochrome' },
+  { id: 'onevra' },
 ] as const;
 export type ThemeStyle = typeof themeStyles[number]['id'];
 export type Appearance = 'system' | 'light' | 'dark';

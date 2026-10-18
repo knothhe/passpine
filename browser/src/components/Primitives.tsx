@@ -1,3 +1,4 @@
+import { useCopy } from './LanguageProvider';
 import { Flex, Heading, IconButton, Text, Tooltip } from '@radix-ui/themes';
 import { ArrowLeft, Copy } from 'lucide-react';
 import type { Entry } from '../lib/types';
@@ -12,15 +13,17 @@ export function ApplicationIcon({ size = 24, style }: { size?: number; style?: T
 }
 
 export function Brand() {
-  return <Flex align="center" gap="2"><span className="brand-mark" style={{ background: 'transparent', width: 30, height: 30 }}><ApplicationIcon size={30}/></span><span className="brand-name">Passpine</span></Flex>;
+  const copy = useCopy();
+  return <Flex align="center" gap="2"><span className="brand-mark" style={{ background: 'transparent', width: 30, height: 30 }}><ApplicationIcon size={30}/></span><span className="brand-name">{copy.brand}</span></Flex>;
 }
 
 export function ActionIcon({ label, children, onClick, disabled, loading }: { label: string; children: React.ReactNode; onClick(): void; disabled?: boolean; loading?: boolean }) {
   return <Tooltip content={label}><IconButton aria-label={label} aria-busy={loading || undefined} variant="ghost" color="gray" size="2" disabled={disabled} onClick={onClick}>{children}</IconButton></Tooltip>;
 }
 
-export function PageHeader({ title, backLabel = '返回密码库', back, disabled, children }: { title: string; backLabel?: string; back(): void; disabled?: boolean; children?: React.ReactNode }) {
-  return <header className="screen-header"><div className="screen-header-title"><ActionIcon label={backLabel} onClick={back} disabled={disabled}><ArrowLeft size={18}/></ActionIcon><Heading as="h1" size="3" tabIndex={-1}>{title}</Heading></div>{children && <div className="screen-header-actions">{children}</div>}</header>;
+export function PageHeader({ title, backLabel, back, disabled, children }: { title: string; backLabel?: string; back(): void; disabled?: boolean; children?: React.ReactNode }) {
+  const copy = useCopy();
+  return <header className="screen-header"><div className="screen-header-title"><ActionIcon label={backLabel ?? copy.common.backToVault} onClick={back} disabled={disabled}><ArrowLeft size={18}/></ActionIcon><Heading as="h1" size="3" tabIndex={-1}>{title}</Heading></div>{children && <div className="screen-header-actions">{children}</div>}</header>;
 }
 
 export function EntryAvatar({ entry, large }: { entry: Entry; large?: boolean }) {
@@ -30,5 +33,6 @@ export function EntryAvatar({ entry, large }: { entry: Entry; large?: boolean })
 }
 
 export function SecretField({ label, value, onCopy }: { label: string; value: string; onCopy?: () => void }) {
-  return <div className="credential-field"><div><Text as="div" size="1" color="gray" className="credential-label">{label}</Text><Text as="div" size="2" className="credential-value truncate" title={value}>{value}</Text></div>{onCopy && <ActionIcon label={`复制${label}`} onClick={onCopy}><Copy size={16}/></ActionIcon>}</div>;
+  const copy = useCopy();
+  return <div className="credential-field"><div><Text as="div" size="1" color="gray" className="credential-label">{label}</Text><Text as="div" size="2" className="credential-value truncate" title={value}>{value}</Text></div>{onCopy && <ActionIcon label={copy.common.copyField(label)} onClick={onCopy}><Copy size={16}/></ActionIcon>}</div>;
 }

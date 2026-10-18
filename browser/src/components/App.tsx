@@ -1,3 +1,4 @@
+import { useCopy, useLanguage } from './LanguageProvider';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, MotionConfig, useIsPresent, useReducedMotion } from 'motion/react';
 import { AlertDialog, Badge, Button, Flex, Heading, IconButton, Separator, Spinner, Text, TextField } from '@radix-ui/themes';
@@ -21,14 +22,17 @@ type RefreshResult = { ok: boolean; error?: string };
 type PopupView = 'list' | 'detail' | 'editor';
 
 export function App({ client }: { client: Client }) {
+  const copy = useCopy();
+  const { locale } = useLanguage();
   const [snapshot, setSnapshot] = useState<Snapshot>();
-  const [connectionError, setConnectionError] = useState('');
+  const [connectionError, setConnectionError] = useState<unknown>();
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const shortcuts = usePopupShortcuts(client.demo);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useExpiringValue<{ text: string; error?: boolean } | undefined>(undefined, 4500);
+  useEffect(() => { setNotice(undefined); }, [locale]);
   const [detail, setDetail] = useState<Detail>();
   const [detailTarget, setDetailTarget] = useState<DetailTarget>();
   const [revealed, setRevealed] = useState(false);
@@ -64,7 +68,7 @@ export function App({ client }: { client: Client }) {
   }, [cancelDetails]);
   const disconnected = useCallback((error: unknown) => {
     session.current.disconnect(); latestSnapshot.current = undefined;
-    setConnectionError(errorMessage(error)); setSnapshot(undefined); clearSecrets();
+    setConnectionError(error); setSnapshot(undefined); clearSecrets();
   }, [clearSecrets]);
   const observe = useCallback((state: SessionStatus, sequence: number) => {
     const result = session.current.observe(state, sequence);
@@ -88,7 +92,7 @@ export function App({ client }: { client: Client }) {
         latestSnapshot.current = next; setSnapshot(next); setConnectionError('');
         setDetail(previous => previous?.vaultId === next.vaultId ? { ...previous, entry: { ...previous.entry, matched: next.matches.includes(previous.entry.path) } } : previous);
         return { ok: true };
-      } catch (error) { disconnected(error); return { ok: false, error: errorMessage(error) }; }
+      } catch (error) { disconnected(error); return { ok: false, error: errorMessage(error, copy) }; }
       finally { setLoading(false); }
     })();
     refreshPending.current = task;
@@ -98,7 +102,7 @@ export function App({ client }: { client: Client }) {
   const refreshManually = async () => {
     if (manualRefreshPending.current) return;
     manualRefreshPending.current = true; setRefreshing(true); setNotice(undefined);
-    try { const result = await refresh(); setNotice(result.ok ? { text: '密码库已刷新' } : { text: result.error ?? '刷新未完成，请重试。', error: true }); }
+    try { const result = await refresh(); setNotice(result.ok ? { text: copy.vault.refreshed } : { text: result.error ?? copy.vault.refreshFailed, error: true }); }
     finally { manualRefreshPending.current = false; setRefreshing(false); }
   };
   const checkStatus = useCallback(async () => {
@@ -139,7 +143,7 @@ export function App({ client }: { client: Client }) {
       void client.request<EntryDocument>({ action: 'fetch', vaultId: detail.vaultId, entry: detail.entry.path }).then(async doc => {
         await checkStatus();
         if (!cancelled && request === detailRequest.current && session.current.valid(token)) setDetail({ ...doc, entry: detail.entry, vaultId: detail.vaultId, receivedAt: Date.now() });
-      }).catch(error => { if (!cancelled) { cancelDetails(); setNotice({ text: errorMessage(error), error: true }); } });
+      }).catch(error => { if (!cancelled) { cancelDetails(); setNotice({ text: errorMessage(error, copy), error: true }); } });
     };
     tick(); const timer = setInterval(tick, 250);
     return () => { cancelled = true; clearInterval(timer); };
@@ -149,7 +153,7 @@ export function App({ client }: { client: Client }) {
     const request = ++operationRequest.current;
     busyOperation.current = true;
     setBusy(true); setNotice(undefined);
-    try { await operation(); } catch (error) { if (request === operationRequest.current) setNotice({ text: errorMessage(error), error: true }); }
+    try { await operation(); } catch (error) { if (request === operationRequest.current) setNotice({ text: errorMessage(error, copy), error: true }); }
     finally { if (request === operationRequest.current) { busyOperation.current = false; setBusy(false); } }
   };
   const unlock = async () => {
@@ -162,14 +166,14 @@ export function App({ client }: { client: Client }) {
   const ensureUnlocked = async (vaultId: string) => {
     if (latestSnapshot.current?.locked) await unlock();
     const state = latestSnapshot.current;
-    if (!state || state.vaultId !== vaultId) throw new Error('当前密码库已切换，请重新选择账号。');
-    if (state.locked) throw new Error('密码库尚未解锁，请在客户端完成验证。');
+    if (!state || state.vaultId !== vaultId) throw new Error(copy.vault.changed);
+    if (state.locked) throw new Error(copy.vault.unlockRequired);
   };
   const copyEntry = (entry: Entry, field: 'password' | 'username') => void run(async () => {
     if (!snapshot) return;
     await ensureUnlocked(snapshot.vaultId);
     await client.request({ action: 'copy', vaultId: snapshot.vaultId, entry: entry.path, field });
-    setNotice({ text: client.demo ? '示例数据：未复制凭证' : '已复制' });
+    setNotice({ text: client.demo ? copy.preview.credentialsNotCopied : copy.common.copied });
   });
   const open = (entry: Entry) => void run(async () => {
     if (!snapshot) return;
@@ -186,7 +190,7 @@ export function App({ client }: { client: Client }) {
       const doc = await client.request<EntryDocument>({ action: 'fetch', vaultId, entry: entry.path, interactive: true });
       if (navigation !== detailNavigation.current) return;
       if (doc.session) {
-        if (!doc.session.configured || doc.session.locked || doc.session.vaultId !== vaultId) throw new Error('密码库会话已变化，请重新打开账号。');
+        if (!doc.session.configured || doc.session.locked || doc.session.vaultId !== vaultId) throw new Error(copy.vault.sessionChanged);
         // The native response lease authenticates this fetched document. Adopt
         // its session before the follow-up probe, including an unlock that the
         // popup did not see between polls. Later session changes still cancel.
@@ -212,13 +216,13 @@ export function App({ client }: { client: Client }) {
     const result = await client.request<FillResult>({ action: 'fill', vaultId: snapshot.vaultId, entry: entry.path, tab });
     if (!client.demo && result.filled > 0) { window.close(); return; }
     await refresh();
-    const text = `已填写 ${result.filled} 个登录字段${result.associated ? `，已关联 ${tab.hostname}` : `，但未能关联 ${tab.hostname}，请重试。`}`;
-    setNotice({ text: client.demo ? `演示：${text}` : text, error: !result.associated });
+    const text = copy.vault.fillResult(result.filled, tab.hostname, result.associated);
+    setNotice({ text: client.demo ? copy.preview.notice(text) : text, error: !result.associated });
   });
-  const copy = (field: 'password' | 'username' | 'otp') => void run(async () => {
+  const copyCredential = (field: 'password' | 'username' | 'otp') => void run(async () => {
     if (!detail) return;
     await client.request({ action: 'copy', vaultId: detail.vaultId, entry: detail.entry.path, field });
-    setNotice({ text: client.demo ? '示例数据：未复制凭证' : '已复制 · 按客户端设置自动清空' });
+    setNotice({ text: client.demo ? copy.preview.credentialsNotCopied : copy.vault.copiedWithExpiry });
   });
   const lock = () => void run(async () => {
     clearSecrets(); session.current.disconnect();
@@ -228,7 +232,7 @@ export function App({ client }: { client: Client }) {
   const associate = (entry: Entry) => void run(async () => {
     if (!snapshot?.tab) return;
     await client.request({ action: entry.matched ? 'dissociate' : 'associate', vaultId: snapshot.vaultId, entry: entry.path, tab: snapshot.tab });
-    await refresh(); setNotice({ text: `${entry.matched ? '已取消关联' : '已关联'} ${snapshot.tab.hostname}` });
+    await refresh(); setNotice({ text: (entry.matched ? copy.accounts.dissociatedWebsite : copy.accounts.associatedWebsite)(snapshot.tab.hostname) });
   });
   const newAccount = () => void run(async () => { if (!snapshot?.configured || editor) return; await ensureUnlocked(snapshot.vaultId); setEditor({ vaultId: snapshot.vaultId }); });
   useEffect(() => {
@@ -238,12 +242,12 @@ export function App({ client }: { client: Client }) {
       if (!binding || busy && binding.action !== 'search') return;
       if (['copy', 'fill', 'edit'].includes(binding.action) && !detail) return;
       event.preventDefault();
-      if (binding.action === 'search') { cancelDetails(); setTimeout(() => window.document.querySelector<HTMLInputElement>('input[aria-label="搜索密码库"]')?.focus(), 0); }
+      if (binding.action === 'search') { cancelDetails(); setTimeout(() => window.document.querySelector<HTMLInputElement>('.search-section input')?.focus(), 0); }
       else if (binding.action === 'new') newAccount();
       else if (binding.action === 'refresh') void refreshManually();
       else if (binding.action === 'settings') void client.openOptions();
       else if (binding.action === 'lock' && snapshot?.configured && !snapshot.locked) lock();
-      else if (binding.action === 'copy') copy('password');
+      else if (binding.action === 'copy') copyCredential('password');
       else if (binding.action === 'fill' && detail && snapshot?.tab) fill(detail.entry);
       else if (binding.action === 'edit' && detail && !busy) setEditor({ vaultId: detail.vaultId, original: detail });
     };
@@ -263,7 +267,7 @@ export function App({ client }: { client: Client }) {
     if (!direction || !(event.target instanceof HTMLElement)) return;
     const list = event.target.closest<HTMLElement>('.popup-page-list:not([aria-hidden="true"])');
     if (!list) return;
-    const search = list.querySelector<HTMLInputElement>('input[aria-label="搜索密码库"]');
+    const search = list.querySelector<HTMLInputElement>('.search-section input');
     const row = event.target.closest<HTMLElement>('.entry-row');
     if (event.target !== search && (!row || event.target.closest('.account-more'))) return;
     const buttons = Array.from(list.querySelectorAll<HTMLButtonElement>('button[data-entry-path]:not(:disabled)'));
@@ -275,45 +279,45 @@ export function App({ client }: { client: Client }) {
 
   return <MotionConfig reducedMotion="user" transition={{ duration: .16, ease: [.2, .8, .2, 1] }}><div className="popup-shell" onKeyDown={navigateEntries}>
     <div className="popup-pages"><AnimatePresence initial={false} mode="sync" custom={navigation.direction}><PopupPage key={page} view={page} direction={navigation.direction} listScroll={listScroll.current} returnEntry={returnEntry.current}>
-    {editor ? <EditorForm client={client} value={editor} defaultURL={snapshot?.tab ? `https://${snapshot.tab.hostname}` : ''} close={() => setEditor(undefined)} saved={async () => { setEditor(undefined); cancelDetails(); await refresh(); setNotice({ text: '账号已加密保存' }); }}/>
+    {editor ? <EditorForm client={client} value={editor} defaultURL={snapshot?.tab ? `https://${snapshot.tab.hostname}` : ''} close={() => setEditor(undefined)} saved={async () => { setEditor(undefined); cancelDetails(); await refresh(); setNotice({ text: copy.vault.encryptedSave }); }}/>
     : detailEntry ? <>
-      <PageHeader title="账号详情" back={cancelDetails}><ActionIcon label={snapshot?.tab ? '填充账号' : '请先打开网站'} disabled={busy || !detail || !snapshot?.tab} onClick={() => detail && fill(detail.entry)}><ArrowDownToLine size={16}/></ActionIcon><ActionIcon label="编辑账号" disabled={!detail || busy} onClick={() => detail && setEditor({ vaultId: detail.vaultId, original: detail })}><Pencil size={16}/></ActionIcon><ActionIcon label="删除账号" disabled={!detail || busy} onClick={() => setDeleteOpen(true)}><Trash2 size={16}/></ActionIcon></PageHeader>
+      <PageHeader title={copy.accounts.details} back={cancelDetails}><ActionIcon label={snapshot?.tab ? copy.accounts.fill : copy.accounts.openWebsiteFirst} disabled={busy || !detail || !snapshot?.tab} onClick={() => detail && fill(detail.entry)}><ArrowDownToLine size={16}/></ActionIcon><ActionIcon label={copy.accounts.edit} disabled={!detail || busy} onClick={() => detail && setEditor({ vaultId: detail.vaultId, original: detail })}><Pencil size={16}/></ActionIcon><ActionIcon label={copy.accounts.delete} disabled={!detail || busy} onClick={() => setDeleteOpen(true)}><Trash2 size={16}/></ActionIcon></PageHeader>
       <main className="screen-content detail-content" aria-busy={!detail}>
-        <div className="entry-summary"><div className="entry-text"><span className="entry-path" title={detailEntry.path}>{detailEntry.folder || '密码库'}</span><Heading as="h2" size="2" title={detailEntry.title}>{detailEntry.title}</Heading></div></div>
+        <div className="entry-summary"><div className="entry-text"><span className="entry-path" title={detailEntry.path}>{detailEntry.folder || copy.common.vault}</span><Heading as="h2" size="2" title={detailEntry.title}>{detailEntry.title}</Heading></div></div>
         <div className="detail-content-swap"><AnimatePresence initial={false}>{!detail && <motion.div className="detail-loading-layer" key="loading" exit={{ opacity: 0 }} transition={{ duration: .1 }}><DetailSkeleton/></motion.div>}</AnimatePresence>
         {detail && document && <motion.div className="detail-data-layer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: .1 }}>
         <div className="credential-card">
-          <SecretField label="用户名" value={document.username || '未设置'} onCopy={document.username ? () => copy('username') : undefined}/>
+          <SecretField label={copy.common.username} value={document.username || copy.common.notSet} onCopy={document.username ? () => copyCredential('username') : undefined}/>
           <Separator size="4"/>
-          <div className="credential-field"><div><Text as="div" size="1" color="gray" className="credential-label">密码</Text><Text as="div" className="credential-value secret-text" size="2">{revealed ? document.password : '••••••••••••••••'}</Text></div><Flex><ActionIcon label={revealed ? '隐藏密码' : '显示密码'} onClick={() => setRevealed(!revealed)}>{revealed ? <EyeOff size={16}/> : <Eye size={16}/>}</ActionIcon><ActionIcon label="复制密码" onClick={() => copy('password')}><Copy size={16}/></ActionIcon></Flex></div>
-          {detail.otp && <><Separator size="4"/><SecretField label={`一次性验证码 · ${otpRemaining > 0 ? `${otpRemaining} 秒` : '刷新中'}`} value={otpRemaining > 0 ? detail.otp : '••••••'} onCopy={() => copy('otp')}/></>}
+          <div className="credential-field"><div><Text as="div" size="1" color="gray" className="credential-label">{copy.common.password}</Text><Text as="div" className="credential-value secret-text" size="2">{revealed ? document.password : copy.accounts.maskedPassword}</Text></div><Flex><ActionIcon label={revealed ? copy.common.hidePassword : copy.common.showPassword} onClick={() => setRevealed(!revealed)}>{revealed ? <EyeOff size={16}/> : <Eye size={16}/>}</ActionIcon><ActionIcon label={copy.common.copyPassword} onClick={() => copyCredential('password')}><Copy size={16}/></ActionIcon></Flex></div>
+          {detail.otp && <><Separator size="4"/><SecretField label={copy.accounts.otp(otpRemaining)} value={otpRemaining > 0 ? detail.otp : copy.accounts.maskedOTP} onCopy={() => copyCredential('otp')}/></>}
           <Separator size="4"/>
-          <div className="credential-field site-detail"><div><Text as="div" size="1" color="gray" className="credential-label">网站</Text><Text as="div" size="2" className="credential-value truncate" title={document.urls[0]}>{document.urls[0] || (detail.entry.matched ? snapshot?.tab?.hostname : '尚未设置网站')}</Text></div>{detail.entry.matched && <Check size={15} className="accent" aria-label="已关联当前网站"/>}</div>
+          <div className="credential-field site-detail"><div><Text as="div" size="1" color="gray" className="credential-label">{copy.common.website}</Text><Text as="div" size="2" className="credential-value truncate" title={document.urls[0]}>{document.urls[0] || (detail.entry.matched ? snapshot?.tab?.hostname : copy.accounts.websiteNotSet)}</Text></div>{detail.entry.matched && <Check size={15} className="accent" aria-label={copy.accounts.websiteAssociated}/>}</div>
         </div>
-        {snapshot?.tab && <Button className="detail-associate" variant="ghost" size="1" disabled={busy} title={`${detail.entry.matched ? '取消关联' : '关联到'} ${snapshot.tab.hostname}`} onClick={() => associate(detail.entry)}>{detail.entry.matched ? <Link2Off size={14}/> : <Link2 size={14}/>}<span className="truncate">{detail.entry.matched ? '取消关联当前网站' : `关联到 ${snapshot.tab.hostname}`}</span></Button>}
-        {document.notes && <div className="detail-notes"><Text as="div" size="1" color="gray" className="credential-label">备注</Text><Text as="p" size="2" className="notes">{document.notes}</Text></div>}
+        {snapshot?.tab && <Button className="detail-associate" variant="ghost" size="1" disabled={busy} title={(detail.entry.matched ? copy.accounts.dissociateWebsite : copy.accounts.associateWebsite)(snapshot.tab.hostname)} onClick={() => associate(detail.entry)}>{detail.entry.matched ? <Link2Off size={14}/> : <Link2 size={14}/>}<span className="truncate">{detail.entry.matched ? copy.accounts.dissociateCurrentWebsite : copy.accounts.associateWebsite(snapshot.tab.hostname)}</span></Button>}
+        {document.notes && <div className="detail-notes"><Text as="div" size="1" color="gray" className="credential-label">{copy.common.notes}</Text><Text as="p" size="2" className="notes">{document.notes}</Text></div>}
         </motion.div>}</div>
       </main>
     </> : <>
-      {snapshot?.configured && <div className="site-context"><Globe2 size={16}/><div className="site-context-label"><Text size="2" weight="medium" className="truncate" title={snapshot.tab?.hostname}>{snapshot.tab?.hostname || '未打开网站'}</Text><ActionIcon label="新建账号" onClick={newAccount} disabled={busy}><Plus size={16}/></ActionIcon></div>{snapshot.tab && !snapshot.tab.secure && <Badge variant="soft" color="amber" size="1">HTTP</Badge>}{snapshot.tab && <Text size="1" color="gray" className="site-match-count">{snapshot.matches.length > 0 ? `${snapshot.matches.length} 个关联账号` : '尚无关联账号'}</Text>}</div>}
-      <div className="search-section"><TextField.Root aria-label="搜索密码库" placeholder="搜索账号" value={query} onChange={event => setQuery(event.target.value)} size="3" autoFocus><TextField.Slot><Search size={18}/></TextField.Slot><TextField.Slot>{query ? <IconButton aria-label="清除搜索" size="1" variant="ghost" onClick={() => setQuery('')}><X size={14}/></IconButton> : <span className="search-shortcut">{shortcuts.find(item => item.action === 'search')?.shortcut && <ShortcutKeys value={shortcuts.find(item => item.action === 'search')!.shortcut}/>}</span>}</TextField.Slot></TextField.Root></div>
-      {loading ? <div className="empty-state"><Spinner size="3"/><Text size="2" color="gray">正在连接…</Text></div> : !snapshot ? <ConnectionState error={connectionError} retry={() => void refreshManually()} settings={() => void client.openOptions()}/> : !snapshot.configured ? <div className="empty-state"><div className="empty-icon"><ApplicationIcon size={40}/></div><Heading size="4">未设置密码库</Heading><Text size="2" color="gray">请在客户端创建或导入密码库。</Text><Button onClick={() => void refreshManually()}>重新连接</Button></div> : snapshot.locked && snapshot.entries.length === 0 ? <div className="empty-state"><div className="empty-icon"><LockKeyhole size={30}/></div><Heading size="4">密码库已锁定</Heading><Text size="2" color="gray">{snapshot.vaultName}</Text><Button disabled={busy} onClick={() => void run(unlock)}><KeyRound size={16}/>前往客户端解锁</Button><Button variant="ghost" color="gray" onClick={() => void refreshManually()}>刷新</Button></div> : <>
-        <div className="list-toolbar"><Text size="1" color="gray">{query ? '搜索结果' : '全部账号'}</Text><Text size="1" color="gray">{entries.length} 个账号</Text></div>
+      {snapshot?.configured && <div className="site-context"><Globe2 size={16}/><div className="site-context-label"><Text size="2" weight="medium" className="truncate" title={snapshot.tab?.hostname}>{snapshot.tab?.hostname || copy.accounts.websiteNotOpen}</Text><ActionIcon label={copy.accounts.create} onClick={newAccount} disabled={busy}><Plus size={16}/></ActionIcon></div>{snapshot.tab && !snapshot.tab.secure && <Badge variant="soft" color="amber" size="1">{copy.accounts.insecureProtocol}</Badge>}{snapshot.tab && <Text size="1" color="gray" className="site-match-count">{snapshot.matches.length > 0 ? copy.accounts.matchedCount(snapshot.matches.length) : copy.accounts.noMatches}</Text>}</div>}
+      <div className="search-section"><TextField.Root aria-label={copy.accounts.searchVault} placeholder={copy.accounts.search} value={query} onChange={event => setQuery(event.target.value)} size="3" autoFocus><TextField.Slot><Search size={18}/></TextField.Slot><TextField.Slot>{query ? <IconButton aria-label={copy.accounts.clearSearch} size="1" variant="ghost" onClick={() => setQuery('')}><X size={14}/></IconButton> : <span className="search-shortcut">{shortcuts.find(item => item.action === 'search')?.shortcut && <ShortcutKeys value={shortcuts.find(item => item.action === 'search')!.shortcut}/>}</span>}</TextField.Slot></TextField.Root></div>
+      {loading ? <div className="empty-state"><Spinner size="3"/><Text size="2" color="gray">{copy.connection.connecting}</Text></div> : !snapshot ? <ConnectionState error={connectionError ? errorMessage(connectionError, copy) : ''} retry={() => void refreshManually()} settings={() => void client.openOptions()}/> : !snapshot.configured ? <div className="empty-state"><div className="empty-icon"><ApplicationIcon size={40}/></div><Heading size="4">{copy.vault.unconfigured}</Heading><Text size="2" color="gray">{copy.vault.setup}</Text><Button onClick={() => void refreshManually()}>{copy.connection.reconnect}</Button></div> : snapshot.locked && snapshot.entries.length === 0 ? <div className="empty-state"><div className="empty-icon"><LockKeyhole size={30}/></div><Heading size="4">{copy.vault.locked}</Heading><Text size="2" color="gray">{snapshot.vaultName}</Text><Button disabled={busy} onClick={() => void run(unlock)}><KeyRound size={16}/>{copy.vault.unlockInClient}</Button><Button variant="ghost" color="gray" onClick={() => void refreshManually()}>{copy.vault.refresh}</Button></div> : <>
+        <div className="list-toolbar"><Text size="1" color="gray">{query ? copy.accounts.searchResults : copy.accounts.all}</Text><Text size="1" color="gray">{copy.accounts.count(entries.length)}</Text></div>
         <main className="entries-list">
           {entries.length > 0 && <AccountList entries={entries} onOpen={open} onFill={fill} onCopy={copyEntry} onAssociate={associate} website={snapshot.tab?.hostname} busy={busy}/>}
-          {entries.length === 0 && <div className="no-results"><Search size={24}/><Text size="2">{query ? '没有找到匹配的账号' : '密码库中还没有账号'}</Text></div>}
+          {entries.length === 0 && <div className="no-results"><Search size={24}/><Text size="2">{query ? copy.accounts.noResults : copy.accounts.empty}</Text></div>}
         </main>
       </>}
     </>}
     </PopupPage></AnimatePresence></div>
-    {notice && <div className={`notice ${notice.error ? 'notice-error' : ''}`} role={notice.error ? 'alert' : 'status'}>{notice.error ? <CircleAlert size={16}/> : <Check size={16}/>}<span>{notice.text}</span><button aria-label="关闭提示" onClick={() => setNotice(undefined)}><X size={14}/></button></div>}
+    {notice && <div className={`notice ${notice.error ? 'notice-error' : ''}`} role={notice.error ? 'alert' : 'status'}>{notice.error ? <CircleAlert size={16}/> : <Check size={16}/>}<span>{notice.text}</span><button aria-label={copy.vault.dismissNotice} onClick={() => setNotice(undefined)}><X size={14}/></button></div>}
     <footer className="app-footer">
-      <div className="footer-connection" title={snapshot?.vaultName || '客户端连接'}><span className={`connection-dot ${!snapshot ? 'disconnected' : snapshot.locked ? 'locked' : ''}`} aria-hidden="true"/><span className="footer-vault">{snapshot?.vaultName || 'Passpine 客户端'}</span><span className="footer-state">{loading ? '连接中' : !snapshot ? '未连接' : !snapshot.configured ? '未设置' : snapshot.locked ? '已锁定' : '已连接'}</span></div>
-      <div className="footer-actions"><ActionIcon label="刷新密码库" onClick={() => void refreshManually()} loading={loading || refreshing} disabled={loading || refreshing || busy}><RefreshCw size={15} className={loading || refreshing ? 'connection-checking' : undefined}/></ActionIcon>{snapshot?.configured && !snapshot.locked && <ActionIcon label="锁定密码库" onClick={lock} disabled={busy}><LockKeyhole size={16}/></ActionIcon>}<ActionIcon label="设置与连接" onClick={() => void client.openOptions()}><Settings2 size={16}/></ActionIcon></div>
+      <div className="footer-connection" title={snapshot?.vaultName || copy.connection.clientConnection}><span className={`connection-dot ${!snapshot ? 'disconnected' : snapshot.locked ? 'locked' : ''}`} aria-hidden="true"/><span className="footer-vault">{snapshot?.vaultName || copy.connection.clientName}</span><span className="footer-state">{loading ? copy.connection.status.connecting : !snapshot ? copy.connection.status.disconnected : !snapshot.configured ? copy.common.notSet : snapshot.locked ? copy.connection.status.locked : copy.connection.status.connected}</span></div>
+      <div className="footer-actions"><ActionIcon label={copy.vault.refreshVault} onClick={() => void refreshManually()} loading={loading || refreshing} disabled={loading || refreshing || busy}><RefreshCw size={15} className={loading || refreshing ? 'connection-checking' : undefined}/></ActionIcon>{snapshot?.configured && !snapshot.locked && <ActionIcon label={copy.vault.lock} onClick={lock} disabled={busy}><LockKeyhole size={16}/></ActionIcon>}<ActionIcon label={copy.vault.settings} onClick={() => void client.openOptions()}><Settings2 size={16}/></ActionIcon></div>
     </footer>
-    {client.demo && <div className="demo-ribbon">预览 · 示例数据</div>}
+    {client.demo && <div className="demo-ribbon">{copy.preview.ribbon}</div>}
 
-    <AlertDialog.Root open={deleteOpen} onOpenChange={setDeleteOpen}><AlertDialog.Content maxWidth="360px"><AlertDialog.Title>移入加密回收站？</AlertDialog.Title><AlertDialog.Description size="2">「{detail?.entry.title}」将从账号列表移除。你可以在客户端的回收站中恢复。</AlertDialog.Description><Flex justify="end" gap="3" mt="5"><AlertDialog.Cancel><Button variant="soft" color="gray">取消</Button></AlertDialog.Cancel><Button color="red" disabled={busy} onClick={() => void run(async () => { if (!detail) return; await client.request({ action: 'delete', vaultId: detail.vaultId, entry: detail.entry.path, revision: detail.revision }); setDeleteOpen(false); cancelDetails(); await refresh(); setNotice({ text: '已移入加密回收站' }); })}><Trash2 size={15}/>移入回收站</Button></Flex></AlertDialog.Content></AlertDialog.Root>
+    <AlertDialog.Root open={deleteOpen} onOpenChange={setDeleteOpen}><AlertDialog.Content maxWidth="360px"><AlertDialog.Title>{copy.vault.trashTitle}</AlertDialog.Title><AlertDialog.Description size="2">{copy.vault.trashDescription(detail?.entry.title ?? '')}</AlertDialog.Description><Flex justify="end" gap="3" mt="5"><AlertDialog.Cancel><Button variant="soft" color="gray">{copy.common.cancel}</Button></AlertDialog.Cancel><Button color="red" disabled={busy} onClick={() => void run(async () => { if (!detail) return; await client.request({ action: 'delete', vaultId: detail.vaultId, entry: detail.entry.path, revision: detail.revision }); setDeleteOpen(false); cancelDetails(); await refresh(); setNotice({ text: copy.vault.movedToTrash }); })}><Trash2 size={15}/>{copy.vault.moveToTrash}</Button></Flex></AlertDialog.Content></AlertDialog.Root>
   </div></MotionConfig>;
 }
 
@@ -325,6 +329,7 @@ const pageVariants = {
 };
 
 function PopupPage({ view, direction, children, listScroll, returnEntry }: { view: PopupView; direction: number; children: React.ReactNode; listScroll: number; returnEntry?: string }) {
+  const copy = useCopy();
   const present = useIsPresent();
   const reduceMotion = useReducedMotion();
   const ref = useRef<HTMLElement>(null);
@@ -336,19 +341,20 @@ function PopupPage({ view, direction, children, listScroll, returnEntry }: { vie
       const list = page?.querySelector<HTMLElement>('.entries-list');
       if (list) list.scrollTop = listScroll;
       const entry = Array.from(page?.querySelectorAll<HTMLButtonElement>('button[data-entry-path]') ?? []).find(button => button.dataset.entryPath === returnEntry);
-      (entry ?? page?.querySelector<HTMLInputElement>('input[aria-label="搜索密码库"]'))?.focus({ preventScroll: true });
+      (entry ?? page?.querySelector<HTMLInputElement>('.search-section input'))?.focus({ preventScroll: true });
     }
   }, [present, view]);
   return <motion.section ref={ref} className={`popup-page popup-page-${view}`} data-popup-page={view} data-navigation-direction={direction > 0 ? 'forward' : 'back'} inert={!present} aria-hidden={!present} custom={direction} variants={pageVariants} initial="enter" animate="active" exit="leave" transition={{ duration: reduceMotion ? 0 : .18, ease: [.2, .8, .2, 1] }}>
     {/* AnimatePresence retains removed children. Drop credentials immediately,
         retaining a neutral skeleton so the outgoing page does not flash blank. */}
-    {present || view === 'list' ? children : <div className="page-transition-mask"><PageHeader title={view === 'detail' ? '账号详情' : '编辑账号'} back={() => {}} disabled/><div className="screen-content"><DetailSkeleton/></div></div>}
+    {present || view === 'list' ? children : <div className="page-transition-mask"><PageHeader title={view === 'detail' ? copy.accounts.details : copy.accounts.edit} back={() => {}} disabled/><div className="screen-content"><DetailSkeleton/></div></div>}
   </motion.section>;
 }
 
 function DetailSkeleton() {
+  const copy = useCopy();
   return <div className="detail-skeleton">
-    <div className="credential-card" aria-hidden="true"><div className="credential-field"><div className="grow"><Text as="div" size="1" color="gray" className="credential-label">用户名</Text><span className="skeleton-line skeleton-username"/></div></div><Separator size="4"/><div className="credential-field"><div className="grow"><Text as="div" size="1" color="gray" className="credential-label">密码</Text><span className="skeleton-line skeleton-password"/></div></div></div>
-    <Text as="p" size="1" color="gray" className="detail-loading-caption" role="status">正在读取账号…</Text>
+    <div className="credential-card" aria-hidden="true"><div className="credential-field"><div className="grow"><Text as="div" size="1" color="gray" className="credential-label">{copy.common.username}</Text><span className="skeleton-line skeleton-username"/></div></div><Separator size="4"/><div className="credential-field"><div className="grow"><Text as="div" size="1" color="gray" className="credential-label">{copy.common.password}</Text><span className="skeleton-line skeleton-password"/></div></div></div>
+    <Text as="p" size="1" color="gray" className="detail-loading-caption" role="status">{copy.accounts.loading}</Text>
   </div>;
 }

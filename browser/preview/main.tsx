@@ -1,3 +1,4 @@
+import { useCopy } from '../src/components/LanguageProvider';
 import { useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { Badge, Button, Flex, Text } from '@radix-ui/themes';
@@ -13,12 +14,13 @@ const initialState = requestedState === 'locked' || requestedState === 'disconne
 setPreviewState(initialState);
 
 function Preview() {
+  const copy = useCopy();
   const [state, setState] = useState<'connected' | 'locked' | 'disconnected'>(initialState);
   if (previewParameters.get('view') === 'options') return <Options client={demoClient} extensionId="obnlebeedcbbchadakacilopfdaifgjh"/>;
   return <main className="preview-page">
-    <header className="preview-toolbar"><Text size="2" weight="medium">扩展预览</Text><Badge color="gray">示例数据</Badge><a href="/?view=options">设置</a></header>
+    <header className="preview-toolbar"><Text size="2" weight="medium">{copy.preview.title}</Text><Badge color="gray">{copy.preview.exampleData}</Badge><a href="/?view=options">{copy.preview.settings}</a></header>
     <Flex gap="2" justify="center" className="preview-controls">
-      {(['connected', 'locked', 'disconnected'] as const).map(value => <Button key={value} size="1" variant={state === value ? 'solid' : 'soft'} color={state === value ? undefined : 'gray'} onClick={() => { setPreviewState(value); setState(value); }}>{({ connected: '已连接', locked: '已锁定', disconnected: '未连接' })[value]}</Button>)}
+      {(['connected', 'locked', 'disconnected'] as const).map(value => <Button key={value} size="1" variant={state === value ? 'solid' : 'soft'} color={state === value ? undefined : 'gray'} onClick={() => { setPreviewState(value); setState(value); }}>{({ connected: copy.connection.status.connected, locked: copy.connection.status.locked, disconnected: copy.connection.status.disconnected })[value]}</Button>)}
     </Flex>
     <section className="preview-popup"><App key={state} client={demoClient}/></section>
   </main>;

@@ -3,14 +3,14 @@ import { browser } from 'wxt/browser';
 import { canonicalShortcut, captureShortcut } from './shortcuts';
 
 export const popupShortcutActions = [
-  { action: 'search', label: '搜索账号' },
-  { action: 'new', label: '新建账号' },
-  { action: 'refresh', label: '刷新密码库' },
-  { action: 'lock', label: '锁定密码库' },
-  { action: 'settings', label: '打开设置' },
-  { action: 'copy', label: '复制当前账号密码' },
-  { action: 'fill', label: '填充当前账号' },
-  { action: 'edit', label: '编辑当前账号' },
+  { action: 'search' },
+  { action: 'new' },
+  { action: 'refresh' },
+  { action: 'lock' },
+  { action: 'settings' },
+  { action: 'copy' },
+  { action: 'fill' },
+  { action: 'edit' },
 ] as const;
 export type PopupShortcutAction = typeof popupShortcutActions[number]['action'];
 export interface PopupShortcut { id: string; action: PopupShortcutAction; shortcut: string }

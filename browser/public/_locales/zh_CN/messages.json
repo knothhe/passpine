@@ -1,0 +1,6 @@
+{
+  "extensionName": { "message": "Passpine" },
+  "extensionDescription": { "message": "将本机 Passpine 密码库安全连接到浏览器。" },
+  "openApp": { "message": "打开 Passpine" },
+  "fillMatch": { "message": "填充匹配账号" }
+}
