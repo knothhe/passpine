@@ -753,18 +753,32 @@ func (s *Service) setup(r Request) (Data, error) {
 		}
 		fingerprint = identity.Fingerprint
 	} else {
-		if r.KeyFile != "" {
+		if r.Mode == "key-file" || r.KeyFile != "" || r.PublicKeyFile != "" {
+			if strings.TrimSpace(r.KeyFile) == "" {
+				return Data{}, errors.New("请先选择私钥文件。")
+			}
 			b, e := readPrivate(r.KeyFile, 16<<20)
 			if e != nil {
-				return Data{}, e
+				return Data{}, errors.New("无法读取私钥文件，请检查文件路径和访问权限。")
 			}
-			ids, e := next.ImportKeys(b, r.Passphrase)
-			clear(b)
+			defer clear(b)
+			var public []byte
+			if r.PublicKeyFile != "" {
+				public, e = readPrivate(r.PublicKeyFile, 16<<20)
+				if e != nil || len(public) == 0 {
+					return Data{}, errors.New("无法读取公钥文件，请检查文件路径和访问权限。")
+				}
+				defer clear(public)
+			}
+			ids, e := next.ImportKeyFiles(b, public, r.Passphrase)
 			if e != nil {
 				return Data{}, e
 			}
-			if len(ids) > 0 {
-				fingerprint = ids[0].Fingerprint
+			for _, identity := range ids {
+				if identity.HasSecret {
+					fingerprint = identity.Fingerprint
+					break
+				}
 			}
 		} else {
 			if next.Status().Configured && r.Mode != "system-gpg" {
@@ -924,7 +938,7 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 	default:
 		return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "unsupported_action"})
 	}
-	if r.Kind != "" || r.Directory != "" || r.KeyFile != "" || r.Passphrase != "" || r.Settings != nil || r.ID != "" {
+	if r.Kind != "" || r.Directory != "" || r.KeyFile != "" || r.PublicKeyFile != "" || r.Passphrase != "" || r.Settings != nil || r.ID != "" {
 		return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})
 	}
 	if r.Interactive && r.Action != "fetch" && r.Action != "copy" && r.Action != "unlock" {

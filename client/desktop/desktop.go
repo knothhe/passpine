@@ -66,6 +66,8 @@ type application struct {
 	settingsDirty, settingsSaving                                        bool
 	setup                                                                bool
 	setupMode                                                            int
+	setupKeySource                                                       int
+	setupPrivateKey, setupPublicKey                                      string
 	defaultVaultDirectory                                                string
 	setupDirectory, setupName, setupEmail, passphrase, confirmPassphrase string
 	reveal                                                               bool
@@ -489,6 +491,7 @@ func (a *application) clearSecrets() {
 	a.reveal = false
 	a.revealedFields = nil
 	a.passphrase, a.confirmPassphrase = "", ""
+	a.setupPrivateKey, a.setupPublicKey = "", ""
 	a.closeGenerator()
 	a.backupOpen, a.backupPassphrase = false, ""
 	a.recovery = nil

@@ -58,10 +58,14 @@ func parseKeys(data []byte) (openpgp.EntityList, error) {
 	if len(all) == 0 {
 		return nil, errors.New("no OpenPGP keys found")
 	}
-	// A legacy export can include both public and secret packets for one identity.
+	return mergeKeyRings(nil, all), nil
+}
+
+// Keep private material when a key also appears in a public export.
+func mergeKeyRings(existing, incoming openpgp.EntityList) openpgp.EntityList {
 	unique := openpgp.EntityList{}
 	indices := map[string]int{}
-	for _, entity := range all {
+	for _, entity := range append(append(openpgp.EntityList{}, existing...), incoming...) {
 		fp := fingerprint(entity)
 		if i, ok := indices[fp]; ok {
 			if hasSecret(entity) {
@@ -72,7 +76,7 @@ func parseKeys(data []byte) (openpgp.EntityList, error) {
 		indices[fp] = len(unique)
 		unique = append(unique, entity)
 	}
-	return unique, nil
+	return unique
 }
 
 func fingerprint(e *openpgp.Entity) string {

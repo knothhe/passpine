@@ -39,9 +39,11 @@ func (a *application) setupView(c *ui.Context) {
 				components.Icon(c, lucide.FolderKey).Size(42, 42).TextColor(c.Theme().Accent)
 				section(c, a.t("打开密码库"), "", nil)
 				previousMode := a.setupMode
-				components.Tabs(c, &a.setupMode, a.t("创建密码库"), a.t("导入密码库"), a.t("从 Git 下载"))
+				ui.Column(c).FillWidth().Disabled(a.busy).Children(func() {
+					components.Tabs(c, &a.setupMode, a.t("创建密码库"), a.t("导入密码库"), a.t("从 Git 下载"))
+				})
 				if a.setupMode == 1 && a.setupDirectory == a.defaultVaultDirectory && a.defaultVaultDirectory != "" {
-					muted(c, a.t("已找到默认密码库 ~/.password-store。输入私钥口令即可继续。"))
+					muted(c, a.t("已找到默认密码库 ~/.password-store。选择密钥来源后即可导入。"))
 				}
 				if previousMode != a.setupMode && a.defaultVaultDirectory != "" {
 					if a.setupMode == 1 && a.setupDirectory == "" {
@@ -89,6 +91,18 @@ func (a *application) setupView(c *ui.Context) {
 					field(c, a.t("密码库名称"), &a.setupName, a.vaultNamePlaceholder(), false)
 					if a.setupMode == 0 {
 						field(c, a.t("密钥邮箱（可选）"), &a.setupEmail, "you@example.com", false)
+					} else {
+						ui.Column(c).FillWidth().Gap(6).Children(func() {
+							components.Text(c, a.t("密钥来源")).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
+							components.Tabs(c, &a.setupKeySource, a.t("系统 GPG"), a.t("密钥文件"))
+						})
+						if a.setupKeySource == 0 {
+							muted(c, a.t("从本机 GPG 密钥环读取匹配的密钥。需要安装 GnuPG。"))
+						} else {
+							a.setupKeyFileField(c, false)
+							a.setupKeyFileField(c, true)
+							muted(c, a.t("私钥文件通常已包含公钥。多收件人密码库可补充公钥文件，无需安装 GnuPG。"))
+						}
 					}
 					input := field(c, a.t("私钥口令"), &a.passphrase, a.t("输入你的私钥口令"), true)
 					if a.setupMode == 0 {
@@ -105,6 +119,7 @@ func (a *application) setupView(c *ui.Context) {
 								a.setup = false
 								a.passphrase = ""
 								a.confirmPassphrase = ""
+								a.setupPrivateKey, a.setupPublicKey = "", ""
 							}
 						}
 						ui.Spacer(c)
@@ -128,6 +143,9 @@ func (a *application) setupView(c *ui.Context) {
 }
 
 func (a *application) submitSetup() {
+	if a.busy {
+		return
+	}
 	if strings.TrimSpace(a.setupDirectory) == "" {
 		a.errorText = a.t("请先选择密码库目录。")
 		return
@@ -142,7 +160,7 @@ func (a *application) submitSetup() {
 				a.setupDirectory = d.Destination
 			}
 			a.setupMode = 1
-			a.inform(a.t("下载完成。输入系统 GPG 私钥口令即可继续。"))
+			a.inform(a.t("下载完成。选择密钥来源并输入私钥口令即可继续。"))
 		})
 		return
 	}
@@ -155,13 +173,24 @@ func (a *application) submitSetup() {
 		req.Action = "create"
 	} else {
 		req.Action = "open"
-		req.Mode = "system-gpg"
+		if a.setupKeySource == 0 {
+			req.Mode = "system-gpg"
+		} else {
+			if strings.TrimSpace(a.setupPrivateKey) == "" {
+				a.errorText = a.t("请先选择私钥文件。")
+				return
+			}
+			req.Mode = "key-file"
+			req.KeyFile = a.setupPrivateKey
+			req.PublicKeyFile = a.setupPublicKey
+		}
 	}
 	a.call(req, func(d app.Data) {
 		a.history = navigationState{}
 		a.setup = false
 		a.passphrase = ""
 		a.confirmPassphrase = ""
+		a.setupPrivateKey, a.setupPublicKey = "", ""
 		a.page = "entries"
 		a.filter = "all"
 		a.selected = ""
@@ -172,6 +201,47 @@ func (a *application) submitSetup() {
 			a.warn(d.DeviceUnlockNotice)
 		}
 	})
+}
+
+func (a *application) setupKeyFileField(c *ui.Context, public bool) {
+	label, placeholder, title, value := a.t("OpenPGP 私钥文件"), a.t("选择私钥文件"), a.t("选择私钥文件"), &a.setupPrivateKey
+	if public {
+		label, placeholder, title, value = a.t("OpenPGP 公钥文件（可选）"), a.t("选择补充公钥文件"), a.t("选择公钥文件"), &a.setupPublicKey
+	}
+	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.End).Children(func() {
+		ui.Column(c).Grow(1).Children(func() { field(c, label, value, placeholder, false) })
+		if iconButton(c, lucide.FolderOpen(), title, components.ButtonOutline).Clicked() {
+			a.chooseSetupKeyFile(public)
+		}
+	})
+}
+
+func (a *application) chooseSetupKeyFile(public bool) {
+	title := a.t("选择私钥文件")
+	if public {
+		title = a.t("选择公钥文件")
+	}
+	options := mygo.OpenDialogOptions{Parent: a.dialogParent(), Title: title, ShowHiddenFiles: true,
+		Filters: []mygo.FileFilter{{Name: a.t("OpenPGP 密钥文件"), Extensions: []string{"asc", "pgp", "gpg", "key"}}}}
+	current, setup, directory := a.preferencesLease(), a.setup, a.setupDirectory
+	go func() {
+		paths, err := mygo.Dialog.Open(options)
+		mygo.RunOnMain(func() {
+			if !current() || setup != a.setup || a.setupMode != 1 || a.setupKeySource != 1 || directory != a.setupDirectory || a.busy {
+				return
+			}
+			if err != nil {
+				a.errorText = a.t("无法打开文件选择器，请重试或直接输入文件路径。")
+			} else if len(paths) > 0 {
+				if public {
+					a.setupPublicKey = paths[0]
+				} else {
+					a.setupPrivateKey = paths[0]
+				}
+			}
+			a.invalidate()
+		})
+	}()
 }
 
 func (a *application) unlockView(c *ui.Context) {

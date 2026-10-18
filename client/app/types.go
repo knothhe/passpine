@@ -20,6 +20,7 @@ type Request struct {
 	Mode             string    `json:"mode,omitempty"`
 	Directory        string    `json:"directory,omitempty"`
 	KeyFile          string    `json:"keyFile,omitempty"`
+	PublicKeyFile    string    `json:"publicKeyFile,omitempty"`
 	Passphrase       string    `json:"passphrase,omitempty"`
 	Name             string    `json:"name,omitempty"`
 	Email            string    `json:"email,omitempty"`

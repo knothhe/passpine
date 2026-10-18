@@ -331,7 +331,7 @@ func TestScreensRender(t *testing.T) {
 	screens := []string{"entries", "settings", "settings-system", "recovery", "setup", "locked", "editor", "editor-custom", "generator"}
 	directory := os.Getenv("PASSPINE_SNAPSHOT_DIR")
 	if directory != "" {
-		screens = append(screens, "settings-security", "settings-vault", "settings-browser", "activity", "recovery-items", "drafts", "setup-import", "setup-git", "locked-device", "editor-raw", "empty", "git-locked", "git-syncing", "confirm-delete", "confirm-discard", "confirm-purge", "backup")
+		screens = append(screens, "settings-security", "settings-vault", "settings-browser", "activity", "recovery-items", "drafts", "setup-import", "setup-import-files", "setup-import-files-en", "setup-import-files-busy", "setup-import-files-error", "setup-git", "locked-device", "editor-raw", "empty", "git-locked", "git-syncing", "confirm-delete", "confirm-discard", "confirm-purge", "backup")
 	}
 	type viewport struct {
 		name          string
@@ -360,11 +360,24 @@ func TestScreensRender(t *testing.T) {
 							{ID: "brave", Name: "Brave", Status: "invalid", ExtensionID: "example-chromium-extension"},
 						}
 					}
-				case "setup", "setup-import", "setup-git":
+				case "setup", "setup-import", "setup-import-files", "setup-import-files-en", "setup-import-files-busy", "setup-import-files-error", "setup-git":
 					a.state.Configured = false
-					if screen == "setup-import" {
+					if strings.HasPrefix(screen, "setup-import") {
 						a.setupMode = 1
 						a.setupDirectory = "/Users/example/.password-store"
+					}
+					if strings.HasPrefix(screen, "setup-import-files") {
+						a.setupKeySource = 1
+						a.setupPrivateKey = "/Users/example/Keys/private.asc"
+					}
+					if screen == "setup-import-files-en" {
+						a.state.Settings.Language = "en"
+					}
+					if screen == "setup-import-files-busy" {
+						a.busy, a.activeRequestAction = true, "open"
+					}
+					if screen == "setup-import-files-error" {
+						a.errorText = "私钥口令错误或私钥不可用"
 					}
 					if screen == "setup-git" {
 						a.setupMode = 2
@@ -485,7 +498,7 @@ func TestDefaultVaultDiscovery(t *testing.T) {
 					t.Fatalf("default store was not selected for import: mode=%d directory=%q", a.setupMode, a.setupDirectory)
 				}
 				view := ui.NewTester(testView(a), 1120, 760)
-				if !view.HasText("已找到默认密码库 ~/.password-store。输入私钥口令即可继续。") {
+				if !view.HasText("已找到默认密码库 ~/.password-store。选择密钥来源后即可导入。") {
 					t.Fatal("import screen did not explain the detected store")
 				}
 				files, err := os.ReadDir(directory)

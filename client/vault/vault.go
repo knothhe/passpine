@@ -341,6 +341,44 @@ func (v *Vault) ImportKeys(data []byte, passphrase string) ([]Identity, error) {
 }
 
 func (v *Vault) importKeys(data []byte, passphrase string, token uint64) ([]Identity, error) {
+	keys, e := parseKeys(data)
+	if e != nil {
+		return nil, e
+	}
+	return v.importKeyRing(keys, passphrase, token)
+}
+
+// ImportKeyFiles reads separately exported OpenPGP keys without using GnuPG.
+// The private export may already include every required public key.
+func (v *Vault) ImportKeyFiles(privateData, publicData []byte, passphrase string) ([]Identity, error) {
+	token := v.generationToken()
+	keys, e := parseKeys(privateData)
+	if e != nil {
+		return nil, errors.New("私钥文件不是有效的 OpenPGP 密钥文件。")
+	}
+	hasPrivate := false
+	for _, key := range keys {
+		hasPrivate = hasPrivate || hasSecret(key)
+	}
+	if !hasPrivate {
+		return nil, errors.New("私钥文件中没有可用的私钥。")
+	}
+	if len(publicData) > 0 {
+		publicKeys, e := parseKeys(publicData)
+		if e != nil {
+			return nil, errors.New("公钥文件不是有效的 OpenPGP 密钥文件。")
+		}
+		for _, key := range publicKeys {
+			if hasSecret(key) {
+				return nil, errors.New("公钥文件包含私钥，请在私钥文件中导入。")
+			}
+		}
+		keys = mergeKeyRings(keys, publicKeys)
+	}
+	return v.importKeyRing(keys, passphrase, token)
+}
+
+func (v *Vault) importKeyRing(keys openpgp.EntityList, passphrase string, token uint64) ([]Identity, error) {
 	v.operations.Lock()
 	defer v.operations.Unlock()
 	unlock, e := lockStore(v.config.Directory)
@@ -350,10 +388,6 @@ func (v *Vault) importKeys(data []byte, passphrase string, token uint64) ([]Iden
 	defer unlock()
 	if passphrase == "" {
 		return nil, ErrPassphrase
-	}
-	keys, e := parseKeys(data)
-	if e != nil {
-		return nil, e
 	}
 	existing, e := safeRead(filepath.Dir(v.config.KeyFile), filepath.Base(v.config.KeyFile))
 	replace := e == nil
@@ -368,19 +402,7 @@ func (v *Vault) importKeys(data []byte, passphrase string, token uint64) ([]Iden
 		if e = decryptKeys(old, passphrase, true); e != nil {
 			return nil, e
 		}
-		byFP := map[string]*openpgp.Entity{}
-		for _, k := range old {
-			byFP[fingerprint(k)] = k
-		}
-		for _, k := range keys {
-			if prior := byFP[fingerprint(k)]; prior == nil || hasSecret(k) {
-				byFP[fingerprint(k)] = k
-			}
-		}
-		keys = nil
-		for _, k := range byFP {
-			keys = append(keys, k)
-		}
+		keys = mergeKeyRings(old, keys)
 		sort.Slice(keys, func(i, j int) bool { return fingerprint(keys[i]) < fingerprint(keys[j]) })
 	}
 	if e = decryptKeys(keys, passphrase, false); e != nil {

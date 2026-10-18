@@ -148,7 +148,7 @@ func TestSharedSessionLifecycle(t *testing.T) {
 func TestBrowserBoundaryAndMetadataOnly(t *testing.T) {
 	s := testService(t)
 	id := must(t, s, Request{Action: "status"}).VaultID
-	for _, r := range []Request{{Protocol: 1, Action: "open", Directory: "/tmp"}, {Protocol: 1, Action: "unlock", Passphrase: "secret"}, {Protocol: 1, Action: "fetch", Entry: "anything"}, {Protocol: 2, Action: "configure"}, {Protocol: 1, Action: "fetch", VaultID: id, Kind: "draft", ID: "x"}} {
+	for _, r := range []Request{{Protocol: 1, Action: "open", Directory: "/tmp"}, {Protocol: 1, Action: "unlock", Passphrase: "secret"}, {Protocol: 1, Action: "fetch", Entry: "anything"}, {Protocol: 2, Action: "configure"}, {Protocol: 1, Action: "fetch", VaultID: id, Kind: "draft", ID: "x"}, {Protocol: 1, Action: "configure", PublicKeyFile: "/tmp/public.asc"}} {
 		b, _ := json.Marshal(r)
 		var got Response
 		_ = json.Unmarshal(s.handleBrowser(b), &got)

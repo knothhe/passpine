@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Passpine · 导入密码库</title><link rel="stylesheet" href="style.css">
+<main class=""><form onsubmit="return false">
+<div class="icon" aria-hidden="true">♧</div><h1>打开密码库</h1>
+<div class="tabs"><span>创建密码库</span><span class="active">导入密码库</span><span>从 Git 下载</span></div>
+<div><label for="directory">密码库目录</label><div class="picker"><input id="directory" value="/Users/example/.password-store"><button title="选择密码库目录" type="button">▱</button></div></div>
+<div><label for="name">密码库名称</label><input id="name" placeholder=".password-store"></div>
+<div><label>密钥来源</label><div class="source"><span class="">系统 GPG</span><span class="active">密钥文件</span></div></div>
+<div><label for="private">OpenPGP 私钥文件</label><div class="picker"><input id="private" value="/Users/example/Keys/private.asc"><button title="选择私钥文件" type="button">▱</button></div></div>
+<div><label for="public">OpenPGP 公钥文件（可选）</label><div class="picker"><input id="public" placeholder="选择补充公钥文件"><button title="选择公钥文件" type="button">▱</button></div></div>
+<p>私钥文件通常已包含公钥。多收件人密码库可补充公钥文件，无需安装 GnuPG。</p>
+<div><label for="passphrase">私钥口令</label><input id="passphrase" type="password" value="fictional-passphrase"></div>
+<footer><button class="primary">打开并解锁</button></footer>
+</form></main></html>
