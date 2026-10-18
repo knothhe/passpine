@@ -80,6 +80,7 @@ help:
 	  'make browser:install     Build and install the configured browser extension' \
 	  'make version:show / version:check / version:patch / version:minor / version:major' \
 	  'make version:set VERSION_VALUE=0.2.0  Update desktop and browser version sources' \
-	  'make release VERSION_BUMP=patch     Preview release; RELEASE_FLAGS=--apply executes' \
+	  'make release VERSION_BUMP=0.1.0     Preview first release of the current version' \
+	  'make release VERSION_BUMP=patch RELEASE_FLAGS=--apply  Test, build, tag, push and publish GitHub Release with packages' \
 	  'Options: CLIENT_INSTALL_DIR="...", BROWSER=chrome|firefox|edge, INSTALL_ARGS="..."' \
 	  'Extension installation: see docs/install-local.md'

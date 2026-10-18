@@ -15,5 +15,6 @@
     ]
   ],
   "check_phase": "before-bump",
-  "github_release": false
+  "github_release": true,
+  "build_artifacts": true
 }

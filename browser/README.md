@@ -18,6 +18,8 @@ make -C .. browser:build
 pnpm run zip
 ```
 
+ZIP 使用 `passpine-<版本>-chrome.zip` 和 `passpine-<版本>-firefox.zip`，不额外生成 sources ZIP；Edge 复用 Chrome 包。完整发版由仓库根目录 `pnpm run release <版本或升版类型> --apply` 自动构建、打 tag 并上传 GitHub Release，见[版本与发布](../docs/versioning.md)。扩展包仍需解包加载，Firefox 商店签名和自动上架尚未接入。
+
 [本地安装、配置与浏览器加载说明](../docs/install-local.md)
 
 客户端设置 → 浏览器会检测已安装的浏览器，可逐项注册或修复本机 Native Messaging Host。扩展身份固定为：

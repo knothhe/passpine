@@ -6,6 +6,7 @@ const toolbarIcons = { 16: '/icon16-monochrome.png', 32: '/icon32-monochrome.png
 
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
+  zip: { name: 'passpine', zipSources: false },
   vite: () => ({ plugins: [copyHTML()] }),
   manifest: {
     key: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA267SX2CYUamF//05ArsbaN65lyhD3UHhef1CQmPsY1XiZRn/oYJE0919Feo8Nb55oR4Eb0TBjVSWTpq7li9hMe3jNSeiesbHqFSOkG6ezoBuLWQ3QFtOU5k5rlw572Oa0i6/YQJ2TmrFkojUkIJ1FzI97cmS+XUK8+7gSdshKIlz0HD3gxDlJoEQSNpGZg5EnrUUuSdwIhUDBtwWMojpA/U0S5+lOwOg2gogmQfeKhlIPqzBkV1QAv3TDDpYeJFXPDWc1guTeeiPV/FaWxo4BFpU3md6jQegPODMorG+V37fnS8EX8VUUZCylnZzHjstYms6wZ8oTgP1NNzeCqecSwIDAQAB',
