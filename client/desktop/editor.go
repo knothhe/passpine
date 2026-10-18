@@ -312,7 +312,7 @@ func (a *application) editorView(c *ui.Context) {
 	if a.editor.fields == nil {
 		a.editor.fields = &editorFields{usernameLine: -1, websiteLine: -1}
 	}
-	ui.Column(c).Key("entry-editor").Fill().MinWidth(0).MaxWidth(808).Padding(24).Gap(16).Children(func() {
+	ui.Column(c).Key("entry-editor").Fill().MinWidth(0).MaxWidth(808).AlignSelf(ui.Center).Padding(24).Gap(16).Children(func() {
 		title := a.t("新建条目")
 		if a.editor.originalPath != "" {
 			title = a.t("编辑条目")
