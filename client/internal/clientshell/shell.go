@@ -66,8 +66,6 @@ type ShellOptions struct {
 	LeftResizeLabel string
 	// Windows caption button labels; empty values use English defaults.
 	MinimizeLabel, MaximizeLabel, RestoreLabel, CloseLabel string
-	// CloseToastLabel names each toast's close button; empty uses English.
-	CloseToastLabel string
 	// Toasts places the window's toasts; top placements also clear the header.
 	Toasts components.ToastOptions
 	// Theme, when set, returns the frame's theme; Shell installs it before
@@ -250,7 +248,7 @@ func (s *Shell) view(c *ui.Context) {
 	if toasts.Placement.Top() {
 		toasts.Inset += HeaderHeight(c)
 	}
-	components.WithLocalization(c, components.Localization{CloseToast: s.options.CloseToastLabel}, func() { components.Toasts(c, toasts) })
+	components.Toasts(c, toasts)
 }
 
 // SetToasts changes toast placement without recreating the window or toasts.

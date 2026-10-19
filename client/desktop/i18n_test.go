@@ -11,7 +11,35 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/i18n"
+	"github.com/oneo-me/onevra/source/components"
 )
+
+func TestComponentToastLanguageSwitchPreservesNotification(t *testing.T) {
+	shown := false
+	view := ui.NewTester(func(c *ui.Context) {
+		if !shown {
+			c.AddToast(ui.Toast{ID: "locale-test", Title: "用户数据", Timeout: -1})
+			shown = true
+		}
+		components.Toasts(c)
+	}, 480, 360)
+	view.SetPreferences(ui.Preferences{ReduceMotion: true})
+	for _, locale := range []string{i18n.English, i18n.SimplifiedChinese, i18n.English} {
+		view.SetLocale(locale)
+		if _, ok := view.Find(i18n.Text(locale, "关闭提示")); !ok {
+			t.Fatalf("toast close control did not follow locale %q", locale)
+		}
+		if !view.HasText("用户数据") {
+			t.Fatal("language switch changed the existing notification")
+		}
+	}
+	if err := view.Click(i18n.Text(i18n.English, "关闭提示")); err != nil {
+		t.Fatal(err)
+	}
+	if view.HasText("用户数据") {
+		t.Fatal("localized close control did not dismiss the notification")
+	}
+}
 
 func TestEnglishInterfaceAndLanguageSwitchPreserveVaultData(t *testing.T) {
 	a := fixture()

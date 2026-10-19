@@ -40,7 +40,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer service.Close()
-	if err := desktop.Run(service); err != nil {
+	if err := desktop.Run(service, version); err != nil {
 		log.Fatal(err)
 	}
 }

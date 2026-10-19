@@ -439,9 +439,7 @@ func (a *application) quickSearchView(c *ui.Context) {
 		c.AddToast(ui.Toast{ID: "quick-search-error", Title: a.t("操作未完成"), Description: a.t(a.quick.errorText), Type: components.ToastError, Timeout: -1})
 		a.quick.errorText = ""
 	}
-	components.WithLocalization(c, components.Localization{CloseToast: a.t("关闭提示")}, func() {
-		components.Toasts(c, components.ToastOptions{Inset: 48})
-	})
+	components.Toasts(c, components.ToastOptions{Inset: 48})
 }
 
 func (a *application) quickSearchResultsView(c *ui.Context) {

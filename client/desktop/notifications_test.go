@@ -41,6 +41,7 @@ func TestFeedbackExpiresWhileWindowIsUnfocusedAndReplacementRestartsDeadline(t *
 func TestNotificationsNeverMoveContentAndReplaceEarlierOutcome(t *testing.T) {
 	a := fixture()
 	v := ui.NewTester(testView(a), 1120, 760)
+	v.SetLocale(a.uiLocale())
 	v.SetPreferences(ui.Preferences{ReduceMotion: true})
 	before, _ := v.Find("显示或隐藏密码")
 	a.notice = "已复制密码"

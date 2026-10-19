@@ -2,6 +2,21 @@ import type { Copy } from '../constants/copy';
 
 export const englishCopy = {
   brand: 'Passpine',
+  about: {
+    pageTitle: "Passpine · About",
+    navigation: "Settings pages",
+    title: "About",
+    description: "Browser extension version and identity.",
+    settings: "Settings",
+    name: "Passpine Browser Extension",
+    projectDescription: "Connect to the local client to access and fill passwords securely.",
+    project: "Project homepage",
+    browser: "Browser family",
+    extensionID: "Extension ID",
+    chromium: "Chromium browsers",
+    firefox: "Firefox",
+    version: (value: string) => `Version ${value}`,
+  },
   common: {
     vault: 'Vault', username: 'Username', password: 'Password', website: 'Website', notes: 'Notes',
     cancel: 'Cancel', save: 'Save', copy: 'Copy', copied: 'Copied', notSet: 'Not set',

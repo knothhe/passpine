@@ -61,7 +61,7 @@ func testView(a *application) func(*ui.Context) {
 			iconButton(c, lucide.PanelLeft(), a.t("切换侧栏"), components.ButtonGhost)
 		})
 		ui.Row(c).Absolute().Top(0).Left(defaultSidebarWidth).Right(0).Height(48).Padding(8, 16).Children(func() { a.header(c) })
-		components.WithLocalization(c, components.Localization{CloseToast: "关闭提示"}, func() { components.Toasts(c) })
+		components.Toasts(c)
 	}
 }
 
@@ -328,7 +328,7 @@ func TestActivitySurvivesMetadataRefresh(t *testing.T) {
 }
 
 func TestScreensRender(t *testing.T) {
-	screens := []string{"entries", "settings", "settings-system", "recovery", "setup", "locked", "editor", "editor-custom", "generator"}
+	screens := []string{"entries", "settings", "settings-system", "settings-about", "recovery", "setup", "locked", "editor", "editor-custom", "generator"}
 	directory := os.Getenv("PASSPINE_SNAPSHOT_DIR")
 	if directory != "" {
 		screens = append(screens, "settings-security", "settings-vault", "settings-browser", "activity", "recovery-items", "drafts", "setup-import", "setup-import-files", "setup-import-files-en", "setup-import-files-busy", "setup-import-files-error", "setup-git", "locked-device", "editor-raw", "empty", "git-locked", "git-syncing", "confirm-delete", "confirm-discard", "confirm-purge", "backup")
@@ -348,10 +348,14 @@ func TestScreensRender(t *testing.T) {
 				a := fixture()
 				a.page = screen
 				switch screen {
-				case "settings-system", "settings-security", "settings-vault", "settings-browser":
+				case "settings-system", "settings-security", "settings-vault", "settings-browser", "settings-about":
 					a.page = "settings"
 					a.settingsState.Category = strings.TrimPrefix(screen, "settings-")
 					a.state.DeviceUnlockAvailable, a.state.DeviceUnlockEnrolled = true, true
+					if screen == "settings-about" {
+						a.buildVersion = "0.1.0"
+						a.aboutExpanded = map[string]bool{"crypto": true}
+					}
 					if screen == "settings-browser" {
 						a.state.BrowserHelperAvailable = true
 						a.state.BrowserRegistrations = []nativehost.BrowserRegistration{
@@ -434,6 +438,9 @@ func TestScreensRender(t *testing.T) {
 				}
 				v := ui.NewTester(testView(a), size.width, size.height)
 				v.SetDark(size.dark)
+				if screen == "settings-about" {
+					v.Advance(time.Second)
+				}
 				v.Frame()
 				if v.Image().Bounds().Empty() {
 					t.Fatal("empty rendered frame")

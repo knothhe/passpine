@@ -40,7 +40,7 @@ func (a *application) setupView(c *ui.Context) {
 				section(c, a.t("打开密码库"), "", nil)
 				previousMode := a.setupMode
 				ui.Column(c).FillWidth().Disabled(a.busy).Children(func() {
-					components.Tabs(c, &a.setupMode, a.t("创建密码库"), a.t("导入密码库"), a.t("从 Git 下载"))
+					components.Tabs(c, &a.setupMode, components.TabsUnderline, a.t("创建密码库"), a.t("导入密码库"), a.t("从 Git 下载"))
 				})
 				if a.setupMode == 1 && a.setupDirectory == a.defaultVaultDirectory && a.defaultVaultDirectory != "" {
 					muted(c, a.t("已找到默认密码库 ~/.password-store。选择密钥来源后即可导入。"))
@@ -94,7 +94,7 @@ func (a *application) setupView(c *ui.Context) {
 					} else {
 						ui.Column(c).FillWidth().Gap(6).Children(func() {
 							components.Text(c, a.t("密钥来源")).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
-							components.Tabs(c, &a.setupKeySource, a.t("系统 GPG"), a.t("密钥文件"))
+							components.Tabs(c, &a.setupKeySource, components.TabsUnderline, a.t("系统 GPG"), a.t("密钥文件"))
 						})
 						if a.setupKeySource == 0 {
 							muted(c, a.t("从本机 GPG 密钥环读取匹配的密钥。需要安装 GnuPG。"))

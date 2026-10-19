@@ -27,6 +27,8 @@ type Backend interface {
 const defaultSidebarWidth = 380
 
 type application struct {
+	buildVersion                                                         string
+	aboutExpanded                                                        map[string]bool
 	service                                                              Backend
 	runOnMain                                                            func(func())
 	window                                                               *mygo.Window
@@ -112,8 +114,9 @@ type application struct {
 
 // Run starts a native GPU-rendered window, with native menus, file panels,
 // clipboard and system lock/sleep notifications. It does not create a WebView.
-func Run(service *app.Service) error {
+func Run(service *app.Service, version string) error {
 	a := newApplication(service)
+	a.buildVersion = version
 	mygo.App.SetName("Passpine")
 	mygo.App.SetPath(mygo.PathUserData, service.DataDirectory())
 	if !mygo.App.RequestSingleInstanceLock() {
@@ -817,7 +820,7 @@ func (a *application) sidebarToolbar(c *ui.Context) {
 
 func (a *application) header(c *ui.Context) {
 	title := map[string]string{"entries": a.t("密码库"), "recovery": a.t("恢复中心"), "settings": a.t("设置"), "activity": a.t("操作记录")}[a.page]
-	if a.setup || !a.state.Configured {
+	if (a.setup || !a.state.Configured) && !(a.page == "settings" && a.settingsState.Category == "about" && !a.setup) {
 		title = a.t("打开密码库")
 	}
 	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
@@ -922,7 +925,7 @@ func (a *application) contentView(c *ui.Context) {
 		timeline := page.Timeline("navigation-feedback", ui.TimelineOptions{Run: a.history.revision})
 		page.Opacity(timeline.Tween(ui.Tween{From: .72, To: 1, Duration: 150 * time.Millisecond}))
 		page.Children(func() {
-			if !a.state.Configured || a.setup {
+			if (!a.state.Configured || a.setup) && !(a.page == "settings" && a.settingsState.Category == "about" && !a.setup) {
 				a.setupView(c)
 				return
 			}
@@ -979,7 +982,7 @@ func (a *application) installMenu() {
 		windowMenu = &mygo.MenuItem{Label: a.t("窗口"), Disabled: true}
 	}
 	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
-		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{action(a.t("设置…"), "CmdOrCtrl+,", func() { a.navigate("settings", "") }), mygo.Separator(), action(a.t("退出 Passpine"), "CmdOrCtrl+Q", mygo.App.Quit)}},
+		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{action(a.t("关于"), "", func() { a.navigateSettingsCategory("about") }), mygo.Separator(), action(a.t("设置…"), "CmdOrCtrl+,", func() { a.navigate("settings", "") }), mygo.Separator(), action(a.t("退出 Passpine"), "CmdOrCtrl+Q", mygo.App.Quit)}},
 		{Label: a.t("文件"), Submenu: []*mygo.MenuItem{action(a.t("新建条目"), "CmdOrCtrl+N", a.newEntry), action(a.t("打开密码库…"), "", a.openSetup), mygo.Separator(), action(a.t("锁定密码库"), "CmdOrCtrl+Shift+L", a.lock)}},
 		editMenu,
 		{Label: a.t("显示"), Submenu: []*mygo.MenuItem{

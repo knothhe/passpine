@@ -6,7 +6,6 @@ package clientshell
 type Labels struct {
 	LeftToggle, LeftResize             string
 	Minimize, Maximize, Restore, Close string
-	CloseToast                         string
 }
 
 // SetLabels changes control names without recreating the window or its content.
@@ -18,6 +17,5 @@ func (s *Shell) SetLabels(labels Labels) {
 	s.options.MaximizeLabel = labels.Maximize
 	s.options.RestoreLabel = labels.Restore
 	s.options.CloseLabel = labels.Close
-	s.options.CloseToastLabel = labels.CloseToast
 	s.refresh()
 }

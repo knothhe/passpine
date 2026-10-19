@@ -2,6 +2,21 @@
 // runtime values as arguments; never translate vault contents or protocol IDs.
 export const chineseCopy = {
   brand: 'Passpine',
+  about: {
+    pageTitle: "Passpine · 关于",
+    navigation: "设置页面",
+    title: "关于",
+    description: "浏览器扩展的版本与标识信息。",
+    settings: "设置",
+    name: "Passpine 浏览器扩展",
+    projectDescription: "在浏览器中连接本地客户端，安全地访问和填充密码。",
+    project: "项目主页",
+    browser: "浏览器类型",
+    extensionID: "扩展标识",
+    chromium: "Chromium 系列浏览器",
+    firefox: "Firefox",
+    version: (value: string) => `版本 ${value}`,
+  },
   common: {
     vault: '密码库',
     username: '用户名',

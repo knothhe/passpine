@@ -2,6 +2,7 @@
 set -euo pipefail
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 version="$(node "$root_dir/scripts/version.mjs" show)"
+node "$root_dir/scripts/dependencies.mjs"
 node "$root_dir/scripts/version.mjs" check
 mkdir -p "$root_dir/dist"
 cd "$root_dir/client"

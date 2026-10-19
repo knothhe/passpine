@@ -6,6 +6,7 @@ import { Brand } from './Primitives';
 import { ShortcutSettings } from './ShortcutSettings';
 import { AppearanceSettings } from './AppearanceSettings';
 import { LanguageSettings } from './LanguageSettings';
+import { About } from './About';
 import { errorMessage } from '../lib/errors';
 import { HOST, type Client, type Snapshot } from '../lib/types';
 import { useExpiringValue } from '../lib/use-expiring-value';
@@ -13,6 +14,13 @@ import { useExpiringValue } from '../lib/use-expiring-value';
 export function Options({ client, extensionId, firefox = false }: { client: Client; extensionId: string; firefox?: boolean }) {
   const copy = useCopy();
   const { locale } = useLanguage();
+  const [page, setPage] = useState<'settings' | 'about'>(() => new URLSearchParams(location.search).get('section') === 'about' ? 'about' : 'settings');
+  const contentRef = useRef<HTMLDivElement>(null), previousPage = useRef(page);
+  useEffect(() => { document.title = page === 'about' ? copy.about.pageTitle : copy.options.pageTitle; }, [page, locale, copy]);
+  useEffect(() => {
+    if (previousPage.current !== page) contentRef.current?.querySelector('h1')?.focus();
+    previousPage.current = page;
+  }, [page]);
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(true);
@@ -41,8 +49,11 @@ export function Options({ client, extensionId, firefox = false }: { client: Clie
     catch (error) { setError(errorMessage(error, copy)); }
   };
   return <main className="options-page">
-    <header className="options-header"><Brand/>{client.demo && <Badge color="gray">{copy.preview.exampleData}</Badge>}</header>
-    <div className="options-content"><div className="options-title"><Heading as="h1" size="6">{copy.options.title}</Heading><Text as="p" size="2" color="gray">{copy.options.description}</Text></div>
+    <header className="options-header"><Brand/>{client.demo && <Badge color="gray">{copy.preview.exampleData}</Badge>}<nav className="options-navigation" aria-label={copy.about.navigation}>
+      <button type="button" aria-current={page === 'settings' ? 'page' : undefined} onClick={() => setPage('settings')}>{copy.about.settings}</button>
+      <button type="button" aria-current={page === 'about' ? 'page' : undefined} onClick={() => setPage('about')}>{copy.about.title}</button>
+    </nav></header>
+    <div className="options-content" ref={contentRef}>{page === 'about' ? <About extensionId={extensionId} firefox={firefox}/> : <><div className="options-title"><Heading as="h1" size="6" tabIndex={-1}>{copy.options.title}</Heading><Text as="p" size="2" color="gray">{copy.options.description}</Text></div>
     <div className="options-sections">
       <Card size="3" className="options-card"><LanguageSettings/></Card>
       <Card size="3" className="options-card"><AppearanceSettings/></Card>
@@ -63,7 +74,7 @@ export function Options({ client, extensionId, firefox = false }: { client: Clie
         <dl className="diagnostic-list"><div><dt>{copy.options.nativeHost}</dt><dd><code>{HOST}</code></dd></div><div><dt>{copy.options.extensionID}</dt><dd><code>{extensionId}</code></dd></div></dl>
         <div className="options-card-actions"><Button variant="soft" color="gray" size="1" onClick={() => void copyId()}>{copied ? <Check size={14}/> : <ClipboardCopy size={14}/>} {copied ? copy.common.copied : copy.options.copyExtensionID}</Button></div>
       </Card>
-    </div>
+    </div></>}
     </div>
   </main>;
 }

@@ -5,7 +5,8 @@ test_dir="$(mktemp -d "${TMPDIR:-/tmp}/passpine-check.XXXXXX")"
 trap 'rm -rf "$test_dir"' EXIT
 cd "$root_dir"
 node scripts/version.mjs check
-node --test scripts/version.test.mjs scripts/release.test.mjs scripts/release-artifacts.test.mjs
+node scripts/dependencies.mjs --check
+node --test scripts/version.test.mjs scripts/release.test.mjs scripts/release-artifacts.test.mjs scripts/dependencies.test.mjs
 cd "$root_dir/client"
 if [[ "$(uname -s)" == "Darwin" ]]; then
   xcrun swiftc -O -parse-as-library -swift-version 5 \

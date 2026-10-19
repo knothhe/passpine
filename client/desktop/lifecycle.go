@@ -42,7 +42,7 @@ func (a *application) newMainWindow() {
 		Theme:         a.clientTheme, Left: a.sidebarView, Content: a.contentView,
 		ContentTitle: a.header, LeftToolbar: a.sidebarToolbar,
 		LeadingHeader: a.historyControls, LeadingHeaderWidth: 64,
-		LeftToggleLabel: "切换侧栏", LeftResizeLabel: "调整侧栏宽度", CloseToastLabel: "关闭提示",
+		LeftToggleLabel: "切换侧栏", LeftResizeLabel: "调整侧栏宽度",
 	})
 	window := a.shell.Window()
 	a.window = window

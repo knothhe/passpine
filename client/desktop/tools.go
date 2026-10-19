@@ -115,7 +115,7 @@ func (a *application) recoveryView(c *ui.Context) {
 		section(c, a.t("恢复中心"), "", nil)
 		old := a.recoveryKind
 		ui.Column(c).FillWidth().Disabled(a.busy).Children(func() {
-			components.Tabs(c, &a.recoveryKind, a.t("回收站"), a.t("加密草稿"))
+			components.Tabs(c, &a.recoveryKind, components.TabsUnderline, a.t("回收站"), a.t("加密草稿"))
 		})
 		if old != a.recoveryKind {
 			a.loadRecovery()
@@ -330,6 +330,7 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 		{ID: "security", Title: a.t("安全"), Icon: lucide.LockKeyhole(), Description: a.t("管理解锁方式和密码的保留时间。"), Groups: []components.SettingsGroup{{ID: "session", Items: security}}},
 		{ID: "vault", Title: a.t("密码库"), Icon: lucide.FolderKey(), Description: a.t("管理恢复备份与 Git 同步。"), Groups: []components.SettingsGroup{{ID: "backup", Items: vaultItems}, {ID: "sync", Title: a.t("Git 同步"), Items: syncItems}}},
 		{ID: "browser", Title: a.t("浏览器"), Icon: lucide.Globe(), Description: a.t("让浏览器扩展安全地访问当前密码库。"), Groups: []components.SettingsGroup{{ID: "integration", Items: browserItems}}},
+		{ID: "about", Title: a.t("关于"), Icon: lucide.Info(), Description: a.t("项目版本、开源组件与依赖信息。"), Groups: []components.SettingsGroup{{ID: "about", Items: []components.SettingsItem{{ID: "about-content", Title: a.t("主要依赖"), Description: a.t("项目版本、开源组件与依赖信息。"), Build: a.aboutView}}}}},
 	}
 }
 

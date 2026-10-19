@@ -28,8 +28,11 @@ func (a *application) countLabel(n int) string { return a.t("%d 个条目", n) }
 // Rebuild native menus after changing the language. Repainted views resolve
 // their own labels from the current setting, without restarting the app.
 func (a *application) applyLanguage() {
+	if mygo.App.IsReady() {
+		mygo.App.SetLocale(a.uiLocale())
+	}
 	if a.shell != nil {
-		a.shell.SetLabels(sidebar.Labels{LeftToggle: a.t("切换侧栏"), LeftResize: a.t("调整侧栏宽度"), CloseToast: a.t("关闭提示"), Minimize: a.t("最小化"), Maximize: a.t("最大化"), Restore: a.t("还原窗口"), Close: a.t("关闭窗口")})
+		a.shell.SetLabels(sidebar.Labels{LeftToggle: a.t("切换侧栏"), LeftResize: a.t("调整侧栏宽度"), Minimize: a.t("最小化"), Maximize: a.t("最大化"), Restore: a.t("还原窗口"), Close: a.t("关闭窗口")})
 	}
 	if window, ok := a.quick.window.(*mygo.Window); ok {
 		window.SetTitle(a.t("Passpine 快速搜索"))

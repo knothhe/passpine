@@ -34,7 +34,7 @@ func (a *application) loadPreferencesPage(page string) {
 		a.loadRecovery()
 	} else if page == "activity" {
 		a.requestPreferencesRead(page)
-	} else if a.service != nil {
+	} else if a.service != nil && a.state.Configured {
 		if a.gitRemoteSaveAt.IsZero() && !a.gitRemoteSaving {
 			a.gitRemote, a.gitRemoteObserved = a.state.GitRemote, a.state.GitRemote
 		}

@@ -1,0 +1,52 @@
+[
+  {
+    "id": "crypto",
+    "name": "go-crypto",
+    "module": "github.com/ProtonMail/go-crypto",
+    "group": "desktop",
+    "version": "v1.5.2",
+    "license": "BSD-3-Clause",
+    "url": "https://pkg.go.dev/github.com/ProtonMail/go-crypto",
+    "source": "https://github.com/ProtonMail/go-crypto"
+  },
+  {
+    "id": "purego",
+    "name": "purego",
+    "module": "github.com/ebitengine/purego",
+    "group": "desktop",
+    "version": "v0.11.2",
+    "license": "Apache-2.0",
+    "url": "https://pkg.go.dev/github.com/ebitengine/purego",
+    "source": "https://github.com/ebitengine/purego"
+  },
+  {
+    "id": "mygo",
+    "name": "MyGo",
+    "module": "github.com/egoist/mygo",
+    "group": "desktop",
+    "version": "v0.5.5",
+    "license": "MIT",
+    "url": "https://pkg.go.dev/github.com/egoist/mygo",
+    "source": "https://github.com/egoist/mygo"
+  },
+  {
+    "id": "onevra",
+    "name": "Onevra",
+    "module": "github.com/oneo-me/onevra/source",
+    "group": "desktop",
+    "version": "v0.2026.13",
+    "license": "MIT",
+    "url": "https://pkg.go.dev/github.com/oneo-me/onevra/source",
+    "source": "https://github.com/oneo-me/onevra"
+  },
+  {
+    "id": "sys",
+    "name": "x/sys",
+    "module": "golang.org/x/sys",
+    "group": "desktop",
+    "version": "v0.49.0",
+    "license": "BSD-3-Clause",
+    "url": "https://pkg.go.dev/golang.org/x/sys",
+    "source": "https://go.googlesource.com/sys"
+  }
+]

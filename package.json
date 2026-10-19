@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "cd client && go run ./cmd/passpine",
-    "preview": "cd client && go run ./cmd/passpine --preview",
+    "dev": "node scripts/dependencies.mjs && cd client && go run -ldflags \"-X main.version=$(node ../scripts/version.mjs show)\" ./cmd/passpine",
+    "preview": "node scripts/dependencies.mjs && cd client && go run -ldflags \"-X main.version=$(node ../scripts/version.mjs show)\" ./cmd/passpine --preview",
     "build:client": "make client:build",
     "build:browser": "make browser:build",
     "build:browser:chrome": "make browser:build:chrome",
@@ -25,7 +25,8 @@
     "version:major": "node scripts/version.mjs major",
     "version:set": "node scripts/version.mjs set",
     "release": "node scripts/release.mjs",
-    "test:tooling": "node --test scripts/version.test.mjs scripts/release.test.mjs scripts/release-artifacts.test.mjs"
+    "test:tooling": "node --test scripts/version.test.mjs scripts/release.test.mjs scripts/release-artifacts.test.mjs scripts/dependencies.test.mjs",
+    "about:generate": "node scripts/dependencies.mjs"
   },
   "engines": {
     "node": ">=22.12.0"
