@@ -15,6 +15,7 @@
 - 浏览器 `src/assets/app-icon.png` 和 `app-icon-monochrome.png`，用于界面品牌和页签。
 - 浏览器 `public/icon16.png`、`icon24.png`、`icon32.png`、`icon48.png`、`icon128.png` 和对应的 `-monochrome` 版本，用于扩展工具栏与管理页。
 - `menu-bar-template.png`：32px 黑色前景与透明背景，由 macOS 根据菜单栏外观自动调整前景颜色。
+- `menu-bar-template.svg`：与菜单栏相同的小尺寸松鼠轮廓，用于全局搜索与快捷面板标题栏，前景色跟随界面主题。
 
 两套 ICNS 资源均包含完整 macOS 标准与 Retina 尺寸。Dock 在运行时直接加载完整 ICNS，保留小尺寸光学校正与多分辨率表示；窗口与其他平台使用 PNG。图标在运行时跟随主题风格；构建时 Finder 的默认应用包图标使用黑白版。其他平台托盘使用当前风格的完整应用图标。
 

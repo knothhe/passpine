@@ -57,7 +57,7 @@ func (a *application) listView(c *ui.Context) {
 				selected := e.Path == a.selected
 				showCopy := row.Hovered() || row.FocusWithin() || i == a.selectedIndex && a.list.Focused(c)
 				if selected {
-					if c.Theme().Accent == c.Theme().Text {
+					if isMonochromePalette(c.Theme()) {
 						row.Background(c.Theme().Selection)
 					} else {
 						row.Background(c.Theme().Accent.Alpha(.10))

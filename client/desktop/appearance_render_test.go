@@ -38,7 +38,7 @@ func TestReturnKeyIconRetainsPrimaryContrastInBothAppearances(t *testing.T) {
 		if !found {
 			t.Fatal("return keycap is missing")
 		}
-		background := palette.AccentText.Alpha(.08).Over(palette.Accent)
+		background := palette.AccentText.Alpha(.03).Over(palette.Accent)
 		var strongest float64
 		for y := int(math.Ceil(float64(bounds.Y + 3))); y < int(bounds.Y+bounds.H-3); y++ {
 			for x := int(math.Ceil(float64(bounds.X + 3))); x < int(bounds.X+bounds.W-3); x++ {

@@ -17,7 +17,7 @@ func monochromeInputBackground(dark bool) ui.Color {
 func textBox(c *ui.Context, value *string, options components.TextBoxOptions) ui.Element {
 	input := components.TextBox(c, value, options)
 	t := c.Theme()
-	if t.Accent == t.Text {
+	if isMonochromePalette(t) {
 		background := monochromeInputBackground(t.Dark)
 		if options.ReadOnly {
 			background = background.Mix(t.Text, .04)

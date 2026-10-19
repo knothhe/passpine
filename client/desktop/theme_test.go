@@ -42,7 +42,7 @@ func TestMonochromeSemanticRolesRemainReadableInBothAppearances(t *testing.T) {
 				t.Errorf("dark=%v primary text on %s contrast=%.2f, want >=4.5", dark, name, ratio)
 			}
 		}
-		if palette.Dark != dark || palette.Accent != palette.Text || palette.Selection.A != 255 || palette.Focus.R != palette.Accent.R {
+		if palette.Dark != dark || !isMonochromePalette(palette) || palette.Selection.A != 255 || palette.Focus.R != palette.Accent.R {
 			t.Fatal("monochrome semantic roles lost appearance or neutral primary tint")
 		}
 	}

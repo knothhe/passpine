@@ -10,9 +10,12 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
+	"github.com/knothhe/passpine/client/assets"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
 )
+
+var quickSearchBrandIcon = ui.MustParseSVG(assets.MenuBarTemplateSVG)
 
 func quickSearchOpenShortcut() string {
 	if runtime.GOOS == "darwin" {
@@ -30,9 +33,9 @@ func quickSearchControlShortcut(key string) string {
 
 func quickSearchKeycap(c *ui.Context, key string, primary bool) {
 	t := c.Theme()
-	foreground, background, border := t.TextMuted, t.Text.Alpha(.04), t.Border.Alpha(.65)
+	foreground, background, border := t.TextMuted, t.Text.Alpha(.025), t.Border.Alpha(.35)
 	if primary {
-		foreground, background, border = t.AccentText, t.AccentText.Alpha(.08), t.AccentText.Alpha(.16)
+		foreground, background, border = t.AccentText, t.AccentText.Alpha(.03), t.AccentText.Alpha(.08)
 	}
 	ui.Row(c).Height(20).MinWidth(22).Padding(2, 5).Radius(4).Shrink(0).
 		AlignSelf(ui.Center).AlignItems(ui.Center).Justify(ui.Center).Label(key).Role(ui.RoleNone).
@@ -374,7 +377,7 @@ func (a *application) quickSearchView(c *ui.Context) {
 			header = header.DragWindow()
 		}
 		header.Children(func() {
-			components.Icon(c, lucide.KeyRound()).Size(13, 13).TextColor(c.Theme().TextMuted)
+			components.Icon(c, quickSearchBrandIcon).Size(16, 16).TextColor(c.Theme().TextMuted)
 			components.Text(c, "Passpine").FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).Shrink(0)
 			if components.Button(c, "esc", components.ButtonGhost).Label(a.t("关闭快速搜索")).Tooltip(a.t("关闭快速搜索")).Height(25).Padding(3, 5).FontSize(scaledFontSize(c, 10)).TextColor(c.Theme().TextMuted).Shrink(0).Clicked() {
 				a.hideQuickSearch()
@@ -494,7 +497,7 @@ func (a *application) quickSearchResultsView(c *ui.Context) {
 		components.List(c, &q.list, len(q.results), func(i int) {
 			entry := q.results[i]
 			row := ui.Row(c).FillWidth().Height(58).Padding(9, 12).Gap(12).AlignItems(ui.Center).Radius(c.Theme().Radius)
-			if i == q.selected && c.Theme().Accent == c.Theme().Text {
+			if i == q.selected && isMonochromePalette(c.Theme()) {
 				row.Background(c.Theme().Selection)
 			}
 			row.Children(func() {

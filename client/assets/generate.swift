@@ -258,3 +258,5 @@ for (palette, suffix) in [(terracotta, ""), (monochrome, "-monochrome")] {
     try chunk("icns", payload: payload).write(to: repository.appendingPathComponent("client/assets/Passpine\(suffix).icns"), options: .atomic)
 }
 try export(render(32, usage: .menuBar), to: "client/assets/menu-bar-template.png")
+let menuBarVector = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 \(sources.small16.width) \(sources.small16.height)\" fill=\"none\">\(sources.small16.svg("#000000"))</svg>\n"
+try menuBarVector.write(to: repository.appendingPathComponent("client/assets/menu-bar-template.svg"), atomically: true, encoding: .utf8)

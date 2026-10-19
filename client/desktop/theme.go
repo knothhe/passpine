@@ -8,8 +8,20 @@ import (
 	"github.com/oneo-me/onevra/source/theme"
 )
 
+func monochromeAccent(dark bool) ui.Color {
+	if dark {
+		return ui.Hex("#c4c4cc")
+	}
+	return ui.Hex("#1c1c21")
+}
+
+// The primary fill is independent of body text, especially in dark appearance.
+func isMonochromePalette(t *ui.Theme) bool {
+	return t.Accent == monochromeAccent(t.Dark)
+}
+
 // Palettes provide semantic roles to MyGo and Onevra controls. The monochrome
-// surfaces follow Racomi/Magpie; primary controls use neutral black and white.
+// surfaces follow Racomi/Magpie; primary controls use neutral black and gray.
 // Appearance (system/light/dark) remains owned by mygo.Theme.SetSource.
 func clientPalette(style string, dark bool) *ui.Theme {
 	t := theme.Palette(dark)
@@ -36,8 +48,8 @@ func clientPalette(style string, dark bool) *ui.Theme {
 		t.Text = ui.Hex("#ededf1")
 		t.TextMuted = ui.Hex("#a1a1aa")
 		t.AccentText = ui.Hex("#1c1c21")
-		t.AccentHover = ui.Hex("#ffffff")
-		t.AccentPressed = ui.Hex("#cbcbd2")
+		t.AccentHover = ui.Hex("#d2d2da")
+		t.AccentPressed = ui.Hex("#b4b4bd")
 	} else {
 		t.Background = ui.Hex("#f2f2f5")
 		t.Surface = ui.Hex("#ffffff")
@@ -50,7 +62,7 @@ func clientPalette(style string, dark bool) *ui.Theme {
 		t.AccentHover = ui.Hex("#35353d")
 		t.AccentPressed = ui.Hex("#0f0f13")
 	}
-	t.Accent = t.Text
+	t.Accent = monochromeAccent(dark)
 	t.Selection = t.SurfacePressed
 	if dark {
 		t.Selection = t.SurfaceHover

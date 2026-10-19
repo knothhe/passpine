@@ -44,3 +44,8 @@ func IconForStyle(style string) []byte {
 //
 //go:embed menu-bar-template.png
 var MenuBarTemplatePNG []byte
+
+// MenuBarTemplateSVG shares the menu bar's optical small artwork for UI icons.
+//
+//go:embed menu-bar-template.svg
+var MenuBarTemplateSVG []byte
