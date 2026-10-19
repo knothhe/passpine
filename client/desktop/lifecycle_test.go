@@ -63,6 +63,91 @@ func TestDockVisibilityChangesOnlyWhenEffectivePolicyChanges(t *testing.T) {
 	}
 }
 
+func TestFollowWindowInitializationWaitsForMainWindowWithoutChangingDock(t *testing.T) {
+	for _, dockVisible := range []bool{true, false} {
+		name := "cold startup"
+		if !dockVisible {
+			name = "lightweight resume"
+		}
+		t.Run(name, func(t *testing.T) {
+			a := fixture()
+			a.initializing = true
+			a.state.Settings.DockIcon = app.DockIconFollowWindow
+			a.lifecycle.dockVisible, a.lifecycle.dockVisibilityApplied = dockVisible, true
+			var calls []bool
+			a.lifecycle.setDockVisible = func(visible bool) { calls = append(calls, visible) }
+			a.applyNativeSettings()
+			if len(calls) != 0 || a.lifecycle.mainVisible {
+				t.Fatalf("pending main window changed the Dock or pretended to be visible: %v", calls)
+			}
+			a.initializing = false
+			a.mainWindowVisibilityChanged(true)
+			var want []bool
+			if !dockVisible {
+				want = []bool{true}
+			}
+			if !reflect.DeepEqual(calls, want) {
+				t.Fatalf("showing the main window changed the Dock unexpectedly: got %v, want %v", calls, want)
+			}
+			a.mainWindowVisibilityChanged(false)
+			a.mainWindowVisibilityChanged(true)
+			want = append(want, false, true)
+			if !reflect.DeepEqual(calls, want) {
+				t.Fatalf("runtime Dock visibility stopped following the main window: got %v, want %v", calls, want)
+			}
+		})
+	}
+}
+
+func TestBackgroundInitializationKeepsWindowsHiddenAndAppliesDockPolicy(t *testing.T) {
+	for _, policy := range []string{app.DockIconShow, app.DockIconHide, app.DockIconFollowWindow} {
+		t.Run(policy, func(t *testing.T) {
+			a, window := quickSearchFixture()
+			a.initializing, a.quick.visible = true, false
+			a.lifecycle.resumeTarget = "" // Login starts the service without opening a window.
+			a.state.Settings.DockIcon = policy
+			a.lifecycle.dockVisible, a.lifecycle.dockVisibilityApplied = true, true
+			var calls []bool
+			a.lifecycle.setDockVisible = func(visible bool) { calls = append(calls, visible) }
+			a.applyNativeSettings()
+			a.finishUIInitialization()
+			var want []bool
+			if policy != app.DockIconShow {
+				want = []bool{false}
+			}
+			if !reflect.DeepEqual(calls, want) || a.initializing || a.lifecycle.mainVisible || a.quick.visible || window.shown != 0 || window.focused != 0 {
+				t.Fatalf("background initialization opened a window or changed the Dock policy: %v", calls)
+			}
+		})
+	}
+}
+
+func TestInitializationSwitchToPanelReconcilesDeferredDockVisibility(t *testing.T) {
+	for _, target := range []string{"quick", "tray"} {
+		t.Run(target, func(t *testing.T) {
+			a, window := quickSearchFixture()
+			a.initializing, a.quick.visible, a.busy = true, false, true
+			a.state.Settings.DockIcon = app.DockIconFollowWindow
+			a.lifecycle.dockVisible, a.lifecycle.dockVisibilityApplied = true, true
+			var calls []bool
+			a.lifecycle.setDockVisible = func(visible bool) { calls = append(calls, visible) }
+			a.applyNativeSettings()
+			if len(calls) != 0 {
+				t.Fatalf("pending main window hid the Dock before the panel request: %v", calls)
+			}
+			a.lifecycle.resumeTarget = target
+			a.finishUIInitialization()
+			mode := quickSearchGlobal
+			if target == "tray" {
+				mode = quickSearchTray
+			}
+			if !reflect.DeepEqual(calls, []bool{false}) || a.initializing || a.lifecycle.mainVisible || !a.quick.visible || a.quick.mode != mode || window.shown != 1 || window.focused != 1 || window.focusCalls != 0 {
+				t.Fatalf("panel startup changed the manager, repeated focus or retained the Dock: %v", calls)
+			}
+		})
+	}
+}
+
 func TestLightweightSuspensionDoesNotReapplyDockVisibility(t *testing.T) {
 	for _, policy := range []string{app.DockIconShow, app.DockIconHide, app.DockIconFollowWindow} {
 		t.Run(policy, func(t *testing.T) {

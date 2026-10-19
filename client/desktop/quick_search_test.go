@@ -14,12 +14,21 @@ import (
 
 type fakeQuickSearchWindow struct {
 	shown, hidden, focused, destroyed, frames int
+	focusCalls                                int
 	bounds                                    mygo.Rectangle
 }
 
-func (w *fakeQuickSearchWindow) Show()                           { w.shown++ }
-func (w *fakeQuickSearchWindow) Hide()                           { w.hidden++ }
-func (w *fakeQuickSearchWindow) Focus()                          { w.focused++ }
+func (w *fakeQuickSearchWindow) Show() {
+	w.shown++
+	w.focused++ // MyGo Show also focuses the window.
+}
+
+func (w *fakeQuickSearchWindow) Hide() { w.hidden++ }
+func (w *fakeQuickSearchWindow) Focus() {
+	w.focused++
+	w.focusCalls++
+}
+
 func (w *fakeQuickSearchWindow) Invalidate()                     { w.frames++ }
 func (w *fakeQuickSearchWindow) Destroy()                        { w.destroyed++ }
 func (w *fakeQuickSearchWindow) Bounds() mygo.Rectangle          { return w.bounds }
@@ -66,7 +75,7 @@ func TestGlobalShortcutTogglesIndependentPanelWithoutChangingManager(t *testing.
 	a.editor = editorState{open: true, contents: "unsaved document"}
 	editor := a.editor
 	a.globalShortcutActivated()
-	if !a.quick.visible || window.shown != 1 || window.focused != 1 {
+	if !a.quick.visible || window.shown != 1 || window.focused != 1 || window.focusCalls != 0 {
 		t.Fatal("global shortcut did not show the independent panel")
 	}
 	if a.page != "settings" || a.query != "manager search" || a.filter != "folder:开发" || a.editor != editor {

@@ -255,7 +255,6 @@ func (a *application) openQuickSearch(mode string) {
 		window.SetTitle(a.quickSearchTitle())
 	}
 	a.quick.window.Show()
-	a.quick.window.Focus()
 	a.lastInput = time.Now()
 	a.queueMetadataRefresh(false)
 	a.invalidateQuickSearch()

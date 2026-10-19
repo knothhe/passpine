@@ -84,6 +84,11 @@ func (a *application) updateDockVisibility() {
 	if a.lifecycle.setDockVisible == nil || a.closing {
 		return
 	}
+	// Keep the current Dock state while preparing a requested main window.
+	// Hiding it now would briefly remove the icon before OnShow restores it.
+	if a.initializing && a.lifecycle.resumeTarget == "main" && !a.lifecycle.mainVisible && a.state.Settings.DockIcon == app.DockIconFollowWindow {
+		return
+	}
 	visible := dockIconVisible(a.state.Settings.DockIcon, a.lifecycle.mainVisible)
 	if a.lifecycle.dockVisibilityApplied && a.lifecycle.dockVisible == visible {
 		return
@@ -262,4 +267,7 @@ func (a *application) finishUIInitialization() {
 	default:
 		a.updateLightweightTimer(time.Now())
 	}
+	// An initialization request can switch from the main window to a panel
+	// or the background. Apply any Dock policy deferred for the main window.
+	a.updateDockVisibility()
 }

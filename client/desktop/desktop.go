@@ -236,7 +236,6 @@ func (a *application) show() {
 			a.window.Restore()
 		}
 		a.window.Show()
-		a.window.Focus()
 	}
 }
 func (a *application) invalidate() {

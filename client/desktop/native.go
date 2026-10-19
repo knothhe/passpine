@@ -10,6 +10,9 @@ import (
 func (a *application) startNativeIntegrations() {
 	a.lifecycle.nativeReady = true
 	if runtime.GOOS == "darwin" {
+		// MyGo starts with the regular activation policy. Reapplying Show
+		// would activate the app even though its Dock icon is already visible.
+		a.lifecycle.dockVisible, a.lifecycle.dockVisibilityApplied = true, true
 		a.lifecycle.setDockVisible = func(visible bool) {
 			if visible {
 				mygo.App.Dock.Show()
