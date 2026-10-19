@@ -77,7 +77,7 @@ describe('toolbar appearance', () => {
   it('loads the persisted style at worker startup and switches every toolbar icon size', async () => {
     extension.storage.local.get.mockResolvedValue({ [appearanceStorageKey]: { style: 'monochrome', appearance: 'dark' } });
     const stop = initializeToolbarAppearance(); await flush();
-    expect(extension.action.setIcon).toHaveBeenLastCalledWith({ path: { 16: 'icon16-monochrome.png', 32: 'icon32-monochrome.png', 48: 'icon48-monochrome.png', 128: 'icon128-monochrome.png' } });
+    expect(extension.action.setIcon).toHaveBeenLastCalledWith({ path: { 16: 'icon16-monochrome.png', 24: 'icon24-monochrome.png', 32: 'icon32-monochrome.png', 48: 'icon48-monochrome.png', 128: 'icon128-monochrome.png' } });
     change({ style: 'onevra', appearance: 'light' }); await flush();
     expect(extension.action.setIcon).toHaveBeenLastCalledWith({ path: toolbarIconPaths('onevra') }); stop();
   });

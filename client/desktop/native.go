@@ -58,11 +58,11 @@ func (a *application) updateNativeIcons() {
 	if a.closing || !a.lifecycle.nativeReady {
 		return
 	}
-	icon := assets.IconForStyle(a.themeSettings().ThemeStyle)
 	if runtime.GOOS == "darwin" {
-		_ = mygo.App.Dock.SetIcon(icon)
+		_ = mygo.App.Dock.SetIcon(assets.DockIconForStyle(a.themeSettings().ThemeStyle))
 		return // The menu bar uses the OS-colored template in both styles.
 	}
+	icon := assets.IconForStyle(a.themeSettings().ThemeStyle)
 	if a.window != nil {
 		_ = a.window.SetIcon(icon)
 	}

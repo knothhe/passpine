@@ -52,7 +52,7 @@ export function watchAppearancePreferences(changed: (preferences: AppearancePref
 
 export function toolbarIconPaths(style: ThemeStyle): Record<number, string> {
   const suffix = style === 'monochrome' ? '-monochrome' : '';
-  return Object.fromEntries([16, 32, 48, 128].map(size => [size, `icon${size}${suffix}.png`]));
+  return Object.fromEntries([16, 24, 32, 48, 128].map(size => [size, `icon${size}${suffix}.png`]));
 }
 
 /** Register before loading storage so a late initial read cannot undo a setting change. */

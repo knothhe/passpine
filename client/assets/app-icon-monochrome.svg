@@ -1,15 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
-  <title>Passpine — botanical key</title>
-  <rect x="96" y="96" width="832" height="832" rx="184" fill="#ffffff"/>
-  <g fill="#1c1c21">
-    <path d="M467 548 C371 536 344 446 366 382 C444 398 489 466 467 548 Z"/>
-    <path d="M501 514 C545 441 632 430 689 458 C657 533 571 558 501 514 Z"/>
-    <path d="M563 451 C478 428 464 346 490 288 C564 315 594 379 563 451 Z"/>
-    <path d="M599 415 C635 347 707 334 757 358 C731 425 660 453 599 415 Z"/>
-    <path d="M658 357 C631 281 684 226 746 219 C766 286 727 345 658 357 Z"/>
-  </g>
-  <g stroke="#1c1c21" stroke-width="52" stroke-linecap="round">
-    <path d="M402 613 L695 320"/>
-    <circle cx="345" cy="670" r="70"/>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none"><title>Passpine</title><defs><linearGradient id="paper" x1="128" y1="26" x2="128" y2="230" gradientUnits="userSpaceOnUse"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#efefef"/></linearGradient></defs><rect x="26" y="26" width="204" height="204" rx="45" fill="url(#paper)"/><defs><mask id="cut0" maskUnits="userSpaceOnUse" x="0" y="0" width="256.0" height="256.0"><rect width="256.0" height="256.0" fill="white"/><path d="M157 133C163 135 169 132 173 129C169 139 167 148 168 158C171 172 164 184 153 185C142 186 135 178 134 168C133 155 142 140 153 134C154 133 156 133 157 133Z" fill="black"/><circle cx="170.0" cy="104.0" r="3.0" fill="black"/></mask><mask id="cut1" maskUnits="userSpaceOnUse" x="0" y="0" width="256.0" height="256.0"><rect width="256.0" height="256.0" fill="white"/><path d="M192 155a5 5 0 0 0-3 9v9a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-9a5 5 0 0 0-3-9Z" fill="black"/></mask></defs><g transform="scale(1.0)"><g mask="url(#cut0)"><path d="M130 183C113 204 77 205 57 182C35 156 41 122 60 97C70 83 83 73 97 69C101 68 105 71 103 75C100 83 102 87 107 89C121 91 131 104 130 118C129 135 116 143 104 137C95 132 95 121 102 116C107 113 112 114 115 117C110 104 97 103 86 111C69 124 69 151 83 164C98 177 118 172 129 158C128 166 128 175 130 183Z" fill="#171918"/><path d="M133 64C144 67 150 76 153 87C167 83 179 90 184 103C186 108 193 112 199 115C205 118 205 121 199 123L183 128C178 134 175 139 177 145C186 161 178 179 167 186C174 187 180 188 186 192C192 195 190 200 183 200H160C137 200 118 186 116 167C113 151 118 137 128 127C121 117 121 102 128 91C131 81 131 69 133 64Z" fill="#171918"/></g><g mask="url(#cut1)"><path d="M192 140C201 140 207 145 207 151V158C207 170 198 180 192 185C185 180 177 170 177 158V151C177 145 183 140 192 140Z" fill="#171918"/></g><g><path d="M145 145C152 154 165 158 181 154" fill="none" stroke="#171918" stroke-width="9.0" stroke-linecap="round"/></g></g></svg>
