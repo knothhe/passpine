@@ -22,7 +22,7 @@ const snapshot = (): Snapshot => {
   const hostname = fixture === 'rich' ? 'accounts.very-long-organization-name.example.test' : 'github.com';
   const paths = configured && fixture !== 'empty' ? Object.keys(examples) : [];
   if (fixture === 'long') for (let index = 1; index <= 24; index++) paths.push(`工作/开发工具/示例 ${index}/用于检查省略与滚动的较长账号名称 ${index}`);
-  return { configured, vaultId: 'demo-vault', vaultName: configured ? '个人密码库' : '', locked, entriesVersion: revision, capabilities: ['fetch', 'save', 'delete', 'copy', 'generate'], entries: paths.map(path => ({ path, name: path.split('/').at(-1)!, folder: path.split('/').slice(0, -1).join('/') })), tab: { id: 1, url: `https://${hostname}/login`, hostname, secure: true }, matches: paths.filter(path => matches.has(path)) };
+  return { configured, vaultId: 'demo-vault', vaultName: configured ? '个人密码库' : '', locked, entriesVersion: revision, capabilities: ['fetch', 'save', 'delete', 'copy', 'generate', 'copy-generated'], entries: paths.map(path => ({ path, name: path.split('/').at(-1)!, folder: path.split('/').slice(0, -1).join('/') })), tab: { id: 1, url: `https://${hostname}/login`, hostname, secure: true }, matches: paths.filter(path => matches.has(path)) };
 };
 
 export const demoClient: Client = {
@@ -44,7 +44,8 @@ export const demoClient: Client = {
       if (!pool) throw new PassPineError('no_character_groups');
       const bytes = crypto.getRandomValues(new Uint8Array(request.options.length));
       result = { password: Array.from(bytes, byte => pool[byte % pool.length]).join('') };
-    } else {
+    } else if (request.action === 'copy-generated') await navigator.clipboard.writeText(request.contents);
+    else {
       if (locked) throw new PassPineError('locked');
       if (request.action === 'fetch') {
         const rich = new URLSearchParams(location.search).get('fixture') === 'rich';

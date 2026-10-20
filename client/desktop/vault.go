@@ -305,7 +305,7 @@ func (a *application) detailField(c *ui.Context, key, label, value string, secre
 				case "otp":
 					copyLabel = "一次性密码"
 				}
-				a.copy(value, copyLabel)
+				a.copy(key, value, copyLabel)
 			}
 		})
 	})

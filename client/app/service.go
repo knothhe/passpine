@@ -42,7 +42,7 @@ type Service struct {
 	server           *nativehost.Server
 	onOpen           func()
 	onLock           func()
-	clipboard        func(string, int) error
+	clipboard        func(ClipboardWrite) error
 	done             chan struct{}
 	closed           bool
 	activity         []Activity
@@ -180,7 +180,7 @@ func (s *Service) SetOnChange(f func())    { s.mu.Lock(); s.onChange = f; s.mu.U
 func (s *Service) SetOnGitChange(f func()) { s.mu.Lock(); s.onGitChange = f; s.mu.Unlock() }
 func (s *Service) SetOnOpen(f func())      { s.mu.Lock(); s.onOpen = f; s.mu.Unlock() }
 func (s *Service) SetOnLock(f func())      { s.mu.Lock(); s.onLock = f; s.mu.Unlock() }
-func (s *Service) SetClipboard(f func(string, int) error) {
+func (s *Service) SetClipboard(f func(ClipboardWrite) error) {
 	s.mu.Lock()
 	s.clipboard = f
 	s.mu.Unlock()
@@ -295,7 +295,7 @@ func (s *Service) savePreferences() error {
 }
 func (s *Service) snapshot() Data { return s.snapshotWithEntries(true) }
 func (s *Service) snapshotWithEntries(includeEntries bool) Data {
-	d := Data{EntriesVersion: s.entriesVersion, Configured: s.active != nil, Locked: true, Preview: s.preview, Vaults: append([]VaultInfo{}, s.prefs.Vaults...), Entries: []Entry{}, Settings: s.prefs.Settings, Capabilities: []string{"rename", "revision", "trash", "generate", "copy", "otp", "interactive_fetch", "interactive_copy"}, VaultID: s.prefs.Current}
+	d := Data{EntriesVersion: s.entriesVersion, Configured: s.active != nil, Locked: true, Preview: s.preview, Vaults: append([]VaultInfo{}, s.prefs.Vaults...), Entries: []Entry{}, Settings: s.prefs.Settings, Capabilities: []string{"rename", "revision", "trash", "generate", "copy", "copy-generated", "otp", "interactive_fetch", "interactive_copy"}, VaultID: s.prefs.Current}
 	d.DeviceUnlockAvailable = !s.preview && s.device != nil && s.device.Available()
 	d.DeviceUnlockEnrolled = s.deviceEnrolled()
 	for _, v := range s.prefs.Vaults {
@@ -362,7 +362,7 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 		}
 	}
 	epoch := s.cancellation.Load()
-	if browserLease != nil && r.Interactive {
+	if browserLease != nil && (r.Interactive || r.Action == "copy-generated") {
 		epoch = browserLease.epoch
 	}
 	s.mu.Lock()
@@ -559,6 +559,17 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 		}
 		password, e := vault.GeneratePassword(o)
 		return Data{Password: password}, e
+	case "copy-generated":
+		if r.Contents == "" || len(r.Contents) > 128 {
+			return Data{}, errors.New("invalid generated password")
+		}
+		if s.clipboard == nil {
+			return Data{}, errors.New("clipboard unavailable")
+		}
+		return Data{}, s.clipboard(ClipboardWrite{
+			Text: r.Contents, Seconds: s.prefs.Settings.ClipboardSeconds,
+			Sensitive: true, Lease: s.generatedClipboardLease(epoch),
+		})
 	case "settings":
 		if r.Settings == nil {
 			return Data{}, nil
@@ -650,7 +661,10 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 		if s.clipboard == nil {
 			return Data{}, errors.New("clipboard unavailable")
 		}
-		return Data{}, s.clipboard(text, s.prefs.Settings.ClipboardSeconds)
+		return Data{}, s.clipboard(ClipboardWrite{
+			Text: text, Seconds: s.prefs.Settings.ClipboardSeconds,
+			Sensitive: r.Field != "username", Lease: s.ClipboardLease(),
+		})
 	case "save":
 		if r.Mode == "create" && r.Revision != "" {
 			return Data{}, vault.ErrConflict
@@ -931,6 +945,10 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 	}
 	switch r.Action {
 	case "configure", "status", "list", "unlock", "lock", "generate":
+	case "copy-generated":
+		if !validGeneratedCopyRequest(r) {
+			return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})
+		}
 	case "fetch", "copy", "save", "delete":
 		if r.VaultID == "" {
 			return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "vault_changed"})
@@ -973,6 +991,16 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 		}
 	}
 	return encoded
+}
+
+func validGeneratedCopyRequest(r Request) bool {
+	if r.Contents == "" || len(r.Contents) > 128 {
+		return false
+	}
+	// A generated password has no vault identity or credential selection. Keep
+	// this action independent of unlock and reject arguments for other actions.
+	r.RequestID, r.Protocol, r.Action, r.Contents = "", 0, "", ""
+	return r == (Request{})
 }
 
 // Keep response serialization inside the generation that read the credential;
@@ -1029,6 +1057,24 @@ func (s *Service) ClipboardLease() func(func()) error {
 			return vault.ErrCancelled
 		}
 		return current.WithSession(generation, func() error { f(); return nil })
+	}
+}
+
+// Generated passwords do not belong to a vault session. Their native writes
+// still expire when the service closes or a cancellation request intervenes.
+// Reading the channel and epoch never takes the service mutex on the UI thread.
+func (s *Service) generatedClipboardLease(epoch uint64) func(func()) error {
+	return func(f func()) error {
+		select {
+		case <-s.done:
+			return vault.ErrCancelled
+		default:
+		}
+		if s.cancellation.Load() != epoch {
+			return vault.ErrCancelled
+		}
+		f()
+		return nil
 	}
 }
 

@@ -13,5 +13,5 @@ export const client: Client = {
     return unwrap(response);
   },
   openOptions: () => browser.runtime.openOptionsPage(),
-  copy: text => navigator.clipboard.writeText(text),
+  copy: async text => { await client.request({ action: 'copy-generated', contents: text }); },
 };

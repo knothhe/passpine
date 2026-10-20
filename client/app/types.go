@@ -46,6 +46,16 @@ type Response struct {
 	Code      string `json:"code,omitempty"`
 	Message   string `json:"message,omitempty"`
 }
+
+// ClipboardWrite describes one native clipboard operation. Lease must surround
+// the native write on the UI thread so cancellation can revoke a queued write.
+type ClipboardWrite struct {
+	Text      string
+	Seconds   int
+	Sensitive bool
+	Lease     func(func()) error
+}
+
 type Entry struct {
 	Path   string `json:"path"`
 	Name   string `json:"name"`

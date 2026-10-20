@@ -15,6 +15,13 @@ describe('extension boundary', () => {
     const generated = nativeRequest({ action: 'generate', options: { length: 24, lowercase: true, uppercase: true, numbers: true, symbols: true, excludeAmbiguous: true, action: 'unlock', passphrase: 'injected' } } as unknown as Extract<UIRequest, { action: 'generate' }>);
     expect(generated.action).toBe('generate');
     expect(generated).not.toHaveProperty('passphrase');
+    const copied = nativeRequest({ action: 'copy-generated', contents: 'fresh-password', vaultId: 'injected', interactive: true } as Extract<UIRequest, { action: 'copy-generated' }>);
+    expect(copied).toEqual({ protocol: 1, action: 'copy-generated', contents: 'fresh-password' });
+  });
+  it('accepts only bounded, nonempty generated password contents without requiring a vault', () => {
+    expect(validUIRequest({ action: 'copy-generated', contents: 'fresh-password' })).toBe(true);
+    expect(validUIRequest({ action: 'copy-generated', contents: 'x'.repeat(128) })).toBe(true);
+    for (const contents of [undefined, null, 42, '', 'x'.repeat(129)]) expect(validUIRequest({ action: 'copy-generated', contents })).toBe(false);
   });
   it('requires vault identity and revision for destructive operations', () => {
     expect(validUIRequest({ action: 'delete', entry: 'entry', revision: 'old' })).toBe(false);

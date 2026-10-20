@@ -1,9 +1,12 @@
 package i18n
 
+const ClipboardWriteFailed = "无法写入剪贴板，请重试。"
+
 // Chinese source keys keep the original language readable while the English
 // catalog provides the default for unsupported system languages.
 var english = map[string]string{
-	"Passpine": "Passpine", "主要依赖": "Primary dependencies",
+	ClipboardWriteFailed: "Could not write to the clipboard. Please try again.",
+	"Passpine":           "Passpine", "主要依赖": "Primary dependencies",
 	"%d 项主要直接依赖，点击组件查看用途、许可证与上游链接。": "%d primary direct dependencies. Select a component for its purpose, license and upstream links.",
 	"关于": "About",
 	"项目版本、开源组件与依赖信息。":   "Project version, open-source components and dependencies.",
@@ -78,6 +81,7 @@ var english = map[string]string{
 	"符号":       "Symbols",
 	"排除易混淆字符":  "Exclude ambiguous characters",
 	"生成的密码":    "Generated password",
+	"复制生成的密码":  "Copy generated password",
 	"点击重新生成密码": "Click to generate a password",
 	"重新生成密码":   "Regenerate password",
 	"使用此密码":    "Use this password",

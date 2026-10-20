@@ -52,3 +52,15 @@ it('switches between settings and About without restarting the client request', 
   expect(container.querySelector('h1')?.textContent).toBe(chineseCopy.options.title);
   expect(request).toHaveBeenCalledTimes(1);
 });
+
+it('copies the public extension ID with the browser even when the native client is unavailable', async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  const client = { demo: false, request: vi.fn().mockRejectedValue(new Error('unavailable')), copy: vi.fn().mockRejectedValue(new Error('must not copy public IDs as passwords')) } as unknown as Client;
+  await act(async () => root.render(createElement(Options, { client, extensionId: 'test-extension' })));
+  const button = Array.from(container.querySelectorAll('button')).find(item => item.textContent?.includes(chineseCopy.options.copyExtensionID)) as HTMLButtonElement;
+  await act(async () => button.click());
+  expect(writeText).toHaveBeenCalledExactlyOnceWith('test-extension');
+  expect(client.copy).not.toHaveBeenCalled();
+  expect(button.textContent).toContain(chineseCopy.common.copied);
+});

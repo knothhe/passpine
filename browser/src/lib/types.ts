@@ -1,7 +1,7 @@
 export const HOST = 'com.knothhe.passpine';
 export const PROTOCOL = 1;
 
-export type NativeAction = 'configure' | 'status' | 'list' | 'fetch' | 'save' | 'delete' | 'lock' | 'unlock' | 'generate' | 'copy';
+export type NativeAction = 'configure' | 'status' | 'list' | 'fetch' | 'save' | 'delete' | 'lock' | 'unlock' | 'generate' | 'copy' | 'copy-generated';
 export interface NativeRequest {
   protocol: 1;
   requestId?: string;
@@ -46,6 +46,7 @@ export type UIRequest =
   | { action: 'associate'; vaultId: string; entry: string; tab: TabContext }
   | { action: 'dissociate'; vaultId: string; entry: string; tab: TabContext }
   | { action: 'generate'; options: GeneratorOptions }
+  | { action: 'copy-generated'; contents: string }
   | { action: 'copy'; vaultId: string; entry: string; field: 'password' | 'username' | 'otp' };
 
 export interface Client {

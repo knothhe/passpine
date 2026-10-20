@@ -4,6 +4,7 @@ import { PROTOCOL, type NativeRequest, type NativeResponse, type UIRequest } fro
 
 export function nativeRequest(request: Exclude<UIRequest, { action: 'snapshot' | 'status' | 'lock' | 'unlock' } | { action: 'fill' | 'associate' | 'dissociate' }>): NativeRequest {
   if (request.action === 'generate') return { protocol: PROTOCOL, action: 'generate', length: request.options.length, lowercase: request.options.lowercase, uppercase: request.options.uppercase, numbers: request.options.numbers, symbols: request.options.symbols, excludeAmbiguous: request.options.excludeAmbiguous };
+  if (request.action === 'copy-generated') return { protocol: PROTOCOL, action: 'copy-generated', contents: request.contents };
   if (request.action === 'fetch') return { protocol: PROTOCOL, action: 'fetch', vaultId: request.vaultId, entry: request.entry, purpose: 'view', ...(request.interactive === true ? { interactive: true } : {}) };
   if (request.action === 'copy') return { protocol: PROTOCOL, action: 'copy', vaultId: request.vaultId, entry: request.entry, field: request.field, interactive: true };
   if (request.action === 'delete') return { protocol: PROTOCOL, action: 'delete', vaultId: request.vaultId, entry: request.entry, revision: request.revision };
@@ -36,6 +37,7 @@ export function validUIRequest(value: unknown): value is UIRequest {
   if (!value || typeof value !== 'object') return false;
   const request = value as Record<string, unknown>;
   if (['snapshot', 'status', 'lock', 'unlock'].includes(String(request.action))) return true;
+  if (request.action === 'copy-generated') return typeof request.contents === 'string' && request.contents.length > 0 && request.contents.length <= 128;
   if (request.action === 'generate') {
     const options = request.options as Record<string, unknown> | undefined;
     return !!options && Number.isInteger(options.length) && Number(options.length) >= 4 && Number(options.length) <= 128 &&

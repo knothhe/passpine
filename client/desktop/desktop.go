@@ -14,7 +14,9 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
+	"github.com/knothhe/passpine/client/i18n"
 	sidebar "github.com/knothhe/passpine/client/internal/clientshell"
+	"github.com/knothhe/passpine/client/internal/secureclipboard"
 	"github.com/knothhe/passpine/client/vault"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
@@ -83,7 +85,12 @@ type application struct {
 	restoreDestination                                                   string
 	generator                                                            generatorState
 	clipboard                                                            string
+	clipboardGeneration                                                  uint64
 	clipboardTimer                                                       *time.Timer
+	clipboardWriter                                                      func(string, bool) error
+	clipboardReader                                                      func() string
+	clipboardClearer                                                     func()
+	clipboardAfterFunc                                                   func(time.Duration, func()) *time.Timer
 	generation                                                           uint64
 	closing                                                              bool
 	lastInput                                                            time.Time
@@ -159,18 +166,7 @@ func Run(service *app.Service, version string) error {
 			a.handleSessionLock()
 		})
 	})
-	service.SetClipboard(func(value string, seconds int) error {
-		lease := service.ClipboardLease()
-		var err error
-		mygo.RunOnMain(func() {
-			if a.closing {
-				err = errors.New("application is closing")
-				return
-			}
-			err = lease(func() { a.writeClipboard(value, seconds) })
-		})
-		return err
-	})
+	service.SetClipboard(a.copyToClipboard)
 	mygo.App.WhenReady(func() {
 		a.initializing = true
 		if mygo.App.WasOpenedAtLogin() {
@@ -497,14 +493,38 @@ func (a *application) clearSecrets() {
 	a.closeGenerator()
 	a.backupOpen, a.backupPassphrase = false, ""
 	a.recovery = nil
+	a.clearClipboard()
+}
+
+func (a *application) clearClipboard() {
+	value := a.clipboard
+	a.clipboardGeneration++
+	generation := a.clipboardGeneration
+	a.clipboard = ""
 	if a.clipboardTimer != nil {
 		a.clipboardTimer.Stop()
 		a.clipboardTimer = nil
 	}
-	if a.clipboard != "" && mygo.Clipboard.ReadText() == a.clipboard {
-		mygo.Clipboard.Clear()
+	// Native reads may process nested events. A new copy made while reading
+	// owns its own expiration and must survive this cleanup.
+	if value != "" && a.readClipboard() == value && generation == a.clipboardGeneration {
+		a.emptyClipboard()
 	}
-	a.clipboard = ""
+}
+
+func (a *application) readClipboard() string {
+	if a.clipboardReader != nil {
+		return a.clipboardReader()
+	}
+	return mygo.Clipboard.ReadText()
+}
+
+func (a *application) emptyClipboard() {
+	if a.clipboardClearer != nil {
+		a.clipboardClearer()
+		return
+	}
+	mygo.Clipboard.Clear()
 }
 
 func (a *application) clock() {
@@ -552,18 +572,18 @@ func (a *application) clock() {
 	}
 }
 
-func (a *application) copy(value, label string) {
+func (a *application) copy(key, value, label string) {
 	if value == "" || a.state.Locked {
 		return
 	}
 	field := ""
 	if a.detail.Entry != "" {
 		switch {
-		case label == "密码" && value == a.detail.Password:
+		case key == "password" && value == a.detail.Password:
 			field = "password"
-		case label == "用户名" && value == a.detail.Username:
+		case key == "username" && value == a.detail.Username:
 			field = "username"
-		case strings.HasPrefix(label, "一次性密码") && value == a.detail.OTP:
+		case key == "otp" && value == a.detail.OTP:
 			field = "otp"
 		}
 	}
@@ -580,11 +600,16 @@ func (a *application) copy(value, label string) {
 	metadataEpoch := a.metadataEpoch
 	go func() {
 		lease := service.ClipboardLease()
-		mygo.RunOnMain(func() {
+		a.runOnMain(func() {
 			if a.closing || a.state.Locked || generation != a.generation || metadataEpoch != a.metadataEpoch {
 				return
 			}
-			if err := lease(func() { a.writeClipboard(value, seconds) }); err != nil {
+			var writeErr error
+			err := lease(func() { writeErr = a.writeClipboard(value, seconds, key != "username") })
+			if err == nil {
+				err = writeErr
+			}
+			if err != nil {
 				a.errorText = err.Error()
 			} else {
 				a.notice = a.t("已复制%s", a.t(label))
@@ -594,24 +619,62 @@ func (a *application) copy(value, label string) {
 	}()
 }
 
-func (a *application) writeClipboard(value string, seconds int) {
-	mygo.Clipboard.WriteText(value)
+func (a *application) copyToClipboard(write app.ClipboardWrite) error {
+	var err error
+	a.runOnMain(func() {
+		if a.closing {
+			err = errors.New("application is closing")
+			return
+		}
+		if write.Lease == nil {
+			err = errors.New("clipboard lease is required")
+			return
+		}
+		var writeErr error
+		err = write.Lease(func() { writeErr = a.writeClipboard(write.Text, write.Seconds, write.Sensitive) })
+		if err == nil {
+			err = writeErr
+		}
+	})
+	return err
+}
+
+type clipboardWriteError struct{ cause error }
+
+func (e clipboardWriteError) Error() string { return i18n.ClipboardWriteFailed }
+func (e clipboardWriteError) Unwrap() error { return e.cause }
+
+func (a *application) writeClipboard(value string, seconds int, sensitive bool) error {
+	write := a.clipboardWriter
+	if write == nil {
+		write = secureclipboard.WriteText
+	}
+	if err := write(value, sensitive); err != nil {
+		return clipboardWriteError{cause: err}
+	}
+	a.clipboardGeneration++
+	generation := a.clipboardGeneration
 	a.clipboard = value
 	if a.clipboardTimer != nil {
 		a.clipboardTimer.Stop()
+		a.clipboardTimer = nil
 	}
 	if seconds > 0 {
-		a.clipboardTimer = time.AfterFunc(time.Duration(seconds)*time.Second, func() {
-			mygo.RunOnMain(func() {
-				if a.clipboard == value && mygo.Clipboard.ReadText() == value {
-					mygo.Clipboard.Clear()
-				}
-				if a.clipboard == value {
-					a.clipboard = ""
+		after := a.clipboardAfterFunc
+		if after == nil {
+			after = time.AfterFunc
+		}
+		a.clipboardTimer = after(time.Duration(seconds)*time.Second, func() {
+			a.runOnMain(func() {
+				// Stop cannot retract an expiration already queued on the UI
+				// thread. Compare the copy generation, including identical text.
+				if generation == a.clipboardGeneration {
+					a.clearClipboard()
 				}
 			})
 		})
 	}
+	return nil
 }
 
 func (a *application) selectEntry(path string) {

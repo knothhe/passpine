@@ -45,7 +45,7 @@ export function Options({ client, extensionId, firefox = false }: { client: Clie
   useEffect(() => { void refresh(); return () => { refreshSequence.current++; }; }, [client]);
   const copyId = async () => {
     setCopied(false);
-    try { await client.copy(extensionId); setCopied(true); }
+    try { await navigator.clipboard.writeText(extensionId); setCopied(true); }
     catch (error) { setError(errorMessage(error, copy)); }
   };
   return <main className="options-page">

@@ -96,7 +96,9 @@ func TestSharedSessionLifecycle(t *testing.T) {
 	}
 	saved := must(t, s, Request{Action: "save", Entry: "work/example.com", Contents: "secret\nusername: alex\nurl: https://example.com\n", Mode: "create"})
 	var copied string
-	s.SetClipboard(func(v string, _ int) error { copied = v; return nil })
+	s.SetClipboard(func(write ClipboardWrite) error {
+		return write.Lease(func() { copied = write.Text })
+	})
 	request := func(r Request) Response {
 		r.Protocol = 1
 		r.RequestID = "test"

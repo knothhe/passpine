@@ -32,10 +32,11 @@ describe('persistent native connection', () => {
     expect(count).toBe(2); expect(second.messages.map(message => message.action)).toEqual(['configure']);
     second.reply(0, {}); await retry;
   });
-  it('does not deduplicate secret or mutation requests', async () => {
+  it.each(['copy', 'copy-generated'] as const)('does not deduplicate %s requests', async action => {
     const channel = mockPort(), connection = new NativeConnection(() => channel.port);
-    const one = connection.request({ protocol: 1, action: 'copy', entry: 'same' });
-    const two = connection.request({ protocol: 1, action: 'copy', entry: 'same' });
+    const contents = action === 'copy-generated' ? { contents: 'fresh-password' } : { entry: 'same' };
+    const one = connection.request({ protocol: 1, action, ...contents });
+    const two = connection.request({ protocol: 1, action, ...contents });
     expect(channel.messages).toHaveLength(2);
     expect(channel.messages[0]!.requestId).not.toEqual(channel.messages[1]!.requestId);
     channel.reply(0, {}); channel.reply(1, {}); await Promise.all([one, two]);

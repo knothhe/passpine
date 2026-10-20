@@ -51,6 +51,21 @@ beforeEach(async () => {
 });
 
 describe('background fill and website associations', () => {
+  it('copies generated passwords directly through native messaging without reading vault or tab state', async () => {
+    environment.native.mockResolvedValue({});
+    expect(await request({ action: 'copy-generated', contents: 'fresh-password' })).toEqual({ protocol: 1, status: 'ok', data: {} });
+    expect(environment.native).toHaveBeenCalledExactlyOnceWith({ protocol: 1, action: 'copy-generated', contents: 'fresh-password' });
+    expect(environment.browser.tabs.query).not.toHaveBeenCalled();
+    expect(environment.browser.storage.local.set).not.toHaveBeenCalled();
+    expect(environment.browser.storage.local.get).not.toHaveBeenCalled();
+  });
+
+  it('retains native clipboard failures for generated passwords', async () => {
+    const { PassPineError } = await import('./errors');
+    environment.native.mockRejectedValue(new PassPineError('native_connection_failed'));
+    expect(await request({ action: 'copy-generated', contents: 'fresh-password' })).toMatchObject({ protocol: 1, status: 'error', code: 'native_connection_failed' });
+  });
+
   it('fills a manually selected unrelated account and then associates its exact host', async () => {
     expect(await fill()).toEqual({ protocol: 1, status: 'ok', data: { filled: 2, associated: true } });
     expect(environment.native).toHaveBeenCalledWith({ protocol: 1, action: 'fetch', vaultId: 'vault', entry: account, purpose: 'fill', interactive: true });

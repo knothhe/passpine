@@ -326,7 +326,7 @@ func TestSelectingAnotherEntryShowsItsLoadingState(t *testing.T) {
 	if view.HasText("正在读取账号…") || view.HasText("正在处理") || view.HasText("选择一个条目") || a.detail.Password != "" {
 		t.Fatal("selection flashed the empty state or retained the previous secret")
 	}
-	a.detailLoadingStarted = time.Now().Add(-250 * time.Millisecond)
+	a.detailLoadingStarted = view.Now().Add(-250 * time.Millisecond)
 	view.Frame()
 	if !view.HasText("正在读取账号…") || view.HasText("正在处理") {
 		t.Fatal("slow selection did not show its delayed local loading feedback")
