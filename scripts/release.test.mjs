@@ -40,6 +40,7 @@ test('preview is read-only, apply synchronizes both packages and creates an anno
   assert.equal(preview.status, 0, preview.stderr);
   const plan = JSON.parse(preview.stdout);
   assert.equal(plan.mode, 'preview'); assert.equal(plan.target, '0.2.0');
+  assert.equal(plan.release_type, 'upgrade'); assert.equal(plan.create_version_commit, true);
   assert.deepEqual(plan.files, ['package.json', 'browser/package.json']);
   assert.equal(git('rev-parse', 'HEAD'), original); assert.equal(git('status', '--porcelain'), ''); assert.equal(git('tag'), '');
   const applied = release('minor', '--apply', '--no-push');
@@ -49,38 +50,56 @@ test('preview is read-only, apply synchronizes both packages and creates an anno
   assert.equal(git('log', '-1', '--format=%s'), 'chore(release): v0.2.0');
   assert.equal(git('cat-file', '-t', 'refs/tags/v0.2.0'), 'tag'); assert.equal(git('status', '--porcelain'), '');
   const released = git('rev-parse', 'HEAD');
+  const resumed = JSON.parse(release('0.2.0', '--resume', '--no-push').stdout);
+  assert.equal(resumed.release_type, 'upgrade'); assert.equal(resumed.create_version_commit, false);
   assert.equal(release('0.2.0', '--resume', '--apply', '--no-push').status, 0);
   assert.equal(git('rev-parse', 'HEAD'), released);
 });
 
 test('first release tags the current version without rewriting files or adding a commit, and resumes from the original commit', t => {
   const { root, git, release } = fixture(t, [[process.execPath, '-e', "require('fs').appendFileSync('.git/check-runs', 'checked\\n')"]]);
-  const original = git('rev-parse', 'HEAD');
-  const before = fs.readFileSync(path.join(root, 'package.json'), 'utf8');
-  const preview = release('0.1.0', '--no-push');
+  const sources = ['package.json', 'browser/package.json', 'pnpm-lock.yaml', 'browser/pnpm-lock.yaml'];
+  const before = sources.map(name => fs.readFileSync(path.join(root, name), 'utf8'));
+  const config = JSON.parse(fs.readFileSync(path.join(root, '.release.json'), 'utf8'));
+  fs.writeFileSync(path.join(root, '.release.json'), JSON.stringify({ ...config, check_phase: 'after-bump' }));
+  git('add', '.release.json'); git('commit', '-m', 'test: configure checks after bump');
+  const releaseHead = git('rev-parse', 'HEAD');
+  const preview = release('initial', '--no-push');
   assert.equal(preview.status, 0, preview.stderr);
-  assert.deepEqual(JSON.parse(preview.stdout).files, []);
+  const plan = JSON.parse(preview.stdout);
+  assert.deepEqual(plan.files, []);
+  assert.equal(plan.release_type, 'initial'); assert.equal(plan.create_version_commit, false);
+  assert.equal(plan.current, '0.1.0'); assert.equal(plan.target, '0.1.0');
+  assert.equal(plan.check_phase, 'current-version');
   assert.equal(fs.existsSync(path.join(root, '.git/check-runs')), false);
-  const applied = release('0.1.0', '--no-push', '--apply');
+  const applied = release('initial', '--no-push', '--apply');
   assert.equal(applied.status, 0, applied.stderr);
-  assert.equal(git('rev-parse', 'HEAD'), original);
-  assert.equal(git('rev-parse', 'v0.1.0^{commit}'), original);
+  assert.equal(git('rev-parse', 'HEAD'), releaseHead);
+  assert.equal(git('rev-parse', 'v0.1.0^{commit}'), releaseHead);
   assert.equal(git('cat-file', '-t', 'refs/tags/v0.1.0'), 'tag');
-  assert.equal(fs.readFileSync(path.join(root, 'package.json'), 'utf8'), before);
-  assert.match(release('0.1.0', '--no-push').stderr, /Tag already exists/);
+  assert.equal(git('for-each-ref', '--format=%(contents)', 'refs/tags/v0.1.0'), 'Release v0.1.0\n\nRelease-Type: initial');
+  assert.deepEqual(sources.map(name => fs.readFileSync(path.join(root, name), 'utf8')), before);
+  assert.match(release('initial', '--no-push').stderr, /Tag already exists/);
+  const resumed = JSON.parse(release('0.1.0', '--no-push', '--resume').stdout);
+  assert.equal(resumed.release_type, 'initial'); assert.equal(resumed.check_phase, null);
   assert.equal(release('0.1.0', '--no-push', '--resume', '--apply').status, 0);
   assert.equal(fs.readFileSync(path.join(root, '.git/check-runs'), 'utf8'), 'checked\n');
   assert.equal(git('status', '--porcelain'), '');
 });
 
-test('current-version release failures do not create a tag, and resume rejects a different HEAD or lightweight tag', t => {
+test('initial release failures do not create a tag, and resume rejects a different HEAD, unmarked initial or lightweight tag', t => {
   const { git, release } = fixture(t, [[process.execPath, '-e', 'process.exit(1)']]);
-  assert.notEqual(release('0.1.0', '--apply', '--no-push').status, 0);
+  assert.match(release('0.1.0', '--no-push').stderr, /make release-initial/);
+  assert.match(release('initial', '--resume', '--no-push').stderr, /requires an exact version/);
+  const failed = release('initial', '--apply', '--no-push');
+  assert.notEqual(failed.status, 0); assert.match(failed.stderr, /checking the current version/);
   assert.equal(git('tag'), '');
   assert.notEqual(release('0.0.9', '--no-push').status, 0);
   git('tag', 'v0.1.0');
   assert.match(release('0.1.0', '--resume', '--no-push').stderr, /annotated tag/);
-  git('tag', '-a', 'v0.1.1', '-m', 'Release v0.1.1');
+  git('tag', '-d', 'v0.1.0');
+  git('tag', '-a', 'v0.1.0', '-m', 'Release v0.1.0');
+  assert.match(release('0.1.0', '--resume', '--no-push').stderr, /tag has no initial-release marker.*do not move or rewrite/);
   git('commit', '--allow-empty', '-m', 'test: later commit');
   assert.match(release('0.1.0', '--resume', '--no-push').stderr, /must point to HEAD/);
 });
@@ -92,8 +111,45 @@ test('first-release notes include the root commit and remain identical when resu
   assert.match(before, /Full Changelog.*commits\/v0\.1\.0/);
   assert.ok(before.includes(git('rev-parse', '--short', 'HEAD')));
   assert.match(before, /create release fixture/);
-  assert.equal(release('0.1.0', '--apply', '--no-push').status, 0);
+  assert.equal(release('initial', '--apply', '--no-push').status, 0);
+  assert.equal(release('0.1.0', '--resume', '--no-push', '--apply').status, 0);
   assert.equal(notes(), before);
+});
+
+test('initial release resumes from a signed annotated tag without rewriting it', t => {
+  const { root, git, release } = fixture(t);
+  const signingKey = path.join(root, '.git/release-signing-key');
+  command(root, 'ssh-keygen', ['-t', 'ed25519', '-N', '', '-f', signingKey]);
+  git('config', 'gpg.format', 'ssh');
+  git('config', 'user.signingkey', signingKey);
+  git('config', 'tag.gpgsign', 'true');
+  const applied = release('initial', '--apply', '--no-push');
+  assert.equal(applied.status, 0, applied.stderr);
+  assert.match(git('cat-file', 'tag', 'v0.1.0'), /BEGIN SSH SIGNATURE/);
+  const tag = git('rev-parse', 'v0.1.0');
+  const resumed = release('0.1.0', '--resume', '--apply', '--no-push');
+  assert.equal(resumed.status, 0, resumed.stderr);
+  assert.equal(git('rev-parse', 'v0.1.0'), tag);
+  assert.equal(git('status', '--porcelain'), '');
+});
+
+test('Make release entry points pass the default bump, initial operation and flags without dirtying the checkout', t => {
+  const { root, git } = fixture(t);
+  const make = command(root, 'which', ['make']).stdout.trim();
+  fs.copyFileSync(path.join(scriptsDir, '../Makefile'), path.join(root, 'Makefile'));
+  git('add', 'Makefile'); git('commit', '-m', 'test: add Make release entry points');
+  const original = git('rev-parse', 'HEAD');
+  const preview = command(root, make, ['--silent', 'release', 'RELEASE_FLAGS=--no-push']);
+  assert.equal(JSON.parse(preview.stdout).target, '0.1.1');
+  const initial = command(root, make, ['--silent', 'release-initial', 'RELEASE_FLAGS=--no-push']);
+  const plan = JSON.parse(initial.stdout);
+  assert.equal(plan.target, '0.1.0'); assert.equal(plan.release_type, 'initial');
+  assert.equal(plan.mode, 'preview'); assert.equal(plan.push, false);
+  assert.equal(git('tag'), ''); assert.equal(git('rev-parse', 'HEAD'), original);
+  command(root, make, ['--silent', 'release-initial', 'RELEASE_FLAGS=--apply --no-push']);
+  assert.equal(git('rev-parse', 'v0.1.0^{commit}'), original);
+  assert.equal(git('rev-parse', 'HEAD'), original);
+  assert.equal(git('status', '--porcelain'), '');
 });
 
 test('failed checks preserve both source versions and create no release commit or tag', t => {
@@ -125,6 +181,63 @@ test('atomic publishing uses only the configured branch and release tag in a loc
   const remoteRefs = command(root, 'git', ['ls-remote', bare]).stdout;
   assert.match(remoteRefs, /refs\/heads\/main/); assert.match(remoteRefs, /refs\/tags\/v0\.1\.1\^\{\}/);
   assert.equal(git('rev-parse', 'HEAD'), command(root, 'git', ['--git-dir', bare, 'rev-parse', 'refs/heads/main']).stdout.trim());
+});
+
+test('initial release rejects a remote tag and local-only preview does not query that remote', t => {
+  const { root, git, release } = fixture(t);
+  const bare = path.join(root, '.git/remote.git');
+  command(root, 'git', ['init', '--bare', bare]);
+  git('remote', 'add', 'origin', bare); git('push', '-u', 'origin', 'main');
+  git('tag', '-a', 'v0.1.0', '-m', 'Release v0.1.0');
+  git('push', 'origin', 'refs/tags/v0.1.0'); git('tag', '-d', 'v0.1.0');
+  const failed = release('initial');
+  assert.notEqual(failed.status, 0); assert.match(failed.stderr, /Remote tag already exists/);
+  assert.equal(release('initial', '--no-push').status, 0);
+  assert.equal(git('tag'), ''); assert.equal(git('status', '--porcelain'), '');
+});
+
+test('initial GitHub preflight checks visible releases with pagination even when creation is disabled, and fails closed', t => {
+  const { root, git, release, env } = fixture(t);
+  const bare = path.join(root, '.git/remote.git');
+  command(root, 'git', ['init', '--bare', bare]);
+  git('remote', 'add', 'origin', bare); git('push', '-u', 'origin', 'main');
+  const original = git('rev-parse', 'HEAD');
+  const realGit = command(root, 'which', ['git']).stdout.trim();
+  const bin = path.join(root, '.git/bin');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'git'), `#!${process.execPath}\n
+    const { spawnSync } = require('node:child_process');
+    const args = process.argv.slice(2);
+    if (args.join(' ') === 'remote get-url --push --all origin') console.log('https://github.com/fixture/passpine.git');
+    else {
+      if (args[0] === 'ls-remote' && args[1] === 'https://github.com/fixture/passpine.git') args[1] = ${JSON.stringify(bare)};
+      const result = spawnSync(${JSON.stringify(realGit)}, args, { stdio: 'inherit' });
+      process.exit(result.status ?? 1);
+    }
+  `, { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, 'gh'), `#!${process.execPath}\n
+    const fs = require('node:fs');
+    fs.appendFileSync('.git/github-calls', JSON.stringify(process.argv.slice(2)) + '\\n');
+    if (fs.existsSync('.git/query-error')) { console.error('Simulated authentication or network failure'); process.exit(1); }
+    if (fs.existsSync('.git/github-tags')) process.stdout.write(fs.readFileSync('.git/github-tags'));
+  `, { mode: 0o755 });
+  env.PATH = `${bin}${path.delimiter}${process.env.PATH}`;
+  const preview = release('initial');
+  assert.equal(preview.status, 0, preview.stderr);
+  assert.equal(JSON.parse(preview.stdout).github_release, false);
+  const calls = () => fs.readFileSync(path.join(root, '.git/github-calls'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.deepEqual(calls(), [['api', '--hostname', 'github.com', '--paginate', 'repos/fixture/passpine/releases', '--jq', '.[].tag_name']]);
+  fs.writeFileSync(path.join(root, '.git/github-tags'), 'v9.0.0\nv0.1.0\n');
+  const existing = release('initial', '--no-github-release', '--apply');
+  assert.notEqual(existing.status, 0); assert.match(existing.stderr, /GitHub Release already exists: v0\.1\.0/);
+  fs.writeFileSync(path.join(root, '.git/query-error'), 'authentication or network failure');
+  const failed = release('initial');
+  assert.notEqual(failed.status, 0); assert.match(failed.stderr, /Command failed: gh api.*\nSimulated authentication or network failure/);
+  const before = calls().length;
+  assert.equal(release('initial', '--no-push').status, 0);
+  assert.equal(calls().length, before);
+  assert.equal(git('rev-parse', 'HEAD'), original);
+  assert.equal(git('tag'), ''); assert.equal(git('status', '--porcelain'), '');
 });
 
 test('one-command release builds before tagging, resumes a partial draft upload and then builds the bumped version', { skip: process.platform !== 'darwin' }, t => {
@@ -178,6 +291,9 @@ test('one-command release builds before tagging, resumes a partial draft upload 
     const args = process.argv.slice(2), file = '.git/github-state.json';
     const state = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : {};
     fs.appendFileSync('.git/github-calls', JSON.stringify(args) + '\\n');
+    if (args[0] === 'api' && args.includes('repos/fixture/passpine/releases')) {
+      console.log(Object.keys(state).join('\\n')); process.exit(0);
+    }
     let tag = args[2], release = state[tag];
     if (args[0] === 'api') { tag = Object.keys(state).find(key => args[1].includes('/' + state[key].databaseId + '/assets')); release = state[tag]; }
     if (args[1] === 'view') {
@@ -198,15 +314,16 @@ test('one-command release builds before tagging, resumes a partial draft upload 
     fs.writeFileSync(file, JSON.stringify(state));
   `);
   env.PATH = `${bin}${path.delimiter}${process.env.PATH}`;
-  const preview = release('0.1.0');
+  const preview = release('initial');
   assert.equal(preview.status, 0, preview.stderr);
   const plan = JSON.parse(preview.stdout);
   assert.equal(plan.github_release, true);
   assert.equal(plan.artifacts.length, 3);
   assert.equal(fs.existsSync(path.join(root, '.git/build-runs')), false);
-  assert.equal(fs.existsSync(path.join(root, '.git/github-calls')), false);
+  const previewCalls = fs.readFileSync(path.join(root, '.git/github-calls'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(previewCalls.length, 1); assert.equal(previewCalls[0][0], 'api'); assert.ok(previewCalls[0].includes('--paginate'));
   fs.writeFileSync(path.join(root, '.git/fail-build'), 'interrupt');
-  const failedBuild = release('0.1.0', '--apply');
+  const failedBuild = release('initial', '--apply');
   assert.notEqual(failedBuild.status, 0);
   assert.match(failedBuild.stderr, /Build failed/);
   assert.equal(git('tag'), '');
@@ -214,7 +331,7 @@ test('one-command release builds before tagging, resumes a partial draft upload 
   assert.equal(command(root, 'git', ['--git-dir', bare, 'tag', '--list']).stdout.trim(), '');
   fs.unlinkSync(path.join(root, '.git/fail-build'));
   fs.writeFileSync(path.join(root, '.git/fail-upload'), 'interrupt');
-  const partial = release('0.1.0', '--apply');
+  const partial = release('initial', '--apply');
   assert.notEqual(partial.status, 0);
   assert.match(partial.stderr, /Simulated upload interruption/);
   assert.equal(git('rev-parse', 'HEAD'), original);

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Adapted from h2-semver-release for Passpine desktop + browser versions.
-// Node.js 22.12+, Git; gh only when selected.
+// Node.js 22.12+, Git; gh for GitHub releases and initial-release checks.
 // .mjs works in both CommonJS and ESM projects without extra dependencies.
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -61,7 +61,7 @@ export function nextVersion(current, bump) {
     core.fill(0n, index + 1);
     target = core.join('.');
   }
-  requireThat(compare(target, current) > 0, 'New version must have greater SemVer precedence; build metadata alone is not an upgrade.');
+  requireThat(compare(target, current) > 0, 'New version must have greater SemVer precedence; build metadata alone is not an upgrade. Use make release-initial to publish the current version for the first time.');
   return target;
 }
 function versionFiles(config) {
@@ -94,7 +94,7 @@ function runChecks(checks, files, phase, building = false) {
     requireThat(after.index === before.index, 'A check changed the index. Inspect repository before continuing.');
     requireThat([...versions].every(([name, content]) => fs.existsSync(name) && fs.lstatSync(name).isFile() && read(name) === content), 'A check changed version files. Inspect and resolve manually before retrying.');
     requireThat(after.status === before.status && after.diff === before.diff, 'Checks changed the working tree. Inspect and resolve manually before retrying.');
-    const detail = phase === 'before-bump' ? 'Stopped before updating the version' : 'Version edits remain for inspection';
+    const detail = phase === 'current-version' ? 'Stopped while checking the current version' : phase === 'before-bump' ? 'Stopped before updating the version' : 'Version edits remain for inspection';
     requireThat(result.status === 0, building
       ? `Build failed: ${command.join(' ')}. Inspect version edits and artifacts before retrying; no push or upload was attempted.`
       : `Check failed: ${command.join(' ')}. ${detail}; no release commit/tag was created.`);
@@ -103,11 +103,20 @@ function runChecks(checks, files, phase, building = false) {
 function writeVersions(files, target) {
   writeProjectVersions(files, target, process.cwd());
 }
-export function githubRepo(url) {
+export function githubRepo(url, required = true) {
   const match = /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([^/]+\/[^/]+?)(?:\.git)?\/?$/.exec(url);
+  if (!match && !required) return null;
   requireThat(match, 'GitHub Release requires a standard github.com remote URL; aliases/Enterprise need explicit adaptation.');
   return match[1];
 }
+function requireUnpublishedRelease(repo, tag) {
+  // Successful pagination includes drafts visible to the current credentials;
+  // authentication and network failures must never count as an unpublished version.
+  const tags = run(['gh', 'api', '--hostname', 'github.com', '--paginate',
+    `repos/${repo}/releases`, '--jq', '.[].tag_name']).stdout.split('\n');
+  requireThat(!tags.includes(tag), `GitHub Release already exists: ${tag}. Initial release must be unpublished.`);
+}
+const initialTagMessage = tag => `Release ${tag}\n\nRelease-Type: initial`;
 export function releaseNotes(repo, prefix, target, sourceHead, tag) {
   requireThat(git('rev-parse', '--is-shallow-repository') === 'false', 'Release notes require complete Git history and tags; fetch them before generating notes.');
   const previous = git('tag', '--merged', sourceHead, '--list').split('\n').filter(Boolean)
@@ -147,7 +156,7 @@ export function publishRelease({ repo, tag, notes, artifacts }, invoke = run) {
   if (!release) {
     invoke(['gh', 'release', 'create', tag, '--repo', githubTarget, '--verify-tag', '--draft', '--notes-file', '-', '--title', tag], true, false, notes);
     release = view();
-    requireThat(release, 'Created release could not be found. Retry with --resume.');
+    requireThat(release, 'Created release could not be found. Retry with make release VERSION_BUMP=<exact-version> RELEASE_FLAGS="--resume --apply".');
   }
   const remoteAssets = () => {
     const result = invoke(['gh', 'api', `repos/${repo}/releases/${release.databaseId}/assets?per_page=100`, '--hostname', 'github.com', '--paginate', '--slurp']);
@@ -166,11 +175,11 @@ export function publishRelease({ repo, tag, notes, artifacts }, invoke = run) {
   requireThat(release.isDraft || missing.length === 0, 'Published release is missing expected assets. Inspect it before making changes.');
   if (missing.length) {
     invoke(['gh', 'release', 'upload', tag, ...missing.map(artifact => artifact.path), '--repo', githubTarget]);
-    requireThat(missingFrom(remoteAssets()).length === 0, 'Release upload is incomplete; the release remains a draft. Retry with --resume.');
+    requireThat(missingFrom(remoteAssets()).length === 0, 'Release upload is incomplete; the release remains a draft. Retry with make release VERSION_BUMP=<exact-version> RELEASE_FLAGS="--resume --apply".');
   }
   if (release.isDraft) invoke(['gh', 'release', 'edit', tag, '--repo', githubTarget, '--draft=false', '--verify-tag']);
   const published = view();
-  requireThat(published && !published.isDraft, 'Release is still a draft. Retry with --resume.');
+  requireThat(published && !published.isDraft, 'Release is still a draft. Retry with make release VERSION_BUMP=<exact-version> RELEASE_FLAGS="--resume --apply".');
   return published.url;
 }
 
@@ -189,13 +198,14 @@ function argumentsFor(argv) {
       args.version = arg;
     }
   }
-  requireThat(args.version, 'Expected major, minor, patch, or exact SemVer. Use --help for usage.');
+  requireThat(args.version, 'Use make release-initial, or make release VERSION_BUMP=major|minor|patch|version.');
+  requireThat(!(args.resume && args.version === 'initial'), '--resume requires an exact version. Use make release VERSION_BUMP=<version> RELEASE_FLAGS="--resume --apply".');
   return args;
 }
 function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--help') || argv.includes('-h')) {
-    console.log('Usage: node scripts/release.mjs <major|minor|patch|version> [--apply] [--no-push] [--github-release|--no-github-release] [--resume]\nDefaults to preview. An untagged current version can be released without a bump. --resume requires the exact existing release version. Configured artifacts are built before tagging and uploaded before publishing the GitHub Release.');
+    console.log('Usage: make release-initial [RELEASE_FLAGS="..."]\n       make release VERSION_BUMP=major|minor|patch|version [RELEASE_FLAGS="..."]\nDefaults to preview. release-initial publishes the current version without a version commit; release requires a higher version. RELEASE_FLAGS accepts --apply, --no-push, --github-release, --no-github-release and --resume. Resume with make release VERSION_BUMP=<exact-version> RELEASE_FLAGS="--resume --apply". Configured artifacts are built before tagging and uploaded before publishing the GitHub Release.');
     return;
   }
   const args = argumentsFor(argv);
@@ -211,7 +221,7 @@ function main() {
   requireThat(typeof github === 'boolean', 'github_release must be boolean.');
   const packaging = config.build_artifacts ?? false;
   requireThat(typeof packaging === 'boolean', 'build_artifacts must be boolean.');
-  requireThat(!(github && args.noPush), 'GitHub Release requires pushing. Use --no-github-release with --no-push.');
+  requireThat(!(github && args.noPush), 'GitHub Release requires pushing. Set RELEASE_FLAGS="--no-push --no-github-release" for a local preview or release.');
   requireThat(Array.isArray(checks) && checks.every(c => Array.isArray(c) && c.length && c.every(s => typeof s === 'string' && s)), 'checks must be arrays of command arguments.');
   requireThat(['before-bump', 'after-bump'].includes(checkPhase), 'check_phase must be before-bump or after-bump.');
   clean();
@@ -219,9 +229,10 @@ function main() {
   const head = git('rev-parse', 'HEAD');
   const [current, files] = versionFiles(config);
   for (const name of files.keys()) git('ls-files', '--error-unmatch', '--', name);
-  const target = args.resume || args.version === current ? args.version : nextVersion(current, args.version);
+  let initial = args.version === 'initial';
+  const target = args.resume ? args.version : initial ? current : nextVersion(current, args.version);
   validateVersion(target);
-  const bumping = !args.resume && target !== current;
+  const bumping = !args.resume && !initial;
   const plan = packaging ? artifactPlan(target) : [];
   const tag = prefix + target;
   git('check-ref-format', 'refs/tags/' + tag);
@@ -230,7 +241,9 @@ function main() {
     requireThat(current === target && tagExists, 'Resume requires the exact current version and an existing local tag.');
     requireThat(git('rev-parse', tag + '^{commit}') === head, 'Resume tag must point to HEAD.');
     requireThat(git('cat-file', '-t', 'refs/tags/' + tag) === 'tag', 'Resume requires an annotated tag.');
-  } else requireThat(!tagExists, `Tag already exists: ${tag}. Use --resume with the exact version after a partial release.`);
+    initial = git('for-each-ref', '--format=%(contents:subject)%0a%0a%(contents:body)', 'refs/tags/' + tag) === initialTagMessage(tag);
+    requireThat(initial || git('log', '-1', '--format=%s') === `chore(release): ${tag}`, 'HEAD is not the expected release commit and tag has no initial-release marker. Inspect the original release; do not move or rewrite its tag.');
+  } else requireThat(!tagExists, `Tag already exists: ${tag}. Use make release VERSION_BUMP=${target} RELEASE_FLAGS="--resume --apply" after a partial release.`);
   let url;
   if (!args.noPush) {
     const urls = git('remote', 'get-url', '--push', '--all', remote).split('\n');
@@ -247,14 +260,17 @@ function main() {
     if (remoteTag) requireThat(args.resume && remoteTag === git('rev-parse', 'refs/tags/' + tag), 'Remote tag already exists with a different release; never overwrite it.');
   }
   const repo = github ? githubRepo(url) : null;
+  const initialRepo = initial && !args.noPush ? githubRepo(url, false) : null;
+  if (initialRepo && !args.resume) requireUnpublishedRelease(initialRepo, tag);
+  const phase = initial ? 'current-version' : checkPhase;
   const notes = github ? releaseNotes(repo, prefix, target, head, tag) : null;
-  console.log(JSON.stringify({ mode: args.apply ? 'execute' : 'preview', current, target, branch, remote, tag, files: bumping ? [...files.keys()] : [], checks: args.resume ? [] : checks, check_phase: args.resume ? null : checkPhase, builds: packaging ? artifactBuilds : [], artifacts: plan.map(({ name }) => `dist/releases/${target}/${name}`), reuse_artifacts: args.resume && packaging, push: !args.noPush, github_release: github, github_repo: repo, release_notes: notes, resume: args.resume }, null, 2));
+  console.log(JSON.stringify({ mode: args.apply ? 'execute' : 'preview', release_type: initial ? 'initial' : 'upgrade', current, target, branch, remote, tag, files: bumping ? [...files.keys()] : [], create_version_commit: bumping, checks: args.resume ? [] : checks, check_phase: args.resume ? null : phase, builds: packaging ? artifactBuilds : [], artifacts: plan.map(({ name }) => `dist/releases/${target}/${name}`), reuse_artifacts: args.resume && packaging, push: !args.noPush, github_release: github, github_repo: repo, release_notes: notes, resume: args.resume }, null, 2));
   if (!args.apply) return;
   if (github) run(['gh', 'auth', 'status', '--hostname', 'github.com']);
   let artifacts = args.resume && packaging ? cachedArtifacts(target, head, plan) : null;
   if (!args.resume) {
     if (bumping && checkPhase === 'after-bump') writeVersions(files, target);
-    runChecks(checks, files, checkPhase);
+    runChecks(checks, files, phase);
     if (bumping && checkPhase === 'before-bump') writeVersions(files, target);
   }
   if (packaging && !artifacts) artifacts = buildArtifacts(target, plan, command => runChecks([command], files, 'after-bump', true));
@@ -271,7 +287,7 @@ function main() {
     } else clean();
   }
   if (packaging) saveArtifacts(target, git('rev-parse', 'HEAD'), artifacts);
-  if (!args.resume) git('tag', '-a', tag, '-m', `Release ${tag}`);
+  if (!args.resume) git('tag', '-a', tag, '-m', initial ? initialTagMessage(tag) : `Release ${tag}`);
   if (!args.noPush) git('push', '--atomic', remote, `HEAD:refs/heads/${branch}`, `refs/tags/${tag}:refs/tags/${tag}`);
   if (github) {
     console.log(publishRelease({ repo, tag, notes, artifacts: artifacts ?? [] }));
@@ -281,7 +297,7 @@ function main() {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try { main(); }
   catch (error) {
-    console.error(`ERROR: ${error.message}\nStopped without automatic rollback or force-push. Inspect git status/log/tags. If commit and tag already exist at HEAD, retry with the exact version --resume --apply.`);
+    console.error(`ERROR: ${error.message}\nStopped without automatic rollback or force-push. Inspect git status/log/tags. If the expected release tag already exists at HEAD, retry with make release VERSION_BUMP=<exact-version> RELEASE_FLAGS="--resume --apply".`);
     process.exitCode = 1;
   }
 }

@@ -49,11 +49,11 @@ bash scripts/check.sh                            # 运行检查与测试
 提交所有修改后，在干净的 `main` 分支使用已登录的 GitHub CLI 执行：
 
 ```sh
-pnpm run release 0.1.0 --apply    # 首次发布当前版本
-pnpm run release patch --apply    # 后续升级 patch 并发布
+make release-initial RELEASE_FLAGS=--apply    # 首次发布当前版本
+make release RELEASE_FLAGS=--apply            # 后续升级 patch 并发布
 ```
 
-去掉 `--apply` 可预览。脚本自动运行检查、构建当前 Mac 架构客户端和 Chrome / Firefox 扩展、创建 annotated tag 并推送，上传三个成品 ZIP 后公开 GitHub Release。失败续传、附件和签名范围见[版本与发布](docs/versioning.md)。
+省略 `RELEASE_FLAGS=--apply` 可预览。脚本自动运行检查、构建当前 Mac 架构客户端和 Chrome / Firefox 扩展、创建 annotated tag 并推送，上传三个成品 ZIP 后公开 GitHub Release。失败续传、附件和签名范围见[版本与发布](docs/versioning.md)。
 
 ## 文档
 

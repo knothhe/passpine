@@ -24,7 +24,7 @@ macOS 应用 ID 为 `com.knothhe.passpine`，与旧原生客户端相同；安�
 
 ## 扩展配置
 
-扩展安装复用 `h2-browser-extension` skill 的 `install:local` 流程：构建所选浏览器的 MV3 版本，复制到固定的 `<安装父目录>/<插件名称>`。配置文件放在仓库根目录。
+扩展安装通过 `make browser:install` 复用 `h2-browser-extension` skill 的本地安装流程：构建所选浏览器的 MV3 版本，复制到固定的 `<安装父目录>/<插件名称>`。配置文件放在仓库根目录。
 
 ```sh
 cp .install-local.example.json .install-local.json
@@ -57,7 +57,7 @@ make browser:install BROWSER=chrome INSTALL_ARGS='--dir "~/ChromeExtensions" --n
 
 # CLI 选项优先于配置；也可选择另一份配置
 make browser:install INSTALL_ARGS='--config .install-local.custom.json'
-pnpm run install:local firefox --dir "~/FirefoxExtensions" --name passpine
+make browser:install BROWSER=firefox INSTALL_ARGS='--dir "~/FirefoxExtensions" --name passpine'
 node scripts/install-local.mjs --help
 ```
 
@@ -85,6 +85,6 @@ Chrome / Edge 固定扩展 ID 为 `obnlebeedcbbchadakacilopfdaifgjh`，Firefox I
 
 ## Agent 收尾安装
 
-使用 `h2-browser-extension` skill 完成执行型扩展任务后，若仓库根目录存在真实 `.install-local.json`，会按配置执行 `install:local` 并报告结果；示例文件、纯讨论或用户明确要求跳过时不触发。覆盖确认仍由用户选择。
+使用 `h2-browser-extension` skill 完成执行型扩展任务后，若仓库根目录存在真实 `.install-local.json`，会按配置执行 `make browser:install` 并报告结果；示例文件、纯讨论或用户明确要求跳过时不触发。覆盖确认仍由用户选择。
 
 本项目尚未配置 Codex 项目级收尾 hook。可选 hook 会在存在真实配置时，于 Codex 回复结束前触发一次安装检查，再由 Codex 完成安装并提醒重新加载；仅对当前项目生效，需要明确同意后接入。

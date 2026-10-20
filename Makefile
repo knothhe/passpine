@@ -9,7 +9,7 @@ VERSION_BUMP ?= patch
 VERSION_VALUE ?=
 RELEASE_FLAGS ?=
 
-.PHONY: build install help release FORCE
+.PHONY: build install help release release-initial FORCE
 
 # Recursive goals keep colon names compatible with macOS GNU Make 3.81.
 build:
@@ -67,6 +67,9 @@ version\:set: FORCE
 release:
 	node scripts/release.mjs $(VERSION_BUMP) $(RELEASE_FLAGS)
 
+release-initial:
+	node scripts/release.mjs initial $(RELEASE_FLAGS)
+
 FORCE:
 
 help:
@@ -80,7 +83,10 @@ help:
 	  'make browser:install     Build and install the configured browser extension' \
 	  'make version:show / version:check / version:patch / version:minor / version:major' \
 	  'make version:set VERSION_VALUE=0.2.0  Update desktop and browser version sources' \
-	  'make release VERSION_BUMP=0.1.0     Preview first release of the current version' \
+	  'make release-initial     Preview first release of the current version' \
+	  'make release-initial RELEASE_FLAGS=--apply  Publish the current version for the first time' \
+	  'make release             Preview a patch release; VERSION_BUMP=patch|minor|major|<version>' \
 	  'make release VERSION_BUMP=patch RELEASE_FLAGS=--apply  Test, build, tag, push and publish GitHub Release with packages' \
+	  'make release VERSION_BUMP=<version> RELEASE_FLAGS="--resume --apply"  Resume an interrupted release' \
 	  'Options: CLIENT_INSTALL_DIR="...", BROWSER=chrome|firefox|edge, INSTALL_ARGS="..."' \
 	  'Extension installation: see docs/install-local.md'

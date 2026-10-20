@@ -12,7 +12,6 @@
     "build:browser:firefox": "make browser:build:firefox",
     "build:browser:edge": "make browser:build:edge",
     "build": "make build",
-    "install:local": "node scripts/install-local.mjs",
     "test:client": "cd client && go test -race ./...",
     "test:browser": "pnpm --dir browser run typecheck && pnpm --dir browser test",
     "test": "bash scripts/check.sh",
@@ -24,7 +23,6 @@
     "version:minor": "node scripts/version.mjs minor",
     "version:major": "node scripts/version.mjs major",
     "version:set": "node scripts/version.mjs set",
-    "release": "node scripts/release.mjs",
     "test:tooling": "node --test scripts/version.test.mjs scripts/release.test.mjs scripts/release-artifacts.test.mjs scripts/dependencies.test.mjs",
     "about:generate": "node scripts/dependencies.mjs"
   },

@@ -192,7 +192,7 @@ export async function installLocal(argv, { root = projectRoot, runBuild = build,
     ? "1–4 integers of up to nine digits, without leading zeros"
     : "1–4 integers between 0 and 65535, without leading zeros, and must not be all zero"
   requireThat(validExtensionVersion(manifest.version, browser), `Manifest version for ${browser} must contain ${versionRules}; installation was not changed.`)
-  requireThat(!validateDestination(destination, root, browser, Object.values(options.outputs)) || overwriteConfirmed, "Installation directory changed during the build and now needs overwrite confirmation. Run install:local again.")
+  requireThat(!validateDestination(destination, root, browser, Object.values(options.outputs)) || overwriteConfirmed, "Installation directory changed during the build and now needs overwrite confirmation. Run make browser:install again.")
   fs.mkdirSync(path.dirname(destination), { recursive: true })
   const staging = fs.mkdtempSync(path.join(path.dirname(destination), ".h2-ext-local-"))
   const stagedExtension = path.join(staging, "extension")
@@ -201,7 +201,7 @@ export async function installLocal(argv, { root = projectRoot, runBuild = build,
   try {
     fs.cpSync(source, stagedExtension, { recursive: true })
     fs.writeFileSync(path.join(stagedExtension, marker), `${JSON.stringify({ installer: "h2-ext-local", schema: 2, project: canonical(root), browser, version: manifest.version }, null, 2)}\n`)
-    requireThat(!validateDestination(destination, root, browser, Object.values(options.outputs)) || overwriteConfirmed, "Installation directory changed before replacement and now needs overwrite confirmation. Run install:local again.")
+    requireThat(!validateDestination(destination, root, browser, Object.values(options.outputs)) || overwriteConfirmed, "Installation directory changed before replacement and now needs overwrite confirmation. Run make browser:install again.")
     const hadPrevious = fs.existsSync(destination)
     if (hadPrevious) {
       fs.renameSync(destination, backup)
