@@ -75,6 +75,7 @@ type quickSearchState struct {
 	mode                     string
 	globalQuery, trayQuery   string
 	visible, focusPending    bool
+	nativeFocused            bool
 	clearFeedback            bool
 	query, passphrase        string
 	errorText, operation     string
@@ -205,10 +206,19 @@ func (a *application) newQuickSearchWindow() {
 		}
 	})
 	window.OnBlur(a.quickSearchBlurred)
+	window.OnFocus(func() { a.quick.nativeFocused = true })
 	window.OnClosed(a.quickSearchClosed)
 }
 
 func (a *application) quickSearchBlurred() {
+	if window, native := a.quick.window.(*mygo.Window); native {
+		// Hiding and immediately showing a GTK window can deliver its old
+		// blur after the new show. Only dismiss after this show gained focus.
+		if !a.quick.nativeFocused || window.IsFocused() {
+			return
+		}
+		a.quick.nativeFocused = false
+	}
 	// The OS authentication prompt temporarily takes focus from the panel.
 	if a.quick.operation != "device-unlock" {
 		a.hideQuickSearch()
@@ -249,6 +259,9 @@ func (a *application) openQuickSearch(mode string) {
 		return
 	}
 	changed := a.setQuickSearchMode(mode)
+	if !a.quick.visible {
+		a.quick.nativeFocused = false
+	}
 	if a.quick.window == nil {
 		a.newQuickSearchWindow()
 	} else if changed && mode == quickSearchGlobal {

@@ -11,6 +11,14 @@
 
 macOS 构建产物为 `dist/Passpine.app`，安装到 `~/Applications/Passpine.app`；Linux 将 `dist/passpine` 和 `dist/passpine-host` 安装到 `~/.local/bin`。客户端安装完成后，使用安装位置中的 Host 注册浏览器连接。
 
+Linux 安装同时在 `${XDG_DATA_HOME:-~/.local/share}` 下创建 `applications/com.knothhe.passpine.desktop` 和应用图标，可从桌面应用菜单启动。`CLIENT_INSTALL_DIR` 可指定二进制安装目录，菜单入口会记录该目录的绝对路径。运行需要 GTK 3、WebKitGTK 4.1；Arch Linux 可运行 `sudo pacman -S --needed gtk3 webkit2gtk-4.1`。完整测试还需要 `zip` / `unzip`。托盘使用 StatusNotifierItem 协议，桌面面板需支持该协议；左键执行设置中的托盘动作，右键显示菜单。
+
+Hyprland 0.55+ 会话通过 `hyprctl` 的 Lua 接口注册当前搜索快捷键，运行时绑定随客户端退出清理，配置重载后自动恢复，不修改用户配置文件；发生冲突时保留已有绑定并报告失败。需要 `hyprctl` 和 `busctl`（Arch 的 Hyprland / systemd 已提供）。其他 Linux 桌面沿用 X11 或 GlobalShortcuts Portal；Wayland 下的按键授权由桌面管理。
+
+Linux 的快捷键录制在 GTK 原生窗口捕获按键，录制期间申请键盘捕获，避免菜单或桌面快捷键提前处理组合键；保存、取消、窗口失焦或关闭时立即释放。支持字母、数字、F1–F24 及常见特殊键，无法识别的按键显示校验提示。原生录制测试还需要 `wtype`：`PASSPINE_NATIVE_SMOKE=1 go test ./desktop -run TestNativeLinuxShortcutRecording -count=1 -v`。
+
+Linux 默认使用 Cairo 软件渲染，避开当前 MyGo 0.5.5 在多窗口切换时因 OpenGL 上下文失效而退出的问题。可显式设置 `MYGO_GPU=1` 测试 GPU 路径，但当前版本尚未验证该路径的多窗口稳定性。
+
 Windows 还需安装 NSIS 3（例如 `choco install nsis`）。Make 根据系统自动分流；Windows 使用系统 PowerShell，无需 Bash。`make build` 同时生成 `dist/passpine.exe`、`dist/passpine-host.exe`、`dist/Passpine-<版本>-windows-amd64-setup.exe` 和 Chrome/Firefox 扩展。`make client:install` 静默运行安装包，默认安装到 `%LOCALAPPDATA%\Programs\Passpine`；Windows 的 `CLIENT_INSTALL_DIR` 指应用目录本身，例如 `make client:install CLIENT_INSTALL_DIR="C:\Apps\Passpine"`。`make install` 与直接运行 setup.exe 使用相同的默认目录；未指定目录时会沿用注册表中记录的上次安装位置。客户端安装成功后，Make 安装命令会从注册表读取并输出实际安装目录。
 
 Windows 安装包使用当前用户权限，创建开始菜单快捷方式和系统卸载入口，为已安装的 Chrome、Edge、Brave 和 Firefox 写入 HKCU Native Messaging 注册表项。卸载会清理本安装的注册项和程序文件，保留密码库、密钥及用户数据。更新前应退出客户端。安装包没有 Authenticode 签名；Windows 支持使用当前账户的登录密码进行系统解锁；修改登录密码后，在安全设置中关闭系统解锁，用私钥口令打开密码库，再重新开启并锁定、使用私钥口令解锁以完成注册。
@@ -41,7 +49,16 @@ make client:install
 make client:install CLIENT_INSTALL_DIR="/Applications"
 ```
 
-`CLIENT_INSTALL_DIR` 是安装父目录，需对其有写权限。macOS 更新会替换应用包，不保留旧版应用资源。关闭正在运行的客户端后再更新并重新启动。当前已验收 macOS Apple Silicon，Linux 客户端运行能力仍需在目标系统确认。
+`CLIENT_INSTALL_DIR` 是安装父目录，需对其有写权限。macOS 更新会替换应用包，不保留旧版应用资源。关闭正在运行的客户端后再更新并重新启动。当前已验收 macOS Apple Silicon；Linux 已在 Arch Linux 的 Wayland 桌面验证构建、安装、Host 注册和隔离演示窗口渲染，其他发行版仍需验证。
+
+Linux 桌面会话中可运行原生启动测试（使用临时演示库，渲染后自动退出）：
+
+```sh
+cd client
+PASSPINE_NATIVE_SMOKE=1 go test ./cmd/passpine -run TestNativePreviewStartup -count=1 -v
+# Hyprland：验证快捷键注册/冲突/注销及快捷面板交互
+PASSPINE_NATIVE_SMOKE=1 go test ./internal/linuxdesktop ./desktop -run 'TestHyprlandRuntimeShortcut|TestNativeLinuxInteractions' -count=1 -v
+```
 
 macOS 应用 ID 为 `com.knothhe.passpine`，与旧原生客户端相同；安装到同一目录会替换原有 `Passpine.app`。本机数据不会随应用包安装而迁移，已有 Go 配置的继续使用与迁移方式见 [README](../README.md#正式使用与原库迁移)。
 

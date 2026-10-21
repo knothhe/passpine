@@ -109,7 +109,7 @@ type application struct {
 	cachedQuery, cachedFilter                                            string
 	cachedResults                                                        []app.Entry
 	folders                                                              []string
-	tray                                                                 *mygo.Tray
+	tray                                                                 nativeTray
 	lifecycle                                                            lifecycleState
 	setupRemote, gitRemote                                               string
 	gitRemoteObserved                                                    string
@@ -126,6 +126,7 @@ type application struct {
 // Run starts a native GPU-rendered window, with native menus, file panels,
 // clipboard and system lock/sleep notifications. It does not create a WebView.
 func Run(service *app.Service, version string) error {
+	configureNativeRendering()
 	a := newApplication(service)
 	a.buildVersion = version
 	mygo.App.SetName("Passpine")
@@ -140,6 +141,7 @@ func Run(service *app.Service, version string) error {
 		a.saveQuickSearchPosition()
 		a.stopLightweightTimer()
 		a.closing = true
+		a.setShortcutRecording(false)
 		close(a.stop)
 		a.clearSecrets()
 		go service.Close()
@@ -151,6 +153,9 @@ func Run(service *app.Service, version string) error {
 	})
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
 		mygo.GlobalShortcut.UnregisterAll()
+		if registry, ok := a.shortcut.registry.(interface{ Close() }); ok {
+			registry.Close()
+		}
 		if a.lifecycle.trayButton != nil {
 			a.lifecycle.trayButton.Close()
 			a.lifecycle.trayButton = nil

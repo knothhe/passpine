@@ -176,6 +176,7 @@ func (a *application) callEntryForHistory(path string) {
 }
 
 func (a *application) handleMainWindowClose(event *mygo.CloseEvent) {
+	a.setShortcutRecording(false)
 	if a.closing {
 		return
 	}

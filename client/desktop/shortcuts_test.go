@@ -108,6 +108,11 @@ func TestRecordingShortcutSavesCompleteCombinationAndCanCancel(t *testing.T) {
 	if err := view.Click("录制全局搜索快捷键"); err != nil {
 		t.Fatal(err)
 	}
+	view.Frame()
+	view.Frame()
+	if !view.Focused("录制全局搜索快捷键") {
+		t.Fatal("recorder lost focus after rendering its active state")
+	}
 	view.Key(ui.Ctrl|ui.Alt, ui.KeyP)
 	awaitMain(t, callbacks)
 	if request := <-requests; request.Settings.GlobalShortcut != "Ctrl+Alt+P" {

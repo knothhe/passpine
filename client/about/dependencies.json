@@ -30,6 +30,16 @@
     "source": "https://github.com/egoist/mygo"
   },
   {
+    "id": "dbus",
+    "name": "godbus",
+    "module": "github.com/godbus/dbus/v5",
+    "group": "desktop",
+    "version": "v5.1.0",
+    "license": "BSD-2-Clause",
+    "url": "https://pkg.go.dev/github.com/godbus/dbus/v5",
+    "source": "https://github.com/godbus/dbus"
+  },
+  {
     "id": "onevra",
     "name": "Onevra",
     "module": "github.com/oneo-me/onevra/source",

@@ -41,6 +41,12 @@ func (a *application) newMainWindow() {
 			a.queueMetadataRefresh(false)
 		}
 	})
+	window.OnBlur(func() {
+		if a.shortcut.recording {
+			a.setShortcutRecording(false)
+			a.invalidate()
+		}
+	})
 	window.OnShow(func() { a.mainWindowVisibilityChanged(true) })
 	window.OnHide(func() { a.mainWindowVisibilityChanged(false) })
 	window.OnClose(a.handleMainWindowClose)

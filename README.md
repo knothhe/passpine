@@ -2,7 +2,7 @@
 
 兼容 pass 的本地密码管理器，包含 Go 原生客户端和浏览器扩展。支持密码生成、TOTP、Git 同步及浏览器填充，客户端与扩展共用解锁会话。
 
-目前已验收 macOS Apple Silicon；Windows 提供原生构建、NSIS 安装包、安全文件访问和浏览器 Host 注册，其他平台仍需验证。
+目前已验收 macOS Apple Silicon；Linux 已在 Arch Linux 上验证构建、安装和原生演示窗口启动；Windows 提供原生构建、NSIS 安装包、安全文件访问和浏览器 Host 注册。
 
 ## 构建与安装
 
@@ -18,6 +18,14 @@ make help               # 查看全部命令和参数
 ```
 
 macOS 构建产物为 `dist/Passpine.app`，默认安装到 `~/Applications/Passpine.app`。应用使用本地签名，未配置 Developer ID 公证。
+
+Linux 同样使用 `make build` / `make install`，客户端产物为 `dist/passpine` 和 `dist/passpine-host`，默认安装到 `~/.local/bin`，并添加应用菜单入口和图标。运行需要 GTK 3、WebKitGTK 4.1，托盘需要桌面支持 StatusNotifierItem。在 Arch Linux 上安装运行依赖：
+
+```sh
+sudo pacman -S --needed gtk3 webkit2gtk-4.1
+```
+
+完整检查脚本还需要 `zip` 和 `unzip`。浏览器扩展安装仍需配置安装目录，详见下方本地安装说明。
 
 Windows（64 位）还需要 NSIS 3，用于生成安装包。使用管理员 PowerShell 安装全局依赖（需先安装 Chocolatey）：
 

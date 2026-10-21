@@ -11,6 +11,10 @@ endif
 
 # Empty values use the installer defaults or .install-local.json.
 CLIENT_INSTALL_DIR ?=
+# Desktop sessions use BROWSER for a launcher command, not an extension target.
+ifeq ($(origin BROWSER),environment)
+BROWSER :=
+endif
 BROWSER ?=
 INSTALL_ARGS ?=
 VERSION_BUMP ?= patch

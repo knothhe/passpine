@@ -6,6 +6,7 @@ require (
 	github.com/ProtonMail/go-crypto v1.5.2
 	github.com/ebitengine/purego v0.11.2
 	github.com/egoist/mygo v0.5.5
+	github.com/godbus/dbus/v5 v5.1.0
 	github.com/oneo-me/onevra/source v0.2026.13
 	golang.org/x/crypto v0.41.0
 	golang.org/x/sys v0.49.0

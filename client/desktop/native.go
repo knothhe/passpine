@@ -54,7 +54,7 @@ func (a *application) startNativeIntegrations() {
 	if runtime.GOOS == "darwin" {
 		icon, template = assets.MenuBarTemplatePNG, true
 	}
-	tray, err := mygo.NewTray(mygo.TrayOptions{Icon: icon, IconIsTemplate: template, ToolTip: "Passpine"})
+	tray, err := newNativeTray(mygo.TrayOptions{Icon: icon, IconIsTemplate: template, ToolTip: "Passpine"})
 	if err != nil {
 		a.warn(a.t("菜单栏图标不可用：%s", err))
 		a.registerGlobalShortcut()
@@ -62,8 +62,8 @@ func (a *application) startNativeIntegrations() {
 	}
 	a.tray = tray
 	a.installTrayMenu()
+	tray.OnClick(a.trayClicked)
 	if runtime.GOOS != "linux" {
-		tray.OnClick(a.trayClicked)
 		tray.OnRightClick(a.showTrayMenu)
 	}
 	// MyGo has no status-button highlight API. Keep its click handler as a

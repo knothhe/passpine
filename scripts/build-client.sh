@@ -44,4 +44,7 @@ PLIST
   codesign --verify --deep --strict "$bundle"
   ditto -c -k --sequesterRsrc --keepParent "$bundle" "$root_dir/dist/Passpine-$version-macos-$(uname -m).zip"
   echo "Built: $bundle"
+else
+  echo "Built: $root_dir/dist/passpine"
+  echo "Built: $root_dir/dist/passpine-host"
 fi

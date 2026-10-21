@@ -64,6 +64,22 @@ else
   install -m 755 "$root_dir/dist/passpine-host" "$install_dir/passpine-host"
   destination="$install_dir/passpine"
   host="$install_dir/passpine-host"
+
+  data_dir="${XDG_DATA_HOME:-$HOME/.local/share}"
+  [[ "$data_dir" == /* ]] || { echo "XDG_DATA_HOME must be an absolute path." >&2; exit 1; }
+  mkdir -p "$data_dir/applications" "$data_dir/icons/hicolor/256x256/apps"
+  install -m 644 "$root_dir/client/assets/app-icon-monochrome.png" "$data_dir/icons/hicolor/256x256/apps/com.knothhe.passpine.png"
+  # Desktop Entry values and Exec arguments have separate escaping rules.
+  node --input-type=module - "$destination" "$data_dir/applications/com.knothhe.passpine.desktop" <<'NODE'
+import fs from 'node:fs'
+const [executable, output] = process.argv.slice(2)
+const argument = executable.replace(/[\\"`$]/g, value => '\\' + value).replace(/%/g, '%%')
+const exec = `"${argument}"`.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')
+fs.writeFileSync(output, `[Desktop Entry]\nType=Application\nName=Passpine\nExec=${exec}\nIcon=com.knothhe.passpine\nTerminal=false\nCategories=Utility;Security;\n`, {mode: 0o644})
+NODE
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$data_dir/applications"
+  fi
 fi
 
 "$host" --register

@@ -1,4 +1,4 @@
-//go:build windows
+//go:build windows || linux
 
 package main
 
@@ -56,7 +56,7 @@ func TestMain(m *testing.M) {
 
 func TestNativePreviewStartup(t *testing.T) {
 	if os.Getenv("PASSPINE_NATIVE_SMOKE") != "1" {
-		t.Skip("set PASSPINE_NATIVE_SMOKE=1 on an interactive Windows desktop")
+		t.Skip("set PASSPINE_NATIVE_SMOKE=1 on an interactive desktop")
 	}
 	// A short, separate runtime directory also isolates MyGo's single-instance
 	// socket from any real Passpine process already running on the desktop.
@@ -73,6 +73,10 @@ func TestNativePreviewStartup(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, executable)
 	cmd.Env = append(os.Environ(), "PASSPINE_NATIVE_SMOKE_CHILD="+directory, "XDG_RUNTIME_DIR="+directory)
+	// Preserve the compositor connection while isolating the instance socket.
+	if display := os.Getenv("WAYLAND_DISPLAY"); display != "" && !filepath.IsAbs(display) {
+		cmd.Env = append(cmd.Env, "WAYLAND_DISPLAY="+filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), display))
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil || !bytes.Contains(output, []byte("native client startup verified")) {
 		t.Fatalf("native startup failed: %v\n%s", err, output)

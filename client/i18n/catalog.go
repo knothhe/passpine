@@ -21,6 +21,7 @@ var english = map[string]string{
 	"源代码":   "Source code",
 	"OpenPGP 密钥管理与密码库加解密。": "OpenPGP key management and vault encryption.",
 	"调用原生系统接口，检测已安装的浏览器。":  "Native system calls and installed-browser discovery.",
+	"Linux 托盘与全局快捷键的桌面通信。": "Desktop communication for the Linux tray and global shortcuts.",
 	"原生窗口、界面、托盘、菜单与全局快捷键。": "Native windows, UI, tray, menus and global shortcuts.",
 	"桌面界面组件、主题与图标。":        "Desktop UI components, themes and icons.",
 	"底层系统调用与安全文件访问。":       "Low-level system calls and secure file access.",

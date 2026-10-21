@@ -5,7 +5,6 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
 	"github.com/oneo-me/onevra/source/components"
@@ -17,12 +16,13 @@ type shortcutRegistry interface {
 }
 
 type shortcutState struct {
-	recording  bool
-	visible    bool
-	errorText  string
-	registered string
-	ref        ui.Ref
-	registry   shortcutRegistry
+	recording   bool
+	visible     bool
+	errorText   string
+	registered  string
+	ref         ui.Ref
+	registry    shortcutRegistry
+	stopCapture func()
 }
 
 func (a *application) shortcutControls(c *ui.Context) {
@@ -38,8 +38,8 @@ func (a *application) shortcutControls(c *ui.Context) {
 			button := components.Button(c, label, components.ButtonOutline).Label(a.t("录制全局搜索快捷键")).Ref(&a.shortcut.ref).Disabled(a.settingsSaving)
 			button.HandleInput(a.shortcutInput)
 			if button.Clicked() {
-				a.setShortcutRecording(!a.shortcut.recording)
 				a.shortcut.errorText = ""
+				a.setShortcutRecording(!a.shortcut.recording)
 				a.shortcut.ref.Focus()
 			}
 			if a.shortcut.recording {
@@ -150,7 +150,11 @@ func (a *application) prepareGlobalShortcut(value string) (func(bool), error) {
 	}
 	registry := a.shortcut.registry
 	if registry == nil && !a.state.Preview {
-		registry = mygo.GlobalShortcut
+		registry, err = platformShortcutRegistry()
+		if err != nil {
+			return nil, err
+		}
+		a.shortcut.registry = registry
 	}
 	if registry != nil {
 		if err = registry.Register(shortcut, a.globalShortcutActivated); err != nil {
@@ -197,6 +201,26 @@ func (a *application) globalShortcutActivated() {
 func (a *application) setShortcutRecording(recording bool) {
 	if a.shortcut.recording == recording {
 		return
+	}
+	if recording {
+		stop, err := captureNativeShortcut(a.window, func(value string) {
+			if value == "Escape" || value == "Tab" {
+				a.setShortcutRecording(false)
+				a.shortcut.errorText = ""
+				a.invalidate()
+				return
+			}
+			a.recordShortcut(value)
+		})
+		if err != nil {
+			a.shortcut.errorText = fmt.Sprintf("%s: %v", a.t("快捷键不可用，请更换组合"), err)
+			a.invalidate()
+			return
+		}
+		a.shortcut.stopCapture = stop
+	} else if a.shortcut.stopCapture != nil {
+		a.shortcut.stopCapture()
+		a.shortcut.stopCapture = nil
 	}
 	a.shortcut.recording = recording
 	if a.window != nil && !a.closing {

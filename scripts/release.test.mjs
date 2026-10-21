@@ -152,6 +152,15 @@ test('Make release entry points pass the default bump, initial operation and fla
   assert.equal(git('status', '--porcelain'), '');
 });
 
+test('Make extension installation ignores desktop BROWSER commands and accepts explicit targets', () => {
+  const root = path.join(scriptsDir, '..');
+  const env = { BROWSER: 'omarchy-launch-browser' };
+  const configured = command(root, 'make', ['--just-print', 'browser:install'], true, env);
+  assert.doesNotMatch(configured.stdout, /--browser|omarchy-launch-browser/);
+  const explicit = command(root, 'make', ['--just-print', 'browser:install', 'BROWSER=firefox'], true, env);
+  assert.match(explicit.stdout, /--browser "firefox"/);
+});
+
 test('failed checks preserve both source versions and create no release commit or tag', t => {
   const { root, git, release } = fixture(t, [[process.execPath, '-e', 'process.exit(1)']]);
   const original = git('rev-parse', 'HEAD');
@@ -364,4 +373,25 @@ test('one-command release builds before tagging, resumes a partial draft upload 
   assert.equal(readState()['v0.1.1'].isDraft, false);
   assert.ok(readState()['v0.1.1'].assets.every(item => item.name.includes('0.1.1')));
   assert.equal(git('status', '--porcelain'), '');
+});
+
+test('Linux installer writes a desktop entry with escaped executable paths', { skip: process.platform !== 'linux' }, t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-install-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const dir of ['scripts', 'dist', 'client/assets']) fs.mkdirSync(path.join(root, dir), { recursive: true });
+  fs.copyFileSync(path.join(scriptsDir, 'install-client.sh'), path.join(root, 'scripts/install-client.sh'));
+  for (const binary of ['passpine', 'passpine-host']) fs.writeFileSync(path.join(root, 'dist', binary), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(root, 'client/assets/app-icon-monochrome.png'), 'fixture');
+  const installDir = path.join(root, '..', path.basename(root) + '-bin\t "\\$`%');
+  t.after(() => fs.rmSync(installDir, { recursive: true, force: true }));
+  const dataDir = path.join(root, 'data');
+  command(root, 'bash', ['scripts/install-client.sh', installDir], true, { XDG_DATA_HOME: dataDir });
+  const entry = fs.readFileSync(path.join(dataDir, 'applications/com.knothhe.passpine.desktop'), 'utf8');
+  assert.equal(entry.split('\n')[0], '[Desktop Entry]');
+  const exec = entry.split('\n').find(line => line.startsWith('Exec=')).slice(5);
+  // Decode Desktop Entry string escapes, then the quoted Exec argument.
+  const decoded = exec.replace(/\\([snrt\\])/g, (_, c) => ({ s: ' ', n: '\n', r: '\r', t: '\t', '\\': '\\' })[c]);
+  assert.equal(decoded[0], '"');
+  assert.equal(decoded.at(-1), '"');
+  assert.equal(decoded.slice(1, -1).replace(/\\(["`$\\])/g, '$1').replace(/%%/g, '%'), path.join(installDir, 'passpine'));
 });
