@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -154,7 +155,9 @@ func Run(service *app.Service, version string) error {
 			a.lifecycle.trayButton.Close()
 			a.lifecycle.trayButton = nil
 		}
-		if a.tray != nil {
+		// Keep the macOS status item alive until process exit. Removing it here
+		// clears AppKit's saved menu bar position, including its placement in Ice.
+		if a.tray != nil && runtime.GOOS != "darwin" {
 			a.tray.Destroy()
 			a.tray = nil
 		}
