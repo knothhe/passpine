@@ -30,6 +30,7 @@ type GitInfo struct {
 type GitResult struct {
 	State   string `json:"state"`
 	Message string `json:"message"`
+	Changed bool   `json:"changed"`
 }
 
 func gitCommand(ctx context.Context, directory string, args ...string) (string, error) {
@@ -261,56 +262,8 @@ func (v *Vault) GitSync(ctx context.Context) (GitResult, error) {
 	if e = ctx.Err(); e != nil {
 		return GitResult{}, e
 	}
-	unlock, e := lockStore(v.config.Directory)
-	if e != nil {
+	if _, e = v.gitSyncLocal(ctx, ""); e != nil {
 		return GitResult{}, e
-	}
-	defer unlock()
-	if !managedStore(ctx, v.config.Directory) {
-		return GitResult{}, errors.New("initialize Git in the password store first")
-	}
-	if pendingGitOperation(ctx, v.config.Directory) {
-		return GitResult{}, errors.New("finish the current Git merge or rebase before syncing")
-	}
-	staged, e := gitCommand(ctx, v.config.Directory, "diff", "--cached", "--name-only")
-	if e != nil {
-		return GitResult{}, e
-	}
-	if staged != "" {
-		return GitResult{}, errors.New("Git has staged changes; commit or unstage them before syncing")
-	}
-	files, e := gitCommand(ctx, v.config.Directory, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
-	if e != nil {
-		return GitResult{}, e
-	}
-	args := []string{"add", "-A", "--"}
-	seen := map[string]bool{}
-	for _, file := range strings.Split(files, "\x00") {
-		if !isStoreFile(file) || seen[file] {
-			continue
-		}
-		seen[file] = true
-		if _, e := safeRead(v.config.Directory, file); e != nil && !errors.Is(e, os.ErrNotExist) {
-			return GitResult{}, fmt.Errorf("unsafe password-store file: %w", e)
-		}
-		args = append(args, file)
-	}
-	if e = ctx.Err(); e != nil {
-		return GitResult{}, e
-	}
-	if len(args) > 3 {
-		if _, e = gitCommand(ctx, v.config.Directory, args...); e != nil {
-			return GitResult{}, e
-		}
-	}
-	staged, e = gitCommand(ctx, v.config.Directory, "diff", "--cached", "--name-only")
-	if e != nil {
-		return GitResult{}, e
-	}
-	if staged != "" {
-		if _, e = gitCommand(ctx, v.config.Directory, "-c", "user.name=Passpine", "-c", "user.email=passpine@localhost", "commit", "-m", "Update password store"); e != nil {
-			return GitResult{}, e
-		}
 	}
 	remote, e := gitCommand(ctx, v.config.Directory, "remote", "get-url", "origin")
 	if e != nil || remote == "" {
@@ -322,30 +275,117 @@ func (v *Vault) GitSync(ctx context.Context) (GitResult, error) {
 	if e = ValidateRemote(remote); e != nil {
 		return GitResult{}, e
 	}
-	if e = ctx.Err(); e != nil {
-		return GitResult{}, e
-	}
-	upstream, upstreamErr := gitCommand(ctx, v.config.Directory, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	result := GitResult{}
+	// Keep the full ref name so a remote beginning with '-' cannot become a
+	// rebase option, and revision lookup does not depend on abbreviation rules.
+	upstream, upstreamErr := gitCommand(ctx, v.config.Directory, "rev-parse", "--symbolic-full-name", "@{upstream}")
 	if upstreamErr == nil && upstream != "" {
-		if _, e = gitCommand(ctx, v.config.Directory, "pull", "--rebase"); e != nil {
-			return GitResult{}, e
+		// Fetch updates remote refs only. Foreground saves and deletes remain
+		// available throughout network work, including a slow or offline remote.
+		if _, e = gitCommand(ctx, v.config.Directory, "fetch"); e != nil {
+			return result, e
+		}
+		// Commit edits made during fetch before rebasing, so the rebase never
+		// overwrites a concurrent save or encounters an application-dirty tree.
+		result.Changed, e = v.gitSyncLocal(ctx, upstream)
+		if e != nil {
+			return result, e
 		}
 	}
 	if e = ctx.Err(); e != nil {
-		return GitResult{}, e
+		return result, e
 	}
+	// Push reads committed objects, not working files. Any edits made while it
+	// runs stay on disk and are included in the next coalesced automatic sync.
 	if upstreamErr != nil {
 		_, e = gitCommand(ctx, v.config.Directory, "push", "--set-upstream", "origin", "HEAD")
 	} else {
 		_, e = gitCommand(ctx, v.config.Directory, "push")
 	}
 	if e != nil {
-		return GitResult{}, e
+		return result, e
 	}
 	if e = ctx.Err(); e != nil {
-		return GitResult{}, e
+		return result, e
 	}
-	return GitResult{State: "synced", Message: "Encrypted password store synchronized."}, nil
+	result.State, result.Message = "synced", "Encrypted password store synchronized."
+	return result, nil
+}
+
+// Only local working-tree and index changes own the store lock. Sharing the
+// vault operation mutex makes a foreground write wait for this short atomic
+// section instead of rejecting it with ErrBusy midway through a local commit.
+func (v *Vault) gitSyncLocal(ctx context.Context, upstream string) (bool, error) {
+	v.operations.Lock()
+	defer v.operations.Unlock()
+	if e := ctx.Err(); e != nil {
+		return false, e
+	}
+	unlock, e := lockStore(v.config.Directory)
+	if e != nil {
+		return false, e
+	}
+	defer unlock()
+	if !managedStore(ctx, v.config.Directory) {
+		return false, errors.New("initialize Git in the password store first")
+	}
+	if pendingGitOperation(ctx, v.config.Directory) {
+		return false, errors.New("finish the current Git merge or rebase before syncing")
+	}
+	staged, e := gitCommand(ctx, v.config.Directory, "diff", "--cached", "--name-only")
+	if e != nil {
+		return false, e
+	}
+	if staged != "" {
+		return false, errors.New("Git has staged changes; commit or unstage them before syncing")
+	}
+	files, e := gitCommand(ctx, v.config.Directory, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	if e != nil {
+		return false, e
+	}
+	args := []string{"add", "-A", "--"}
+	seen := map[string]bool{}
+	for _, file := range strings.Split(files, "\x00") {
+		if !isStoreFile(file) || seen[file] {
+			continue
+		}
+		seen[file] = true
+		if _, e := safeRead(v.config.Directory, file); e != nil && !errors.Is(e, os.ErrNotExist) {
+			return false, fmt.Errorf("unsafe password-store file: %w", e)
+		}
+		args = append(args, file)
+	}
+	if e = ctx.Err(); e != nil {
+		return false, e
+	}
+	if len(args) > 3 {
+		if _, e = gitCommand(ctx, v.config.Directory, args...); e != nil {
+			return false, e
+		}
+	}
+	staged, e = gitCommand(ctx, v.config.Directory, "diff", "--cached", "--name-only")
+	if e != nil {
+		return false, e
+	}
+	if staged != "" {
+		if _, e = gitCommand(ctx, v.config.Directory, "-c", "user.name=Passpine", "-c", "user.email=passpine@localhost", "commit", "-m", "Update password store"); e != nil {
+			return false, e
+		}
+	}
+	if upstream == "" {
+		return false, nil
+	}
+	before, e := gitCommand(ctx, v.config.Directory, "rev-parse", "HEAD")
+	if e != nil {
+		return false, e
+	}
+	if _, e = gitCommand(ctx, v.config.Directory, "-c", "user.name=Passpine", "-c", "user.email=passpine@localhost", "rebase", upstream); e != nil {
+		// A conflict can change encrypted working files even when HEAD did not
+		// move. Invalidate any detail cached before this attempted integration.
+		return true, e
+	}
+	changed, e := gitCommand(ctx, v.config.Directory, "diff", "--name-only", before, "HEAD", "--")
+	return changed != "", e
 }
 
 // Clone creates a password-store checkout at a new destination. Keys are never

@@ -569,8 +569,15 @@ func TestGitNetworkDoesNotBlockReadsAndOnlyCloseCancelsProcess(t *testing.T) {
 		v.Lock()
 		t.Fatal("network sync blocked decryption")
 	}
-	if _, e = v.Save("new", "value", ""); !errors.Is(e, ErrBusy) {
-		t.Fatal("write did not reject active Git lock", e)
+	if _, e = v.Save("new", "value", ""); e != nil {
+		t.Fatal("network sync blocked a new entry", e)
+	}
+	doc, e := v.Read("entry")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = v.Trash(doc.Path, doc.Revision); e != nil {
+		t.Fatal("network sync blocked deleting an entry", e)
 	}
 	v.Lock()
 	select {

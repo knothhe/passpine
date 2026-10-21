@@ -108,6 +108,7 @@ func (a *application) recoveryType() string {
 	return "trash"
 }
 func (a *application) loadRecovery() {
+	a.recoverySelection, a.restoreDestination = "", ""
 	a.requestPreferencesRead("recovery")
 }
 func (a *application) recoveryView(c *ui.Context) {

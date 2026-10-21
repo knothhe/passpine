@@ -6,6 +6,12 @@ import (
 	"github.com/knothhe/passpine/client/app"
 )
 
+// Git progress only updates its own presentation. A full metadata refresh uses
+// the credential request queue and would briefly disable unrelated controls.
+func (a *application) refreshGitState() {
+	a.startGitCall(app.Request{Action: "git-status"}, nil, false)
+}
+
 // Git owns no decrypted UI state and must not hold the desktop's credential
 // request busy flag while waiting for a remote. Locking only invalidates secret
 // requests; Git results remain valid for the same active vault.

@@ -4,8 +4,8 @@ package clientshell
 // Labels supplies application-localized names for Shell's own controls.
 // Empty fields restore English defaults. It does not affect native OS menus.
 type Labels struct {
-	LeftToggle, LeftResize             string
-	Minimize, Maximize, Restore, Close string
+	LeftToggle, LeftResize, LeftOverlayClose string
+	Minimize, Maximize, Restore, Close       string
 }
 
 // SetLabels changes control names without recreating the window or its content.
@@ -13,6 +13,7 @@ type Labels struct {
 func (s *Shell) SetLabels(labels Labels) {
 	s.options.LeftToggleLabel = captionLabel(labels.LeftToggle, "Toggle sidebar")
 	s.options.LeftResizeLabel = captionLabel(labels.LeftResize, "Resize sidebar")
+	s.options.LeftOverlayCloseLabel = captionLabel(labels.LeftOverlayClose, "Close sidebar")
 	s.options.MinimizeLabel = labels.Minimize
 	s.options.MaximizeLabel = labels.Maximize
 	s.options.RestoreLabel = labels.Restore

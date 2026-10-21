@@ -7,6 +7,28 @@ import (
 	"github.com/knothhe/passpine/client/vault"
 )
 
+const automaticGitIdleDelay = 5 * time.Second
+const automaticGitRetryDelay = 30 * time.Second
+
+// Changes are coalesced until input has stopped. The optional interval also
+// checks for remote changes, but never starts a sync during active editing.
+func (s *Service) autoSyncDueLocked(now time.Time) bool {
+	if s.closed || s.active == nil || !s.gitData.GitInitialized || s.gitOperation || !s.prefs.Settings.AutoSync {
+		return false
+	}
+	if now.Before(s.gitRetryAt) {
+		return false
+	}
+	if activity := s.lastActivity.Load(); activity != 0 && now.Sub(time.Unix(0, activity)) < automaticGitIdleDelay {
+		return false
+	}
+	return s.gitSyncPending || s.prefs.Settings.SyncMinutes > 0 && now.Sub(s.lastSync) >= time.Duration(s.prefs.Settings.SyncMinutes)*time.Minute
+}
+
+func (s *Service) runAutomaticGitSync(id string) {
+	_ = s.executeGit(Request{Action: "git-sync", VaultID: id}, "automatic")
+}
+
 func gitStatusOf(ctx context.Context, v *vault.Vault) (Data, error) {
 	info, e := v.GitStatus(ctx)
 	d := Data{GitAvailable: info.Available, GitInitialized: info.Initialized, GitBranch: info.Branch, GitRemote: info.Remote, GitUpstream: info.Upstream, GitChanges: info.Changes, GitAhead: info.Ahead, GitBehind: info.Behind, GitConflict: info.Conflict, GitStatusAt: time.Now().Format(time.RFC3339)}
@@ -54,6 +76,9 @@ func (s *Service) resetGitStateLocked() {
 	s.gitError, s.gitStatusError = "", ""
 	s.gitRefreshAt, s.lastSync = time.Time{}, time.Time{}
 	s.gitOperation = false
+	s.gitSyncPending = false
+	s.gitSyncQueued = false
+	s.gitRetryAt = time.Time{}
 }
 
 func (s *Service) applyGitStatusLocked(data Data, err error) {
@@ -115,6 +140,16 @@ func (s *Service) executeGit(r Request, source string) Response {
 		return Response{Protocol: 1, Status: "error", Code: "vault_changed", Message: "密码库已切换"}
 	}
 	s.resetGitStateLocked()
+	if source == "automatic" {
+		s.gitSyncQueued = false
+		// Recheck under the same mutex that begins the operation. Input,
+		// settings or the active vault may have changed after the timer tick.
+		if !s.autoSyncDueLocked(time.Now()) {
+			out := Response{RequestID: r.RequestID, Protocol: 1, Status: "ok", Data: s.snapshot()}
+			s.mu.Unlock()
+			return out
+		}
+	}
 	mutation := r.Action != "git-status"
 	if !mutation && s.gitOperation {
 		out := Response{RequestID: r.RequestID, Protocol: 1, Status: "ok", Data: s.snapshot()}
@@ -131,8 +166,11 @@ func (s *Service) executeGit(r Request, source string) Response {
 		s.gitEpoch++
 	}
 	epoch := s.gitEpoch
+	pendingBeforeSync := s.gitSyncPending
 	if r.Action == "git-sync" {
 		s.lastSync = time.Now()
+		s.gitSyncPending = false
+		s.gitRetryAt = time.Time{}
 		s.gitData.GitSyncing = true
 		s.gitError = ""
 	}
@@ -181,8 +219,14 @@ func (s *Service) executeGit(r Request, source string) Response {
 		s.applyGitStatusLocked(data, statusErr)
 	}
 	if r.Action == "git-sync" {
-		s.cachedAt = time.Time{}
-		s.entriesVersion++
+		if err != nil && (source == "automatic" || s.prefs.Settings.AutoSync || pendingBeforeSync || s.gitSyncPending) {
+			s.gitSyncPending = true
+			s.gitRetryAt = time.Now().Add(automaticGitRetryDelay)
+		}
+		if result.Changed {
+			s.cachedAt = time.Time{}
+			s.entriesVersion++
+		}
 		s.gitData.GitLastSync = time.Now().Format(time.RFC3339)
 		if err == nil {
 			if result.State == "local" {
@@ -207,10 +251,10 @@ func (s *Service) executeGit(r Request, source string) Response {
 		out.Code, out.Message = classify(err)
 	}
 	s.log(r.Action, source, out.Status)
-	if s.onGitChange != nil {
+	if mutation && s.onGitChange != nil {
 		go s.onGitChange()
 	}
-	if err == nil && r.Action == "git-sync" && s.onChange != nil {
+	if r.Action == "git-sync" && result.Changed && s.onChange != nil {
 		callback := s.onChange
 		go callback()
 	}

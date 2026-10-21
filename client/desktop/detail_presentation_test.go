@@ -95,9 +95,9 @@ func TestDetailDeleteFollowsEditAndUsesConfirmation(t *testing.T) {
 				copyControls++
 			}
 		}
-		// The labeled copy button also contains its visible text, so the tester
-		// records two occurrences for the single password copy action.
-		if copyControls != 2 {
+		// The specific field name belongs to the accessible label. Every visible
+		// copy action uses the same compact wording so its icon and right edge align.
+		if copyControls != 1 {
 			t.Fatalf("expected one labeled password copy button, got %d text occurrences", copyControls)
 		}
 		if err := view.Click(a.t("移到回收站")); err != nil {

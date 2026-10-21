@@ -33,6 +33,12 @@ type ShellOptions struct {
 	// Use HeaderHeight(c) as top padding to keep controls below it while
 	// allowing a region's background to extend to the top. Nil leaves it empty.
 	Left, Content func(*ui.Context)
+	// LeftBackground paints the entire sidebar, including its header and
+	// bottom toolbar. Nil preserves the platform material or theme surface.
+	LeftBackground func(*ui.Context) ui.Color
+	// HeaderBackground paints the full header and adds a bottom separator.
+	// Nil preserves the transparent header over the underlying regions.
+	HeaderBackground func(*ui.Context) ui.Color
 	// ContentTitle builds the leading main-content titlebar area. It may contain
 	// a title, breadcrumbs or actions; nil leaves it blank. Shell clips it to
 	// the room after the sidebar control and hides it on replacement pages.
@@ -52,6 +58,9 @@ type ShellOptions struct {
 	// arrow keys adjust the width; double-clicking the separator restores it.
 	// Shell retains the chosen width across toggles and page changes.
 	LeftWidth int
+	// Optional reset width, separate from a restored initial width.
+	LeftResetWidth    int
+	OnLeftWidthChange func(float32)
 	// LeftMinWidth defaults to 120 DIPs when non-positive. A non-positive
 	// LeftMaxWidth adds no fixed limit; a positive maximum below the minimum
 	// is raised to the minimum. Visible width is capped only to keep the resize
@@ -60,10 +69,17 @@ type ShellOptions struct {
 	LeftMinWidth, LeftMaxWidth int
 	// The left sidebar starts open.
 	LeftCollapsed bool
+	// LeftOverlayBelow automatically hides the sidebar at or below this
+	// viewport width. The toggle then opens it over the content instead of
+	// reducing the content width. Non-positive values retain the docked layout.
+	// Returning to a wider viewport restores the user's docked expansion state.
+	LeftOverlayBelow int
 	// Labels allow applications to localize the sidebar controls.
 	LeftToggleLabel string
 	// LeftResizeLabel names the draggable, keyboard-accessible separator.
 	LeftResizeLabel string
+	// LeftOverlayCloseLabel names the clickable overlay backdrop.
+	LeftOverlayCloseLabel string
 	// Windows caption button labels; empty values use English defaults.
 	MinimizeLabel, MaximizeLabel, RestoreLabel, CloseLabel string
 	// Toasts places the window's toasts; top placements also clear the header.
@@ -86,6 +102,9 @@ type Shell struct {
 	page      func(*ui.Context)
 	leftOpen  bool
 	leftWidth float32
+	// Narrow overlays have their own expansion state so a temporary reveal
+	// never overwrites the user's docked sidebar preference.
+	leftOverlay, leftOverlayOpen bool
 }
 
 type shellWindow interface {
@@ -106,6 +125,14 @@ func NewShell(options ShellOptions) *Shell {
 		s.window.OnUnmaximize(s.refresh)
 	}
 	return s
+}
+
+// Layout creates the same shell presentation without creating a native window.
+// It supports embedding and headless UI testing; Window returns nil, and the
+// host rendering the returned view owns invalidation after shell state changes.
+func Layout(options ShellOptions) (*Shell, func(*ui.Context)) {
+	s := newShell(options)
+	return s, s.view
 }
 
 const (
@@ -144,6 +171,9 @@ func newShell(options ShellOptions) *Shell {
 	}
 	if options.LeftResizeLabel == "" {
 		options.LeftResizeLabel = "Resize sidebar"
+	}
+	if options.LeftOverlayCloseLabel == "" {
+		options.LeftOverlayCloseLabel = "Close sidebar"
 	}
 	return &Shell{options: options, leftOpen: !options.LeftCollapsed, leftWidth: float32(options.LeftWidth)}
 }
@@ -197,20 +227,73 @@ func (s *Shell) SetLeftWidth(width float32) {
 	if math.IsNaN(float64(width)) || math.IsInf(float64(width), 0) {
 		return
 	}
-	s.leftWidth = max(float32(s.options.LeftMinWidth), width)
+	next := max(float32(s.options.LeftMinWidth), width)
 	if s.options.LeftMaxWidth > 0 {
-		s.leftWidth = min(s.leftWidth, float32(s.options.LeftMaxWidth))
+		next = min(next, float32(s.options.LeftMaxWidth))
+	}
+	if next != s.leftWidth {
+		s.leftWidth = next
+		if s.options.OnLeftWidthChange != nil {
+			s.options.OnLeftWidthChange(next)
+		}
 	}
 	s.refresh()
 }
 
-// LeftExpanded reports the requested state, including during an animation.
-func (s *Shell) LeftExpanded() bool { return s.leftOpen }
+// LeftExpanded reports the requested state in the current viewport, including
+// during an animation. Narrow overlays start closed on each layout change.
+func (s *Shell) LeftExpanded() bool {
+	if s.leftOverlay {
+		return s.leftOverlayOpen
+	}
+	return s.leftOpen
+}
 
-// SetLeftExpanded animates the interior layout without resizing the window.
+// LeftDockedExpanded reports the user's expansion preference for wide windows.
+// Unlike LeftExpanded, temporary narrow overlays do not change this value.
+// Applications persisting sidebar preferences should store this state.
+func (s *Shell) LeftDockedExpanded() bool { return s.leftOpen }
+
+// LeftOverlayActive reports whether the last frame used the narrow layout.
+func (s *Shell) LeftOverlayActive() bool { return s.leftOverlay }
+
+// SetLeftExpanded animates the sidebar without resizing the window. In a narrow
+// viewport it only opens or closes the overlay, retaining the docked preference.
 func (s *Shell) SetLeftExpanded(open bool) {
-	s.leftOpen = open
+	if s.leftOverlay {
+		s.leftOverlayOpen = open
+	} else {
+		s.leftOpen = open
+	}
 	s.refresh()
+}
+
+func (s *Shell) overlayAt(width float32) bool {
+	return s.options.LeftOverlayBelow > 0 && width <= float32(s.options.LeftOverlayBelow)
+}
+
+func (s *Shell) maxLeftWidth(viewportWidth float32) float32 {
+	// Keep the full resize handle reachable at the window's right edge.
+	maxWidth := max(float32(0), viewportWidth-3)
+	if s.options.LeftMaxWidth > 0 {
+		maxWidth = min(maxWidth, float32(s.options.LeftMaxWidth))
+	}
+	return maxWidth
+}
+
+func (s *Shell) visibleLeftWidth(viewportWidth float32) float32 {
+	return min(s.leftWidth, s.maxLeftWidth(viewportWidth))
+}
+
+// ContentWidth reports the main region's target width in DIPs. Narrow overlays
+// do not consume content space. During docked sidebar animations the actual
+// width approaches this value; replacement pages always use the full viewport.
+// This is a pure query and may be called before the next frame is built.
+func (s *Shell) ContentWidth(viewportWidth float32) float32 {
+	if s.page != nil || s.overlayAt(viewportWidth) || !s.leftOpen {
+		return max(0, viewportWidth)
+	}
+	return max(0, viewportWidth-s.visibleLeftWidth(viewportWidth))
 }
 
 func (s *Shell) refresh() {
@@ -270,7 +353,12 @@ func (s *Shell) build(c *ui.Context) {
 	}
 	// Snapshot the page for this frame; callbacks can change it for the next.
 	page := s.page
-	leftTarget := openFraction(s.leftOpen)
+	width, _ := c.Size()
+	if overlay := s.overlayAt(width); overlay != s.leftOverlay {
+		s.leftOverlay, s.leftOverlayOpen = overlay, false
+	}
+	leftOpen := s.LeftExpanded()
+	leftTarget := openFraction(leftOpen)
 	leftProgress := root.Animate("left", leftTarget, sidebarDuration)
 	// Also snap an animation already running when Reduce Motion is enabled.
 	if c.Preferences().ReduceMotion {
@@ -278,64 +366,89 @@ func (s *Shell) build(c *ui.Context) {
 	}
 	bar := c.TitleBar()
 	headerHeight := HeaderHeight(c)
-	width, _ := c.Size()
-	// Keep the full resize handle reachable at the window's right edge.
-	maxLeftWidth := max(float32(0), width-3)
-	if s.options.LeftMaxWidth > 0 {
-		maxLeftWidth = min(maxLeftWidth, float32(s.options.LeftMaxWidth))
+	leftWidth := s.visibleLeftWidth(width)
+	contentInset := leftWidth * leftProgress
+	if s.leftOverlay {
+		contentInset = 0
 	}
-	leftWidth := min(s.leftWidth, maxLeftWidth)
+	// Use the shell's earlier build order for Escape priority. Popovers and
+	// dialogs in either region render above the sidebar and must close first.
+	if page == nil && s.leftOverlay && leftProgress > 0 && root.OverlayShortcut(0, ui.KeyEscape) {
+		s.SetLeftExpanded(false)
+	}
 	root.Children(func() {
 		ui.Column(c).Key(page != nil).Fill().Clip().Children(func() {
 			if page != nil {
 				ui.Column(c).Fill().Background(background).Children(func() { page(c) })
 				return
 			}
-			ui.Row(c).Fill().Children(func() {
-				if leftProgress > 0 {
-					// Only the visible slice changes width. Sidebar content stays put
-					// while the opaque main region covers or uncovers it.
-					sidebar := ui.Column(c).Key("left").Width(leftWidth * leftProgress).Shrink(0).FillHeight().Clip()
-					if !vibrant {
-						sidebar.Background(c.Theme().Surface.Alpha(1))
-					}
-					sidebar.Children(func() {
-						ui.Column(c).Width(leftWidth).Shrink(0).FillHeight().
-							Disabled(!s.leftOpen).Children(func() {
-							ui.Column(c).FillWidth().Grow(1).MinHeight(0).Clip().Children(func() {
-								if s.options.Left != nil {
-									s.options.Left(c)
-								}
-							})
-							if s.options.LeftToolbar != nil {
-								ui.Toolbar(c, func() { s.options.LeftToolbar(c) }).
-									FillWidth().Shrink(0).Padding(8)
-							}
-						})
-					})
-				}
-				ui.Column(c).Key("content").Grow(1).MinWidth(0).FillHeight().Background(background).Clip().Children(func() {
+			ui.Box(c).Fill().Children(func() {
+				// Stable parents and keys retain editor, focus and scroll state
+				// when the same sidebar changes between docked and overlay layouts.
+				ui.Column(c).Key("content").Absolute().Left(contentInset).Top(0).Right(0).Bottom(0).
+					Background(background).Clip().Children(func() {
 					ui.Column(c).Fill().Children(func() {
 						if s.options.Content != nil {
 							s.options.Content(c)
 						}
 					})
-					if leftProgress > 0 {
+					if leftProgress > 0 && !s.leftOverlay {
 						shellSeparator(c)
+					}
+				})
+				if s.leftOverlay && leftProgress > 0 {
+					backdrop := ui.Box(c).Key("left-backdrop").Absolute().Left(0).Top(headerHeight).Right(0).Bottom(0).
+						Background(ui.RGBA(0, 0, 0, .14*leftProgress)).Role(ui.RoleButton).
+						Label(s.options.LeftOverlayCloseLabel).KeepFocus()
+					if backdrop.Clicked() {
+						s.SetLeftExpanded(false)
+					}
+				}
+				sidebar := ui.Column(c).Key("left").Absolute().Left(0).Top(0).Bottom(0).
+					Width(leftWidth * leftProgress).Clip()
+				if s.options.LeftBackground != nil {
+					sidebar.Background(s.options.LeftBackground(c))
+				} else if !vibrant || s.leftOverlay {
+					sidebar.Background(c.Theme().Surface.Alpha(1))
+				}
+				// Blank sidebar space is a hit target too, so it never dismisses
+				// the backdrop beneath it.
+				sidebar.Clicked()
+				sidebar.Children(func() {
+					ui.Column(c).Width(leftWidth).Shrink(0).FillHeight().
+						Disabled(!leftOpen).Children(func() {
+						ui.Column(c).FillWidth().Grow(1).MinHeight(0).Clip().Children(func() {
+							if s.options.Left != nil {
+								s.options.Left(c)
+							}
+						})
+						if s.options.LeftToolbar != nil {
+							ui.Toolbar(c, func() { s.options.LeftToolbar(c) }).
+								FillWidth().Shrink(0).Padding(8)
+						}
+					})
+					if s.leftOverlay && leftProgress > 0 {
+						ui.Box(c).Absolute().Right(0).Top(0).Bottom(0).Width(1).Background(c.Theme().Border)
 					}
 				})
 			})
 		})
-		// An unpainted header overlays the full-height columns. Only its controls
-		// occupy the safe area; builders decide whether to inset their content.
+		// The header overlays the full-height columns. Only its controls occupy
+		// the safe area; builders decide whether to inset their content.
 		leftInset := max(8, bar.Left)
 		if runtime.GOOS == "darwin" && bar.Left > 0 {
 			leftInset += 16
 		}
 		rightInset := max(8, bar.Right)
-		ui.Row(c).Key("header").Absolute().Top(0).Left(0).Right(0).Height(headerHeight).
-			AlignItems(ui.Center).Padding(6, rightInset, 6, leftInset).
-			DragWindow().Children(func() {
+		header := ui.Row(c).Key("header").Absolute().Top(0).Left(0).Right(0).Height(headerHeight).
+			AlignItems(ui.Center).Padding(6, rightInset, 6, leftInset).DragWindow()
+		if s.options.HeaderBackground != nil {
+			header.Background(s.options.HeaderBackground(c))
+		}
+		header.Children(func() {
+			if s.options.HeaderBackground != nil {
+				ui.Box(c).Key("header-separator").Absolute().Left(0).Right(0).Bottom(0).Height(1).Background(c.Theme().Border)
+			}
 			if page == nil {
 				leadingWidth := float32(0)
 				if s.options.LeadingHeader != nil {
@@ -345,12 +458,12 @@ func (s *Shell) build(c *ui.Context) {
 					})
 				}
 				if IconButton(c, lucide.PanelLeft(), s.options.LeftToggleLabel).Clicked() {
-					s.SetLeftExpanded(!s.leftOpen)
+					s.SetLeftExpanded(!leftOpen)
 				}
 				// Align the title with the main surface, but keep it beyond the
 				// leading toggle when the sidebar is narrow or collapsed.
-				titleInset := max(8, leftWidth*leftProgress+16-leftInset-max(32, c.Theme().Rem(2))-leadingWidth)
-				if s.options.LeftHeader != nil && s.leftOpen && leftProgress == 1 && titleInset > 24 {
+				titleInset := max(8, contentInset+16-leftInset-max(32, c.Theme().Rem(2))-leadingWidth)
+				if s.options.LeftHeader != nil && leftOpen && !s.leftOverlay && leftProgress == 1 && titleInset > 24 {
 					ui.Row(c).Key("left-header").Width(titleInset - 24).Shrink(0).FillHeight().
 						AlignItems(ui.Center).Clip().Children(func() {
 						ui.Spacer(c)
@@ -358,7 +471,7 @@ func (s *Shell) build(c *ui.Context) {
 					})
 					titleInset = 24
 				}
-				ui.Row(c).Grow(1).MinWidth(0).FillHeight().Clip().Padding(0, 8, 0, titleInset).Children(func() {
+				ui.Row(c).Key("content-title").Grow(1).MinWidth(0).FillHeight().Clip().Padding(0, 8, 0, titleInset).Children(func() {
 					if s.options.ContentTitle != nil {
 						s.options.ContentTitle(c)
 					}
@@ -372,8 +485,8 @@ func (s *Shell) build(c *ui.Context) {
 			}
 		})
 		// The full-height handle wins hit testing over the draggable header.
-		if page == nil && s.leftOpen && leftProgress == 1 {
-			s.resizeHandle(c, leftWidth, maxLeftWidth)
+		if page == nil && leftOpen && !s.leftOverlay && leftProgress == 1 {
+			s.resizeHandle(c, leftWidth, s.maxLeftWidth(width))
 		}
 	})
 }
@@ -395,10 +508,14 @@ func (s *Shell) resizeHandle(c *ui.Context, width, maxWidth float32) {
 		next += 10
 	}
 	if handle.DoubleClicked() {
-		s.leftWidth = float32(s.options.LeftWidth)
+		reset := s.options.LeftResetWidth
+		if reset <= 0 {
+			reset = s.options.LeftWidth
+		}
+		s.SetLeftWidth(float32(reset))
 		c.Invalidate()
 	} else if next != width {
-		s.leftWidth = max(float32(s.options.LeftMinWidth), min(next, maxWidth))
+		s.SetLeftWidth(min(next, maxWidth))
 		c.Invalidate()
 	}
 	handle.FocusRing(handle.FocusVisible())

@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Theme } from '@radix-ui/themes';
 import { LanguageProvider } from './LanguageProvider';
+import { client } from '../lib/client';
+import { useUserActivity } from '../lib/use-user-activity';
 import { defaultAppearancePreferences, normalizeAppearancePreferences, readAppearancePreferences, watchAppearancePreferences, writeAppearancePreferences, type AppearancePreferences } from '../lib/appearance';
 import appIconURL from '../assets/app-icon.png';
 import monochromeIconURL from '../assets/app-icon-monochrome.png';
@@ -17,6 +19,7 @@ const AppearanceContext = createContext({
 export const useAppearance = () => useContext(AppearanceContext);
 
 export function Provider({ children, demo = false, initialPreferences }: { children: React.ReactNode; demo?: boolean; initialPreferences?: Partial<AppearancePreferences> }) {
+  useUserActivity(client, !demo);
   const [preferences, setPreferences] = useState(() => normalizeAppearancePreferences({ ...defaultAppearancePreferences, ...initialPreferences }));
   const [saving, setSaving] = useState(false);
   const revision = useRef(0);

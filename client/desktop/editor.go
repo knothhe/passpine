@@ -312,14 +312,16 @@ func (a *application) editorView(c *ui.Context) {
 	if a.editor.fields == nil {
 		a.editor.fields = &editorFields{usernameLine: -1, websiteLine: -1}
 	}
-	ui.Column(c).Key("entry-editor").Fill().MinWidth(0).MaxWidth(808).AlignSelf(ui.Center).Padding(24).Gap(16).Children(func() {
+	ui.Column(c).Key(struct{ identity *editorIdentity }{a.editor.identity}).Fill().MinWidth(0).MaxWidth(808).AlignSelf(ui.Center).Padding(24).Gap(16).Children(func() {
 		title := a.t("新建条目")
 		if a.editor.originalPath != "" {
 			title = a.t("编辑条目")
 		}
-		ui.Row(c).FillWidth().AlignItems(ui.Start).Children(func() {
-			ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
-				components.Text(c, title).FontSize(scaledFontSize(c, 22)).Bold()
+		ui.Row(c).FillWidth().AlignItems(ui.Start).Gap(12).Children(func() {
+			ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+				ui.Row(c).FillWidth().Height(32).AlignItems(ui.Center).Children(func() {
+					components.Text(c, title).FontSize(scaledFontSize(c, 22)).Bold()
+				})
 				if a.editor.originalPath != "" {
 					components.Text(c, a.editor.originalPath).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).Wrap()
 				}
@@ -356,22 +358,28 @@ func (a *application) editorView(c *ui.Context) {
 					muted(c, a.t("第一行是密码，其余行按原样保存。"))
 				} else {
 					changed := false
-					ui.Row(c).FillWidth().Gap(8).AlignItems(ui.End).Children(func() {
-						ui.Column(c).Key("editor-password").Grow(1).Children(func() {
-							if field(c, a.t("密码"), &a.editor.password, a.t("输入或生成密码"), !a.editor.revealPassword).Changed() {
+					ui.Column(c).Key("editor-password").FillWidth().Gap(6).Children(func() {
+						components.Text(c, a.t("密码")).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
+						ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+							input := textBox(c, &a.editor.password, components.TextBoxOptions{}).Grow(1).MinWidth(0).
+								Label(a.t("密码")).Placeholder(a.t("输入或生成密码"))
+							if !a.editor.revealPassword {
+								input.Password()
+							}
+							if input.Changed() {
 								changed = true
 							}
+							eye := lucide.Eye()
+							if a.editor.revealPassword {
+								eye = lucide.EyeOff()
+							}
+							if iconButton(c, eye, a.t("显示或隐藏编辑密码"), components.ButtonGhost).Shrink(0).Clicked() {
+								a.editor.revealPassword = !a.editor.revealPassword
+							}
+							if iconButton(c, lucide.Sparkles(), a.t("生成并填入密码"), components.ButtonGhost).Shrink(0).Clicked() {
+								a.openGenerator()
+							}
 						})
-						eye := lucide.Eye()
-						if a.editor.revealPassword {
-							eye = lucide.EyeOff()
-						}
-						if iconButton(c, eye, a.t("显示或隐藏编辑密码"), components.ButtonGhost).Clicked() {
-							a.editor.revealPassword = !a.editor.revealPassword
-						}
-						if iconButton(c, lucide.Sparkles(), a.t("生成并填入密码"), components.ButtonGhost).Clicked() {
-							a.openGenerator()
-						}
 					})
 					if field(c, a.t("用户名"), &a.editor.username, a.t("可选"), false).Changed() {
 						changed = true
@@ -386,13 +394,13 @@ func (a *application) editorView(c *ui.Context) {
 								continue
 							}
 							ui.Row(c).Key(row.id).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-								if textBox(c, &row.key, components.TextBoxOptions{}).Width(150).Label(a.t("自定义字段名称 %d", row.id)).Placeholder(a.t("字段名")).Changed() {
+								if textBox(c, &row.key, components.TextBoxOptions{}).Width(150).MinWidth(88).Shrink(1).Label(a.t("自定义字段名称 %d", row.id)).Placeholder(a.t("字段名")).Changed() {
 									changed = true
 								}
-								if textBox(c, &row.value, components.TextBoxOptions{}).Grow(1).Label(a.t("自定义字段值 %d", row.id)).Placeholder(a.t("字段值")).Changed() {
+								if textBox(c, &row.value, components.TextBoxOptions{}).Grow(1).MinWidth(0).Label(a.t("自定义字段值 %d", row.id)).Placeholder(a.t("字段值")).Changed() {
 									changed = true
 								}
-								if iconButton(c, lucide.Trash(), a.t("删除自定义字段 %d", row.id), components.ButtonGhost).Clicked() {
+								if iconButton(c, lucide.Trash(), a.t("删除自定义字段 %d", row.id), components.ButtonGhost).Shrink(0).Clicked() {
 									row.deleted, changed = true, true
 								}
 							})

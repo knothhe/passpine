@@ -125,6 +125,7 @@ func (a *application) restoreLocation(target navigationLocation) {
 	if a.page == "entries" && !a.setup {
 		a.syncSelectedIndex()
 	}
+	a.closeNavigationOverlay()
 	a.invalidate()
 }
 
@@ -160,6 +161,7 @@ func (a *application) navigateSettingsCategory(category string) {
 		a.hidePreferences()
 	}
 	a.settingsState.Category, a.settingsState.Query = category, ""
+	a.closeNavigationOverlay()
 	a.invalidate()
 }
 

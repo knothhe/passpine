@@ -5,7 +5,19 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/knothhe/passpine/client/assets"
+	"github.com/knothhe/passpine/client/internal/traybutton"
 )
+
+type trayButtonController interface {
+	SetHighlighted(bool)
+	Close()
+}
+
+func (a *application) updateTrayHighlight() {
+	if a.lifecycle.trayButton != nil {
+		a.lifecycle.trayButton.SetHighlighted(a.quick.visible && a.quick.mode == quickSearchTray)
+	}
+}
 
 func (a *application) startNativeIntegrations() {
 	a.lifecycle.nativeReady = true
@@ -53,6 +65,12 @@ func (a *application) startNativeIntegrations() {
 	if runtime.GOOS != "linux" {
 		tray.OnClick(a.trayClicked)
 		tray.OnRightClick(a.showTrayMenu)
+	}
+	// MyGo has no status-button highlight API. Keep its click handler as a
+	// fallback if the native button cannot be found during installation.
+	if button, err := traybutton.Install("Passpine", a.trayClicked); err == nil {
+		a.lifecycle.trayButton = button
+		a.updateTrayHighlight()
 	}
 	a.registerGlobalShortcut()
 }
@@ -107,6 +125,11 @@ func (a *application) showTrayMenu() {
 		return
 	}
 	a.tray.SetMenu(a.lifecycle.trayMenu)
-	defer a.tray.SetMenu(nil)
+	defer func() {
+		a.tray.SetMenu(nil)
+		// Menu tracking clears AppKit's highlight after a menu action may
+		// already have opened the quick panel.
+		a.updateTrayHighlight()
+	}()
 	a.tray.PopUpMenu()
 }

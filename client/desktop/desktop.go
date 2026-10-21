@@ -26,7 +26,7 @@ type Backend interface {
 	Execute(app.Request) app.Response
 }
 
-const defaultSidebarWidth = 380
+const defaultSidebarWidth = 200
 
 type application struct {
 	buildVersion                                                         string
@@ -53,6 +53,8 @@ type application struct {
 	errorText, notice, page, filter, query, selected                     string
 	searchRef                                                            ui.Ref
 	list                                                                 components.ListState
+	managerListPreferredWidth                                            float32
+	managerLayout                                                        managerLayoutState
 	selectedIndex                                                        int
 	filtered                                                             []app.Entry
 	vaultSelection                                                       string
@@ -82,6 +84,7 @@ type application struct {
 	recovery                                                             []app.RecoveryItem
 	activity                                                             []app.Activity
 	recoveryKind                                                         int
+	recoverySelection                                                    string
 	restoreDestination                                                   string
 	generator                                                            generatorState
 	clipboard                                                            string
@@ -132,6 +135,7 @@ func Run(service *app.Service, version string) error {
 	mygo.App.OnSecondInstance(func([]string, string) { a.show() })
 	mygo.App.OnActivate(func(bool) { a.show() })
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
+		a.saveManagerLayout()
 		a.saveQuickSearchPosition()
 		a.stopLightweightTimer()
 		a.closing = true
@@ -146,6 +150,10 @@ func Run(service *app.Service, version string) error {
 	})
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
 		mygo.GlobalShortcut.UnregisterAll()
+		if a.lifecycle.trayButton != nil {
+			a.lifecycle.trayButton.Close()
+			a.lifecycle.trayButton = nil
+		}
 		if a.tray != nil {
 			a.tray.Destroy()
 			a.tray = nil
@@ -160,7 +168,7 @@ func Run(service *app.Service, version string) error {
 		})
 	})
 	service.SetOnChange(func() { mygo.RunOnMain(func() { a.queueMetadataRefresh(true) }) })
-	service.SetOnGitChange(func() { mygo.RunOnMain(func() { a.queueMetadataRefresh(false) }) })
+	service.SetOnGitChange(func() { mygo.RunOnMain(func() { a.refreshGitState() }) })
 	service.SetOnLock(func() {
 		mygo.RunOnMain(func() {
 			a.handleSessionLock()
@@ -195,6 +203,7 @@ func Run(service *app.Service, version string) error {
 func newApplication(service Backend) *application {
 	a := &application{service: service, runOnMain: mygo.RunOnMain, page: "entries", filter: "all", selectedIndex: -1, generator: generatorState{length: 24, lower: true, upper: true, numbers: true, symbols: true, exclude: true}, lastInput: time.Now(), stop: make(chan struct{})}
 	a.lifecycle.resumeTarget = "main"
+	a.restoreManagerLayout()
 	a.initializeEntryList()
 	return a
 }
@@ -354,7 +363,7 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 		}
 	}
 	if r.Status != "ok" {
-		if requestAction == "fetch" && a.pendingSelection == "" {
+		if (requestAction == "fetch" || requestAction == "copy" && a.detailTransition.unlocking) && a.pendingSelection == "" {
 			a.clearDetailTransition()
 		}
 		a.errorText = r.Message
@@ -493,6 +502,7 @@ func (a *application) clearSecrets() {
 	a.closeGenerator()
 	a.backupOpen, a.backupPassphrase = false, ""
 	a.recovery = nil
+	a.recoverySelection, a.restoreDestination = "", ""
 	a.clearClipboard()
 }
 
@@ -545,6 +555,12 @@ func (a *application) clock() {
 			}
 
 			a.refreshSessionLock()
+			if a.state.Configured && a.lastInput.After(a.lastTouch) {
+				a.lastTouch = time.Now()
+				if service, ok := a.service.(interface{ Touch() }); ok {
+					go service.Touch()
+				}
+			}
 			if !a.state.Locked && a.state.Configured {
 				if a.detail.Contents != "" {
 					document := vault.ParseDocument(a.detail.Entry, a.detail.Contents, a.detail.Revision)
@@ -556,12 +572,6 @@ func (a *application) clock() {
 								a.invalidate()
 							}
 						}
-					}
-				}
-				if a.lastInput.After(a.lastTouch) {
-					a.lastTouch = time.Now()
-					if service, ok := a.service.(interface{ Touch() }); ok {
-						go service.Touch()
 					}
 				}
 				if a.editor.open && a.editor.dirty() && !a.editor.draftSaved && !a.editor.draftAttempted && a.editor.path != "" && a.editor.contents != "" && time.Since(a.lastInput) > 600*time.Millisecond && !a.busy {
@@ -771,6 +781,7 @@ func (a *application) navigate(page, filter string) {
 	if isPreferencesPage(page) {
 		a.loadPreferencesPage(page)
 	}
+	a.closeNavigationOverlay()
 	a.invalidate()
 }
 
@@ -856,28 +867,20 @@ func (a *application) entries() []app.Entry {
 
 func (a *application) sidebarView(c *ui.Context) {
 	ui.Column(c).Fill().Padding(sidebar.HeaderHeight(c), 0, 0, 0).Children(func() {
-		if isPreferencesPage(a.page) && !a.setup {
+		if (a.page == "settings" || a.page == "activity") && !a.setup {
 			a.settingsSidebar(c)
 		} else {
-			a.listView(c)
+			a.navigationSidebar(c)
 		}
 	})
 }
 
 func (a *application) sidebarToolbar(c *ui.Context) {
-	if iconButton(c, lucide.Settings(), a.t("设置"), components.ButtonGhost).Clicked() {
-		a.navigate("settings", "")
-	}
-	ui.Spacer(c)
-	if a.page == "entries" && !a.setup && a.state.Configured && (!a.state.Locked || a.state.Settings.BrowseWhileLocked) {
-		label := a.countLabel(len(a.filtered))
-		if strings.TrimSpace(a.query) != "" {
-			label = fmt.Sprintf(a.t("%d / %d 个条目"), len(a.filtered), len(a.state.Entries))
+	ui.Column(c).FillWidth().Padding(0, 4).Children(func() {
+		if managerNavigationItem(c, "settings", a.t("设置"), a.t("设置"), lucide.Settings(), a.page == "settings", "", 0).Clicked() {
+			a.navigate("settings", "")
 		}
-		ui.Row(c).Label(a.t("条目数量")).Children(func() {
-			components.Text(c, label).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
-		})
-	}
+	})
 }
 
 func (a *application) header(c *ui.Context) {
@@ -919,12 +922,12 @@ func (a *application) header(c *ui.Context) {
 func (a *application) mainContentWidth(c *ui.Context) float32 {
 	width, _ := c.Size()
 	if a.shell == nil {
+		if width <= 960 {
+			return width
+		}
 		return width - defaultSidebarWidth
 	}
-	if a.shell.LeftExpanded() {
-		return width - a.shell.LeftWidth()
-	}
-	return width
+	return a.shell.ContentWidth(width)
 }
 
 func (a *application) vaultSelector(c *ui.Context) {
@@ -947,7 +950,7 @@ func (a *application) vaultSelector(c *ui.Context) {
 			for _, v := range a.state.Vaults {
 				v := v
 				found = found || v.ID == a.state.VaultID
-				sel.Item(v.ID).Label(a.t("切换到密码库 ") + v.Name).Children(func() { components.Text(c, v.Name).SingleLine() })
+				sel.Item(v.ID).Label(a.t("切换到密码库 %s", v.Name)).Children(func() { components.Text(c, v.Name).SingleLine() })
 			}
 			if !found {
 				sel.Item(a.state.VaultID).Label(a.t("当前密码库")).Children(func() { components.Text(c, a.state.VaultName).SingleLine() })
@@ -981,11 +984,9 @@ func (a *application) contentView(c *ui.Context) {
 		c.OnShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
 	}
 	ui.Column(c).Fill().Clip().Children(func() {
-		page := ui.Column(c).Key(a.pagePresentationKey()).Fill().Padding(sidebar.HeaderHeight(c), 0, 0, 0).Transition(a.pageTransition(c))
-		// History changes within the entries page fade without rebuilding its
-		// descendants, preserving pending-detail geometry, scroll and focus.
-		timeline := page.Timeline("navigation-feedback", ui.TimelineOptions{Run: a.history.revision})
-		page.Opacity(timeline.Tween(ui.Tween{From: .72, To: 1, Duration: 150 * time.Millisecond}))
+		// Render the current surface immediately. Page-wide fades and movement
+		// also animate the stable account list when only its inspector changes.
+		page := ui.Column(c).Key(a.pagePresentationKey()).Fill().Padding(sidebar.HeaderHeight(c), 0, 0, 0)
 		page.Children(func() {
 			if (!a.state.Configured || a.setup) && !(a.page == "settings" && a.settingsState.Category == "about" && !a.setup) {
 				a.setupView(c)
@@ -995,12 +996,18 @@ func (a *application) contentView(c *ui.Context) {
 				a.unlockView(c)
 				return
 			}
-			if a.page == "entries" && a.editor.open && !a.state.Locked {
-				a.editorView(c)
+			if !a.state.Settings.BrowseWhileLocked && a.detailTransitionPresentation(c.Now()).Unlocking {
+				// Preserve the full-width authentication surface until the selected
+				// detail is ready, rather than moving it into the inspector first.
+				a.detailView(c)
 				return
 			}
 			if a.page != "settings" && a.page != "recovery" && a.page != "activity" {
-				a.vaultView(c)
+				if !a.state.Locked || a.state.Settings.BrowseWhileLocked {
+					a.managerColumnsView(c)
+				} else {
+					a.unlockView(c)
+				}
 				return
 			}
 			if a.state.Locked && a.page != "settings" && a.page != "activity" {
@@ -1009,7 +1016,7 @@ func (a *application) contentView(c *ui.Context) {
 			}
 			switch a.page {
 			case "recovery":
-				a.recoveryView(c)
+				a.recoveryColumnsView(c, a.managerListWidth(c))
 			case "settings":
 				a.settingsView(c)
 			case "activity":

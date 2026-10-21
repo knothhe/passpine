@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -35,28 +36,210 @@ func TestRequestsNeverShowGlobalProgressOrMoveContent(t *testing.T) {
 	}
 }
 
-func TestClientManagerHasOnlyEntrySidebarAndDetail(t *testing.T) {
+func TestClientManagerHasNavigationListAndDetail(t *testing.T) {
 	a := fixture()
 	view := ui.NewTester(testView(a), 1120, 760)
+	navigation, ok := view.Find("文件夹 开发")
+	if !ok || navigation.X < 0 || navigation.X+navigation.W > a.shell.LeftWidth() {
+		t.Fatalf("folder navigation is outside the left sidebar: %v", navigation)
+	}
 	row, ok := view.Find("账号 开发/GitHub")
-	if !ok || row.X < 0 || row.X+row.W > defaultSidebarWidth {
-		t.Fatalf("account rows are outside the single entry sidebar: %v", row)
+	if !ok || row.X < a.shell.LeftWidth() {
+		t.Fatalf("account rows are not in the middle column: %v", row)
 	}
 	detail, ok := view.Find("显示或隐藏密码")
-	if !ok || detail.X < defaultSidebarWidth {
-		t.Fatal("detail is not next to the entry sidebar")
+	if !ok || detail.X < row.X+row.W {
+		t.Fatal("detail is not beside the middle entry column")
 	}
-	if view.HasText("全部账号") || view.HasText("恢复中心") || view.HasText("操作记录") {
-		t.Fatal("the removed navigation column is still visible")
-	}
-	for _, label := range []string{"更多操作", "筛选文件夹", "所有文件夹"} {
-		if _, found := view.Find(label); found {
-			t.Fatalf("removed sidebar control remains: %s", label)
+	for _, label := range []string{"加密草稿", "回收站", "设置"} {
+		control, found := view.Find(label)
+		if !found || control.X+control.W > a.shell.LeftWidth() || control.Y < 600 {
+			t.Fatalf("sidebar footer control is missing or not fixed at the bottom: %s %v", label, control)
 		}
 	}
 	count, ok := view.Find("条目数量")
-	if !ok || count.X+count.W > defaultSidebarWidth || count.Y < 700 {
-		t.Fatalf("entry count is not in the sidebar footer: %v", count)
+	if !ok || count.X < a.shell.LeftWidth() || count.X+count.W > row.X+row.W+20 || count.Y < 700 {
+		t.Fatalf("entry count is not in the middle column footer: %v", count)
+	}
+}
+
+func TestFolderNavigationIncludesDescendantsAndSearchFiltersScope(t *testing.T) {
+	a := fixture()
+	a.state.Entries = append(a.state.Entries, app.Entry{Path: "开发/服务/API", Name: "API", Folder: "开发/服务"})
+	a.state.Entries = append(a.state.Entries, app.Entry{Path: "家庭/设备/NAS", Name: "NAS", Folder: "家庭/设备"})
+	view := ui.NewTester(testView(a), 1120, 760)
+	for _, folder := range []string{"开发/服务", "家庭/设备"} {
+		if _, found := view.Find("文件夹 " + folder); found {
+			t.Fatalf("nested folder %q should not appear in the single-level sidebar", folder)
+		}
+	}
+	if _, found := view.Find("文件夹 家庭"); !found {
+		t.Fatal("a folder containing only nested entries is missing from the sidebar")
+	}
+	if err := view.Click("文件夹 开发"); err != nil {
+		t.Fatal(err)
+	}
+	view.Frame()
+	if a.filter != "folder:开发" || len(a.filtered) != 3 {
+		t.Fatalf("parent folder did not include its descendant accounts: filter=%q entries=%+v", a.filter, a.filtered)
+	}
+	if _, found := view.Find("账号 开发/服务/API"); !found {
+		t.Fatal("the selected folder omitted its nested account")
+	}
+	if err := view.Click("搜索条目"); err != nil {
+		t.Fatal(err)
+	}
+	view.Type("cloud")
+	if len(a.filtered) != 1 || a.filtered[0].Name != "Cloudflare" {
+		t.Fatal("search did not filter the current folder")
+	}
+	if err := view.Click("全部条目"); err != nil {
+		t.Fatal(err)
+	}
+	view.Frame()
+	if a.filter != "all" {
+		t.Fatal("the all-entries navigation kept the previous folder scope")
+	}
+}
+
+func TestNarrowManagerKeepsListAndDetailWithSidebarOverlay(t *testing.T) {
+	a := fixture()
+	view := ui.NewTester(testView(a), 860, 620)
+	view.SetPreferences(ui.Preferences{ReduceMotion: true})
+	if !a.shell.LeftOverlayActive() || a.shell.LeftExpanded() {
+		t.Fatal("the narrow window did not collapse its folder navigation")
+	}
+	row, ok := view.Find("账号 开发/GitHub")
+	detail, detailFound := view.Find("显示或隐藏密码")
+	if !ok || !detailFound || row.X < 0 || detail.X < row.X+row.W || detail.X+detail.W > 860 {
+		t.Fatalf("narrow layout did not retain visible list and detail columns: row=%v detail=%v", row, detail)
+	}
+	if err := view.Click("切换侧栏"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.shell.LeftExpanded() {
+		t.Fatal("the sidebar toggle did not open the narrow navigation overlay")
+	}
+	if after, found := view.Find("显示或隐藏密码"); !found || after != detail {
+		t.Fatal("opening the navigation overlay moved the detail column")
+	}
+	view.Key(0, ui.KeyEscape)
+	if a.shell.LeftExpanded() {
+		t.Fatal("Escape did not dismiss the narrow navigation overlay")
+	}
+}
+
+func TestSidebarCollapseAndResizeKeepEditorSearchAndSelection(t *testing.T) {
+	a := fixture()
+	a.filter, a.query = "folder:开发", "git"
+	a.editEntry()
+	view := ui.NewTester(testView(a), 1120, 760)
+	view.SetPreferences(ui.Preferences{ReduceMotion: true})
+	if err := view.Click("账号名称"); err != nil {
+		t.Fatal(err)
+	}
+	view.Key(ui.Cmd, ui.KeyA)
+	view.Type("GitHub edited")
+	identity, path, contents := a.editor.identity, a.editor.path, a.editor.contents
+	assertRetained := func() {
+		t.Helper()
+		if !a.editor.open || a.editor.identity != identity || a.editor.path != path || a.editor.contents != contents || a.query != "git" || a.filter != "folder:开发" || a.selected != "开发/GitHub" {
+			t.Fatal("sidebar presentation changed the current scope, query, selection or editor input")
+		}
+		if _, found := view.Find("账号名称"); !found {
+			t.Fatal("the retained editor disappeared from the detail column")
+		}
+	}
+	for range 2 {
+		if err := view.Click("切换侧栏"); err != nil {
+			t.Fatal(err)
+		}
+		assertRetained()
+	}
+	view.SetSize(860, 620)
+	assertRetained()
+	view.SetSize(1120, 760)
+	assertRetained()
+}
+
+func TestThreeColumnSettingsAndDetailIconsRemainInteractive(t *testing.T) {
+	a := fixture()
+	view := ui.NewTester(testView(a), 1120, 760)
+	for _, label := range []string{"显示全部字段", "隐藏全部字段"} {
+		if err := view.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if a.reveal {
+		t.Fatal("the detail visibility icons stopped updating the reveal state")
+	}
+	if err := view.Click("设置"); err != nil {
+		t.Fatal(err)
+	}
+	if a.page != "settings" || !view.HasText("通用") {
+		t.Fatal("the settings icon did not open the existing settings pages")
+	}
+	if err := view.Click("后退"); err != nil {
+		t.Fatal(err)
+	}
+	view.Advance(time.Second)
+	if a.page != "entries" {
+		t.Fatal("the retained history icon did not return to the manager")
+	}
+	if err := view.Click("编辑条目"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.editor.open {
+		t.Fatal("the detail edit icon did not open its inline editor")
+	}
+}
+
+func TestThreeColumnScrollAreasKeepFootersAndOtherColumnsStill(t *testing.T) {
+	a := fixture()
+	for i := range 60 {
+		folder := fmt.Sprintf("更多文件夹%02d", i)
+		a.state.Entries = append(a.state.Entries, app.Entry{Path: folder + "/Account", Name: "Account", Folder: folder})
+	}
+	a.detail.Notes = strings.Repeat("较长备注用于验证三栏独立滚动。", 200)
+	view := ui.NewTester(testView(a), 1120, 760)
+	view.SetPreferences(ui.Preferences{ReduceMotion: true})
+	footer, footerFound := view.Find("回收站")
+	count, countFound := view.Find("条目数量")
+	if !footerFound || !countFound {
+		t.Fatal("navigation or list footer is missing")
+	}
+	folder, folderFound := view.Find("文件夹 更多文件夹00")
+	if !folderFound {
+		t.Fatal("the long folder navigation fixture is missing")
+	}
+	first, last := a.list.Visible()
+	view.Scroll(100, 350, 0, 1000)
+	if after, found := view.Find("文件夹 更多文件夹00"); !found || after.Y >= folder.Y {
+		t.Fatal("the long folder navigation could not scroll")
+	}
+	if nextFirst, nextLast := a.list.Visible(); nextFirst != first || nextLast != last || a.detailScroll.Y != 0 {
+		t.Fatal("scrolling folders moved the account list or detail")
+	}
+	if after, found := view.Find("回收站"); !found || after != footer {
+		t.Fatal("scrolling folders moved their fixed recovery footer")
+	}
+	view.Scroll(350, 350, 0, 800)
+	if nextFirst, _ := a.list.Visible(); nextFirst <= first {
+		t.Fatal("the middle account list could not scroll")
+	}
+	first, last = a.list.Visible()
+	if a.detailScroll.Y != 0 {
+		t.Fatal("scrolling the account list moved detail content")
+	}
+	view.Scroll(900, 400, 0, 800)
+	if a.detailScroll.Y <= 0 {
+		t.Fatal("long detail content could not scroll independently")
+	}
+	if nextFirst, nextLast := a.list.Visible(); nextFirst != first || nextLast != last {
+		t.Fatal("scrolling detail moved the account list")
+	}
+	if after, found := view.Find("条目数量"); !found || after != count {
+		t.Fatal("scrolling the account list or detail moved the fixed list footer")
 	}
 }
 

@@ -18,7 +18,7 @@ func (a *application) settingsSidebar(c *ui.Context) {
 	categories := a.settingsCategories()
 	a.selectedSettingsCategory(categories)
 	ui.Column(c).Fill().Children(func() {
-		ui.Column(c).FillWidth().Padding(14, 16, 18, 16).Gap(12).Children(func() {
+		ui.Column(c).FillWidth().Padding(24, 16, 18, 16).Gap(12).Children(func() {
 			components.Text(c, a.t("设置")).Bold().FontSize(scaledFontSize(c, 18))
 			search := textBox(c, &a.settingsState.Query, components.TextBoxOptions{LeadingIcon: lucide.Search()}).Label(a.t("搜索设置")).Placeholder(a.t("搜索设置…")).FillWidth()
 			if search.Changed() && a.preferencesPage() != "settings" {
@@ -26,7 +26,7 @@ func (a *application) settingsSidebar(c *ui.Context) {
 			}
 		})
 		components.ScrollView(c, components.ScrollViewOptions{}).Fill().Children(func() {
-			components.Sidebar(c).Children(func() {
+			ui.Column(c).FillWidth().Padding(0, 12, 12, 12).Gap(4).Children(func() {
 				for _, category := range categories {
 					selected := category.ID == a.settingsState.Category
 					if a.preferencesPage() == "recovery" {
@@ -34,7 +34,7 @@ func (a *application) settingsSidebar(c *ui.Context) {
 					} else if a.preferencesPage() == "activity" {
 						selected = category.ID == "general"
 					}
-					if components.SidebarItem(c, category.Title, category.Icon, selected).Key(category.ID).Clicked() {
+					if managerNavigationItem(c, category.ID, category.Title, category.Title, category.Icon, selected, "", 0).Clicked() {
 						a.navigateSettingsCategory(category.ID)
 					}
 				}
@@ -56,12 +56,7 @@ func (a *application) selectedSettingsCategory(categories []components.SettingsC
 func (a *application) settingsContent(c *ui.Context, categories []components.SettingsCategory) {
 	selected := a.selectedSettingsCategory(categories)
 	searching := strings.TrimSpace(a.settingsState.Query) != ""
-	width, _ := c.Size()
-	if a.shell == nil {
-		width -= 310
-	} else if a.shell.LeftExpanded() {
-		width -= a.shell.LeftWidth()
-	}
+	width := a.mainContentWidth(c)
 	narrow := width < 660
 	title, description := categories[selected].Title, categories[selected].Description
 	if searching {

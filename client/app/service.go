@@ -56,6 +56,10 @@ type Service struct {
 	gitOperation     bool
 	gitEpoch         uint64
 	lastSync         time.Time
+	gitSyncPending   bool
+	gitSyncQueued    bool
+	gitRetryAt       time.Time
+	lastActivity     atomic.Int64
 	cancellation     atomic.Uint64
 	cancelVault      atomic.Pointer[vault.Vault]
 	cachedEntries    []vault.Entry
@@ -172,6 +176,7 @@ func (s *Service) IsLocked() bool {
 	return current == nil || !current.Status().Unlocked
 }
 func (s *Service) Touch() {
+	s.lastActivity.Store(time.Now().UnixNano())
 	if current := s.cancelVault.Load(); current != nil {
 		current.Activity()
 	}
@@ -242,14 +247,14 @@ func (s *Service) watch() {
 				_ = s.pruneActivity(time.Now())
 			}
 			s.ensureGitRefreshLocked(false)
-			syncNow := s.active != nil && s.gitData.GitInitialized && !s.gitOperation && s.prefs.Settings.AutoSync && s.prefs.Settings.SyncMinutes > 0 && time.Since(s.lastSync) >= time.Duration(s.prefs.Settings.SyncMinutes)*time.Minute
+			syncNow := !s.gitSyncQueued && s.autoSyncDueLocked(time.Now())
 			syncVaultID := s.prefs.Current
 			if syncNow {
-				s.lastSync = time.Now()
+				s.gitSyncQueued = true
 			}
 			s.mu.Unlock()
 			if syncNow {
-				go func() { _ = s.Execute(Request{Action: "git-sync", VaultID: syncVaultID}) }()
+				go s.runAutomaticGitSync(syncVaultID)
 			}
 		}
 	}
@@ -347,6 +352,16 @@ type browserResponseLease struct {
 }
 
 func (s *Service) executeWithBrowserLease(r Request, source string, browserLease *browserResponseLease) Response {
+	if r.Action == "touch" {
+		s.lastActivity.Store(time.Now().UnixNano())
+		return Response{RequestID: r.RequestID, Protocol: 1, Status: "ok"}
+	}
+	// Metadata polling is not user activity. Desktop edits also call Touch,
+	// while browser credential actions are recorded here before taking mu.
+	switch r.Action {
+	case "fetch", "copy", "save", "delete", "draft", "generate", "copy-generated", "recovery", "restore", "purge", "unlock", "lock", "switch", "create", "open", "settings", "export", "verify-backup":
+		s.lastActivity.Store(time.Now().UnixNano())
+	}
 	if r.Action == "clone" {
 		return s.executeClone(r)
 	}
@@ -830,8 +845,8 @@ func (s *Service) autoSync() {
 	if !s.prefs.Settings.AutoSync {
 		return
 	}
-	id := s.prefs.Current
-	go func() { _ = s.Execute(Request{Action: "git-sync", VaultID: id}) }()
+	s.resetGitStateLocked()
+	s.gitSyncPending = true
 }
 func validateSettings(v Settings) error {
 	if !ValidFontScale(v.FontScale) {
@@ -945,6 +960,18 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 	}
 	switch r.Action {
 	case "configure", "status", "list", "unlock", "lock", "generate":
+	case "touch":
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(raw, &fields) != nil {
+			return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})
+		}
+		for key := range fields {
+			if key != "protocol" && key != "action" && key != "requestId" {
+				return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})
+			}
+		}
+		s.lastActivity.Store(time.Now().UnixNano())
+		return encode(map[string]any{"requestId": r.RequestID, "protocol": 1, "status": "ok", "data": map[string]any{}})
 	case "copy-generated":
 		if !validGeneratedCopyRequest(r) {
 			return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})

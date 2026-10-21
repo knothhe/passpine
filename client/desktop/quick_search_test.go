@@ -454,6 +454,7 @@ func TestQuickSearchRender(t *testing.T) {
 		dark, locked   bool
 		hideNames      bool
 		copyUnlock     bool
+		unlockField    string
 		tray           bool
 		fontScale      int
 	}{
@@ -472,6 +473,8 @@ func TestQuickSearchRender(t *testing.T) {
 		{name: "tray-panel-dark-80", language: "zh-CN", width: 420, tray: true, fontScale: 80, dark: true},
 		{name: "tray-panel-light-120", language: "zh-CN", width: 420, tray: true, fontScale: 120},
 		{name: "tray-panel-dark-120", language: "zh-CN", width: 420, tray: true, fontScale: 120, dark: true},
+		{name: "tray-panel-username-unlock", language: "zh-CN", width: 420, tray: true, locked: true, copyUnlock: true, unlockField: "username"},
+		{name: "tray-panel-details-unlock-en", language: "en", width: 420, tray: true, locked: true, copyUnlock: true, unlockField: "details"},
 	} {
 		a, _ := quickSearchFixture()
 		a.state.Locked, a.state.Settings.Language = screen.locked, screen.language
@@ -485,7 +488,11 @@ func TestQuickSearchRender(t *testing.T) {
 		a.state.Settings.BrowseWhileLocked = !screen.hideNames
 		if screen.copyUnlock {
 			a.prepareQuickSearchList()
-			a.copyQuickSearchResult()
+			field := screen.unlockField
+			if field == "" {
+				field = "password"
+			}
+			a.activateQuickSearchEntry(a.quick.selected, field)
 		}
 		snapshot := a.state
 		a.service = backendFunc(func(app.Request) app.Response { return app.Response{Status: "ok", Data: snapshot} })

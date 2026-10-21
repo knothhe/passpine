@@ -97,11 +97,11 @@ type quickSearchState struct {
 	pendingCopy              quickSearchCopy
 }
 
-// A locked result keeps only its path while authentication is in progress.
+// A locked result keeps only its path and action while authentication is in progress.
 // The continuation belongs to this panel invocation and this vault session.
 type quickSearchCopy struct {
-	entry, vaultID string
-	generation     uint64
+	entry, vaultID, field string
+	generation            uint64
 }
 
 func (pending quickSearchCopy) valid(a *application) bool {
@@ -204,13 +204,21 @@ func (a *application) newQuickSearchWindow() {
 			a.hideQuickSearch()
 		}
 	})
-	window.OnBlur(func() {
-		// The OS authentication prompt temporarily takes focus from the panel.
-		if a.quick.operation != "device-unlock" {
-			a.hideQuickSearch()
-		}
-	})
-	window.OnClosed(func() { a.quick.window = nil; a.quick.visible = false })
+	window.OnBlur(a.quickSearchBlurred)
+	window.OnClosed(a.quickSearchClosed)
+}
+
+func (a *application) quickSearchBlurred() {
+	// The OS authentication prompt temporarily takes focus from the panel.
+	if a.quick.operation != "device-unlock" {
+		a.hideQuickSearch()
+	}
+}
+
+func (a *application) quickSearchClosed() {
+	a.quick.window = nil
+	a.quick.visible = false
+	a.updateTrayHighlight()
 }
 
 func (a *application) quickSearch() {
@@ -247,6 +255,7 @@ func (a *application) openQuickSearch(mode string) {
 		a.restoreGlobalQuickSearchBounds()
 	}
 	a.quick.visible, a.quick.focusPending = true, true
+	a.updateTrayHighlight()
 	a.updateLightweightTimer(time.Now())
 	a.quick.errorText, a.quick.clearFeedback = "", true
 	a.quick.refreshedUntil = time.Time{}
@@ -271,6 +280,7 @@ func (a *application) toggleQuickSearch() {
 func (a *application) hideQuickSearch() {
 	a.saveQuickSearchPosition()
 	a.quick.visible = false
+	a.updateTrayHighlight()
 	a.quick.passphrase = ""
 	a.quick.pendingCopy = quickSearchCopy{}
 	a.quick.errorText, a.quick.clearFeedback = "", true
@@ -287,6 +297,7 @@ func (a *application) closeQuickSearch() {
 	window := a.quick.window
 	a.quick.window = nil
 	a.quick.visible = false
+	a.updateTrayHighlight()
 	a.clearQuickSearchSecrets()
 	if window != nil {
 		window.Destroy()
@@ -443,6 +454,7 @@ func (a *application) quickSearchView(c *ui.Context) {
 
 func (a *application) quickSearchResultsView(c *ui.Context) {
 	q := &a.quick
+	entryTextScale := c.Theme().FontSize / 12
 	ui.Column(c).FillWidth().Grow(1).MinHeight(0).Padding(0, 14, 10, 14).Gap(10).Children(func() {
 		input := textBox(c, &q.query, components.TextBoxOptions{LeadingIcon: lucide.Search()}).
 			Ref(&q.searchRef).Label(a.t("快速搜索条目")).Placeholder(a.t("搜索名称或路径…")).FillWidth().Height(36).FontSize(scaledFontSize(c, 14))
@@ -493,23 +505,30 @@ func (a *application) quickSearchResultsView(c *ui.Context) {
 		}
 		components.List(c, &q.list, len(q.results), func(i int) {
 			entry := q.results[i]
-			row := ui.Row(c).FillWidth().Height(58).Padding(9, 12).Gap(12).AlignItems(ui.Center).Radius(c.Theme().Radius)
+			row := ui.Row(c).FillWidth().MinHeight(50).Padding(0, 5, 0, 0).Gap(3).AlignItems(ui.Center).Radius(c.Theme().Radius)
 			if i == q.selected && isMonochromePalette(c.Theme()) {
 				row.Background(c.Theme().Selection)
 			}
 			row.Children(func() {
-				components.Icon(c, lucide.KeyRound()).Size(18, 18).TextColor(c.Theme().TextMuted)
-				ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-					components.Text(c, entry.Name).FontSize(scaledFontSize(c, 14)).SingleLine()
+				open := ui.ButtonBase(c).Column().AlignItems(ui.Start).Grow(1).Shrink(1).MinWidth(0).MinHeight(50).
+					Padding(6, 7).Gap(3).Justify(ui.Center).Radius(c.Theme().Radius).Role(ui.RoleButton).Label(entry.Path).Tooltip(entry.Path).Disabled(a.busy)
+				if open.Hovered() && !a.busy {
+					open.Background(c.Theme().SurfaceHover)
+				}
+				a.bindQuickSearchEntryAction(open, i, "password")
+				open.Children(func() {
 					folder := entry.Folder
 					if folder == "" {
 						folder = a.state.VaultName
 					}
-					components.Text(c, folder).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).SingleLine()
+					components.Text(c, folder).FontSize(10 * entryTextScale).FixedLineHeight(14 * entryTextScale).TextColor(c.Theme().TextMuted).SingleLine()
+					components.Text(c, entry.Name).FontSize(12.5 * entryTextScale).FixedLineHeight(18 * entryTextScale).FontWeight(500).SingleLine()
 				})
-				if i == q.selected {
-					components.Icon(c, lucide.CornerDownLeft()).Size(14, 14).TextColor(c.Theme().TextMuted)
-				}
+				ui.Row(c).AlignItems(ui.Center).Shrink(0).Children(func() {
+					a.quickSearchEntryButton(c, lucide.UserRound(), a.t("复制用户名 %s", entry.Name), i, "username")
+					a.quickSearchEntryButton(c, lucide.KeyRound(), a.t("复制密码 %s", entry.Name), i, "password")
+					a.quickSearchEntryButton(c, lucide.ChevronRight(), a.t("查看条目 %s", entry.Name), i, "details")
+				})
 			})
 		}).FillWidth().Grow(1)
 	})
@@ -529,9 +548,20 @@ func (a *application) quickSearchUnlockView(c *ui.Context) {
 		title := a.t("解锁以快速搜索")
 		if a.quick.pendingCopy.entry != "" {
 			title = a.t("解锁以复制密码")
+			if a.quick.pendingCopy.field == "username" {
+				title = a.t("解锁以复制用户名")
+			} else if a.quick.pendingCopy.field == "details" {
+				title = a.t("解锁以查看条目")
+			}
 		}
 		components.Text(c, title).FontSize(scaledFontSize(c, 20)).Bold()
-		muted(c, a.t("验证后即可搜索并复制密码"))
+		description := a.t("验证后即可搜索并复制密码")
+		if a.quick.pendingCopy.field == "username" {
+			description = a.t("验证后即可复制所选条目的用户名")
+		} else if a.quick.pendingCopy.field == "details" {
+			description = a.t("验证后将在主窗口打开所选条目")
+		}
+		muted(c, description)
 		if a.quick.pendingCopy.entry != "" && a.state.Settings.BrowseWhileLocked {
 			components.Text(c, entryName(a.quick.pendingCopy.entry)).Bold().SingleLine()
 		}
@@ -579,16 +609,22 @@ func (a *application) moveQuickSearchSelection(delta int) {
 }
 
 func (a *application) copyQuickSearchResult() {
+	a.activateQuickSearchEntry(a.quick.selected, "password")
+}
+
+func (a *application) activateQuickSearchEntry(index int, field string) {
 	q := &a.quick
-	if a.busy || !q.visible || !a.state.Configured || q.selected < 0 || q.selected >= len(q.results) {
+	if a.busy || !q.visible || !a.state.Configured || index < 0 || index >= len(q.results) {
 		return
 	}
-	entry := q.results[q.selected].Path
+	q.selected = index
+	entry := q.results[index].Path
+	a.lastInput = time.Now()
 	if a.state.Locked {
 		if !a.state.Settings.BrowseWhileLocked {
 			return
 		}
-		q.pendingCopy = quickSearchCopy{entry: entry, vaultID: a.state.VaultID, generation: a.generation}
+		q.pendingCopy = quickSearchCopy{entry: entry, vaultID: a.state.VaultID, field: field, generation: a.generation}
 		q.passphrase, q.errorText, q.clearFeedback = "", "", true
 		q.focusPending = true
 		if a.state.Settings.DeviceUnlock && a.state.DeviceUnlockEnrolled && a.state.DeviceUnlockAvailable {
@@ -597,7 +633,18 @@ func (a *application) copyQuickSearchResult() {
 		a.invalidateQuickSearch()
 		return
 	}
-	a.callQuickSearch(app.Request{Action: "copy", Entry: entry, Field: "password"})
+	a.completeQuickSearchEntryAction(entry, field)
+}
+
+func (a *application) completeQuickSearchEntryAction(entry, field string) {
+	if field == "details" {
+		a.openQuickSearchEntryInManager(entry)
+		return
+	}
+	if field == "" {
+		field = "password"
+	}
+	a.callQuickSearch(app.Request{Action: "copy", Entry: entry, Field: field})
 }
 
 func (a *application) unlockQuickSearch(mode string) {
@@ -682,7 +729,7 @@ func (a *application) callQuickSearch(request app.Request) {
 						if pendingCopy == a.quick.pendingCopy {
 							a.quick.pendingCopy = quickSearchCopy{}
 							if pendingCopy.valid(a) {
-								a.callQuickSearch(app.Request{Action: "copy", Entry: pendingCopy.entry, Field: "password"})
+								a.completeQuickSearchEntryAction(pendingCopy.entry, pendingCopy.field)
 							}
 						}
 					}

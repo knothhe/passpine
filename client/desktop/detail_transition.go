@@ -10,44 +10,43 @@ import (
 
 const detailLoadingDelay = 180 * time.Millisecond
 
-// A transition keeps the old field structure without retaining decrypted
-// values. The view can replace just the value rows while the next entry loads.
-type detailPlaceholderField struct {
-	Key, Label string
-	Secret     bool
+// A pending read keeps the previous surface read-only until the replacement is
+// ready. Secret field values and the raw document never enter this snapshot.
+type detailDisplayField struct {
+	Key, Label, Value string
+	Secret            bool
 }
 
 type detailTransitionState struct {
 	entry, vaultID       string
 	generation, epoch    uint64
-	fields               []detailPlaceholderField
+	fields               []detailDisplayField
+	displayEntry, notes  string
 	hasNotes, hasWebsite bool
+	unlocking            bool
 }
 
 type detailTransitionPresentation struct {
 	Pending, Delayed     bool
 	Remaining            time.Duration
-	Entry                string
-	Fields               []detailPlaceholderField
+	Entry, DisplayEntry  string
+	Notes                string
+	Fields               []detailDisplayField
 	HasNotes, HasWebsite bool
+	Unlocking            bool
 }
 
 func (a *application) beginDetailTransition(path string) {
 	previous := a.detailTransition
 	if a.detail.Entry != "" && !a.state.Locked {
-		previous = detailTransitionState{fields: detailPlaceholderFields(a.detail), hasNotes: a.detail.Notes != "", hasWebsite: a.detail.URL != ""}
+		previous = detailTransitionState{fields: detailDisplayFields(a.detail), displayEntry: a.detail.Entry,
+			notes: a.detail.Notes, hasNotes: a.detail.Notes != "", hasWebsite: a.detail.URL != ""}
 	} else if previous.vaultID != a.state.VaultID || previous.generation != a.generation || previous.epoch != a.metadataEpoch {
 		previous = detailTransitionState{}
 	}
 	if a.detailTransition.entry != path || a.detailLoadingStarted.IsZero() {
 		a.detailSelectionSerial++
 		a.detailLoadingStarted = time.Now()
-		// ScrollTo's zero Animation uses a spring. Reset the offset and any
-		// in-flight glide directly so the new entry starts at the top at once.
-		a.detailScroll = ui.ScrollState{Handle: a.detailScroll.Handle}
-	}
-	if len(previous.fields) == 0 {
-		previous.fields = []detailPlaceholderField{{Key: "password", Label: "密码", Secret: true}}
 	}
 	previous.entry, previous.vaultID = path, a.state.VaultID
 	previous.generation, previous.epoch = a.generation, a.metadataEpoch
@@ -56,19 +55,19 @@ func (a *application) beginDetailTransition(path string) {
 	a.deleteOpen = false
 }
 
-func detailPlaceholderFields(data app.Data) []detailPlaceholderField {
-	fields := []detailPlaceholderField{{Key: "password", Label: "密码", Secret: true}}
+func detailDisplayFields(data app.Data) []detailDisplayField {
+	fields := []detailDisplayField{{Key: "password", Label: "密码", Secret: true}}
 	if data.Username != "" {
-		fields = append(fields, detailPlaceholderField{Key: "username", Label: "用户名"})
+		fields = append(fields, detailDisplayField{Key: "username", Label: "用户名", Value: data.Username})
 	}
 	if data.URL != "" {
-		fields = append(fields, detailPlaceholderField{Key: "url", Label: "网址"})
+		fields = append(fields, detailDisplayField{Key: "url", Label: "网址", Value: data.URL})
 	}
 	if data.OTP != "" {
-		fields = append(fields, detailPlaceholderField{Key: "otp", Label: "一次性密码", Secret: true})
+		fields = append(fields, detailDisplayField{Key: "otp", Label: "一次性密码", Secret: true})
 	}
 	for i, field := range extraFields(data.Contents) {
-		fields = append(fields, detailPlaceholderField{Key: "custom:" + strconv.Itoa(i), Label: field[0], Secret: true})
+		fields = append(fields, detailDisplayField{Key: "custom:" + strconv.Itoa(i), Label: field[0], Secret: true})
 	}
 	return fields
 }
@@ -83,8 +82,8 @@ func (a *application) restoreDetailTransitionStructure(previous detailTransition
 	if a.detail.Entry != "" || previous.vaultID != a.state.VaultID || previous.generation != a.generation || previous.epoch != a.metadataEpoch {
 		return
 	}
-	// Navigation has already cancelled the old request. Preserve its field
-	// structure for the next read while giving that read a fresh target lease.
+	// Navigation has already cancelled the old request. Preserve the read-only
+	// surface for the next read while giving that read a fresh target lease.
 	previous.entry = ""
 	a.detailTransition = previous
 }
@@ -104,6 +103,7 @@ func (a *application) detailTransitionPresentation(now time.Time) detailTransiti
 	return detailTransitionPresentation{
 		Pending: true, Delayed: remaining == 0, Remaining: remaining, Entry: a.selected,
 		Fields: transition.fields, HasNotes: transition.hasNotes, HasWebsite: transition.hasWebsite,
+		DisplayEntry: transition.displayEntry, Notes: transition.notes, Unlocking: transition.unlocking,
 	}
 }
 
@@ -117,6 +117,9 @@ func (a *application) fetchSelectedDetail(path string) {
 		if serial != a.detailSelectionSerial || generation != a.generation || vaultID != a.state.VaultID || epoch != a.metadataEpoch || a.selected != path || a.page != "entries" || a.setup || a.editor.open || a.state.Locked {
 			return
 		}
+		// Reset with the new contents, leaving the previous read-only surface
+		// at its existing offset while waiting. ScrollTo would start a spring.
+		a.detailScroll = ui.ScrollState{Handle: a.detailScroll.Handle}
 		a.detail = data
 		a.clearDetailTransition()
 	})

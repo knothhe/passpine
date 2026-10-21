@@ -32,7 +32,7 @@ func (a *application) applyLanguage() {
 		mygo.App.SetLocale(a.uiLocale())
 	}
 	if a.shell != nil {
-		a.shell.SetLabels(sidebar.Labels{LeftToggle: a.t("切换侧栏"), LeftResize: a.t("调整侧栏宽度"), Minimize: a.t("最小化"), Maximize: a.t("最大化"), Restore: a.t("还原窗口"), Close: a.t("关闭窗口")})
+		a.shell.SetLabels(sidebar.Labels{LeftToggle: a.t("切换侧栏"), LeftResize: a.t("调整侧栏宽度"), LeftOverlayClose: a.t("关闭左栏"), Minimize: a.t("最小化"), Maximize: a.t("最大化"), Restore: a.t("还原窗口"), Close: a.t("关闭窗口")})
 	}
 	if window, ok := a.quick.window.(*mygo.Window); ok {
 		window.SetTitle(a.t("Passpine 快速搜索"))
@@ -53,7 +53,7 @@ var activityLabels = map[string]map[string]string{
 		"recovery": "查看恢复副本", "restore": "恢复条目", "purge": "删除恢复副本", "export": "导出恢复私钥", "verify-backup": "验证恢复备份",
 		"git-status": "检查 Git 状态", "git-init": "初始化 Git", "git-remote": "设置 Git 远端", "git-sync": "同步密码库", "git-commit": "提交加密条目", "clone": "下载密码库",
 	},
-	"source":  {"desktop": "客户端", "browser": "浏览器"},
+	"source":  {"desktop": "客户端", "browser": "浏览器", "automatic": "自动同步"},
 	"outcome": {"ok": "成功", "error": "失败"},
 }
 

@@ -11,10 +11,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
+	sidebar "github.com/knothhe/passpine/client/internal/clientshell"
 	"github.com/knothhe/passpine/client/nativehost"
 	"github.com/knothhe/passpine/client/vault"
-	"github.com/oneo-me/onevra/source/components"
-	"github.com/oneo-me/onevra/source/icons/lucide"
 )
 
 type backendFunc func(app.Request) app.Response
@@ -47,22 +46,9 @@ func fixture() *application {
 }
 
 func testView(a *application) func(*ui.Context) {
-	return func(c *ui.Context) {
-		c.SetTheme(a.clientTheme(c))
-		ui.Row(c).Fill().Children(func() {
-			ui.Column(c).Width(defaultSidebarWidth).FillHeight().Background(c.Theme().Surface).Children(func() {
-				a.sidebarView(c)
-				ui.Row(c).FillWidth().Height(44).Padding(6, 12).AlignItems(ui.Center).Children(func() { a.sidebarToolbar(c) })
-			})
-			ui.Column(c).Grow(1).FillHeight().Children(func() { a.contentView(c) })
-		})
-		ui.Row(c).Absolute().Top(8).Left(8).AlignItems(ui.Center).Children(func() {
-			a.historyControls(c)
-			iconButton(c, lucide.PanelLeft(), a.t("切换侧栏"), components.ButtonGhost)
-		})
-		ui.Row(c).Absolute().Top(0).Left(defaultSidebarWidth).Right(0).Height(48).Padding(8, 16).Children(func() { a.header(c) })
-		components.Toasts(c)
-	}
+	shell, view := sidebar.Layout(a.mainShellOptions())
+	a.shell = shell
+	return view
 }
 
 func TestPasswordHiddenAndSearchLocal(t *testing.T) {
@@ -439,6 +425,11 @@ func TestScreensRender(t *testing.T) {
 				v := ui.NewTester(testView(a), size.width, size.height)
 				v.SetDark(size.dark)
 				if screen == "settings-about" {
+					v.Advance(time.Second)
+				}
+				if directory != "" {
+					// Capture the settled palette, rather than the navigation fade's
+					// translucent first frame over the previous window surface.
 					v.Advance(time.Second)
 				}
 				v.Frame()

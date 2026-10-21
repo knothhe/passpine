@@ -22,10 +22,9 @@ func (a *application) vaultView(c *ui.Context) {
 }
 func (a *application) listView(c *ui.Context) {
 	a.filtered = a.entries()
-	ui.Column(c).Fill().Padding(18, 16, 12, 16).Gap(14).Children(func() {
+	ui.Column(c).Fill().MinHeight(0).Padding(24, 16, 12, 16).Gap(14).Children(func() {
 		ui.Row(c).FillWidth().MinHeight(32).AlignItems(ui.Center).Gap(8).Children(func() {
-			components.Text(c, a.t("全部条目")).FontSize(scaledFontSize(c, 18)).Bold()
-			ui.Spacer(c)
+			components.Text(c, a.entriesTitle()).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").FontSize(scaledFontSize(c, 18)).Bold()
 			if iconButton(c, lucide.Plus(), a.t("新建条目"), components.ButtonGhost).Tooltip(a.t("新建条目")).Clicked() {
 				a.newEntry()
 			}
@@ -53,7 +52,7 @@ func (a *application) listView(c *ui.Context) {
 		} else {
 			components.List(c, &a.list, len(a.filtered), func(i int) {
 				e := a.filtered[i]
-				row := ui.Row(c).FillWidth().MinHeight(60).Padding(10, 9).AlignItems(ui.Center).Gap(10).Radius(c.Theme().Radius).Label(a.t("账号 %s", e.Path))
+				row := ui.Row(c).FillWidth().MinHeight(64).Padding(10, 8).AlignItems(ui.Center).Gap(10).Radius(c.Theme().Radius).Label(a.t("账号 %s", e.Path))
 				selected := e.Path == a.selected
 				showCopy := row.Hovered() || row.FocusWithin() || i == a.selectedIndex && a.list.Focused(c)
 				if selected {
@@ -102,40 +101,50 @@ func entryAvatar(c *ui.Context, path string, size float32, selected bool) {
 
 func (a *application) detailView(c *ui.Context) {
 	pending := a.detailTransitionPresentation(c.Now())
-	if a.detail.Entry == "" && !pending.Pending {
+	if pending.Pending && pending.Remaining > 0 {
+		c.After(pending.Remaining)
+	}
+	if pending.Pending && pending.Unlocking {
+		// Keep authentication's last surface until the first complete read. A
+		// password-only skeleton would add an unnecessary intermediate layout.
+		a.unlockView(c)
+		if pending.Delayed {
+			a.detailLoadingFeedback(c)
+		}
+		return
+	}
+	if a.detail.Entry == "" && (!pending.Pending || pending.DisplayEntry == "") {
 		ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Padding(24).Gap(12).Children(func() {
 			components.Icon(c, lucide.ShieldCheck).Size(36, 36).TextColor(c.Theme().TextMuted)
 			components.Text(c, a.t("选择一个条目")).FontSize(scaledFontSize(c, 18)).Bold()
-			if components.Button(c, a.t("新建条目"), components.ButtonGhost).Clicked() {
+			muted(c, a.t("从列表选择条目，在右侧查看详情。"))
+			if components.Button(c, a.t("新建条目"), components.ButtonGhost).Disabled(pending.Pending).Clicked() {
 				a.newEntry()
 			}
 		})
+		if pending.Delayed {
+			a.detailLoadingFeedback(c)
+		}
 		return
 	}
 	d := a.detail
 	path := d.Entry
 	if pending.Pending {
-		path = pending.Entry
-		if pending.Remaining > 0 {
-			c.After(pending.Remaining)
-		}
-	}
-	inset := float32(32)
-	width, _ := c.Size()
-	if width <= 900 {
-		inset = 24
+		path = pending.DisplayEntry
 	}
 	components.ScrollView(c, components.ScrollViewOptions{}).Key("detail-scroll").Label(a.t("条目详情")).TrackScroll(&a.detailScroll).Fill().Children(func() {
-		ui.Column(c).FillWidth().Padding(24, inset).AlignItems(ui.Center).Children(func() {
-			ui.Column(c).Key("entry-detail").FillWidth().MaxWidth(560).Children(func() {
+		ui.Column(c).FillWidth().AlignItems(ui.Center).Children(func() {
+			ui.Column(c).Key("entry-detail").FillWidth().MaxWidth(808).Padding(24).Children(func() {
 				ui.Row(c).Key("account-heading").FillWidth().Margin(0, 0, 26, 0).AlignItems(ui.Start).Gap(12).Children(func() {
-					ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
-						components.Text(c, entryName(path)).FontSize(scaledFontSize(c, 22)).FontWeight(500).Wrap()
+					ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+						ui.Row(c).FillWidth().MinHeight(32).AlignItems(ui.Center).Children(func() {
+							components.Text(c, entryName(path)).FillWidth().FontSize(scaledFontSize(c, 22)).FontWeight(500).Wrap()
+						})
 						ui.Row(c).Key("detail-path").FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 							components.Text(c, path).Grow(1).MinWidth(0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).Wrap()
 						})
 					})
-					ui.Row(c).Key("detail-actions").Margin(-4, 0, 0, 0).Shrink(0).AlignItems(ui.Center).Children(func() {
+					ui.Row(c).Key("detail-actions").Height(32).Shrink(0).AlignItems(ui.Center).Children(func() {
 						allRevealed := a.allDetailFieldsRevealed()
 						revealIcon, revealLabel := lucide.Eye(), a.t("显示全部字段")
 						if allRevealed {
@@ -152,9 +161,6 @@ func (a *application) detailView(c *ui.Context) {
 							a.deleteOpen = true
 						}
 					})
-					if pending.Delayed {
-						components.Text(c, a.t("正在读取账号…")).Absolute().Left(0).Bottom(-20).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).SingleLine()
-					}
 				})
 				ui.Column(c).Key("credential-card").Label(a.t("账号字段")).FillWidth().Children(func() {
 					if pending.Pending {
@@ -163,7 +169,7 @@ func (a *application) detailView(c *ui.Context) {
 							if !strings.HasPrefix(f.Key, "custom:") {
 								label = a.t(label)
 							}
-							a.detailField(c, f.Key, label, "", f.Secret, true)
+							a.detailField(c, f.Key, label, f.Value, f.Secret, true)
 						}
 					} else {
 						a.secretField(c, "password", a.t("密码"), d.Password, true)
@@ -182,14 +188,14 @@ func (a *application) detailView(c *ui.Context) {
 					}
 				})
 				if d.Notes != "" || pending.HasNotes {
-					notes := ui.Column(c).Key("detail-notes").FillWidth().Margin(24, 4, 0, 4).Gap(8)
+					notes := ui.Column(c).Key("detail-notes").FillWidth().Margin(24, 0, 0, 0).Gap(8)
 					if pending.Pending {
 						notes.MinHeight(notes.LayoutBounds().H)
 					}
 					notes.Children(func() {
 						components.Text(c, a.t("备注")).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 						if pending.Pending {
-							detailPlaceholder(c, 240)
+							components.Text(c, pending.Notes).Wrap().FontSize(scaledFontSize(c, 13))
 						} else {
 							components.Text(c, d.Notes).Wrap().FontSize(scaledFontSize(c, 13))
 						}
@@ -216,12 +222,17 @@ func (a *application) detailView(c *ui.Context) {
 			})
 		})
 	})
+	if pending.Delayed {
+		a.detailLoadingFeedback(c)
+	}
 }
 
-func detailPlaceholder(c *ui.Context, width float32) {
-	ui.Box(c).Width(width).MaxWidthPercent(100).Children(func() {
-		components.Text(c, " ").FontSize(scaledFontSize(c, 13))
-		ui.Box(c).Absolute().Left(0).Right(0).Top(4).Height(8).Radius(4).Background(c.Theme().Text.Alpha(.08))
+// The feedback stays in the viewport and takes no space from the retained
+// surface, including when its heading has scrolled out of view.
+func (a *application) detailLoadingFeedback(c *ui.Context) {
+	ui.Row(c).Key("detail-loading-feedback").Absolute().Right(24).Bottom(24).Padding(6, 10).
+		Radius(c.Theme().Radius).Background(c.Theme().Surface).Children(func() {
+		components.Text(c, a.t("正在读取账号…")).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).SingleLine()
 	})
 }
 
@@ -244,69 +255,62 @@ func (a *application) secretField(c *ui.Context, key, label, value string, secre
 
 func (a *application) detailField(c *ui.Context, key, label, value string, secret, pending bool) {
 	revealed := a.detailFieldRevealed(key)
-	minimumHeight := float32(64)
-	row := ui.Row(c).Key(key).FillWidth().Padding(12, 4).Gap(12).AlignItems(ui.Center)
-	if key == "password" {
-		minimumHeight = 80
-		row.Padding(16).Margin(0, 0, 5, 0).Radius(8).Background(c.Theme().Background.Mix(c.Theme().Surface, .55))
-	} else {
-		row.BorderWidth(0, 0, 1, 0).BorderColor(c.Theme().Border.Alpha(.6))
-	}
+	minimumHeight := float32(80)
+	row := ui.Column(c).Key(key).FillWidth().Padding(18, 0).Gap(6).
+		BorderWidth(0, 0, 1, 0).BorderColor(c.Theme().Border)
 	if pending {
-		// Preserve wrapped field geometry while discarding its previous value.
+		// Keep long fields in place while the read-only surface waits.
 		minimumHeight = max(minimumHeight, row.LayoutBounds().H)
 	}
 	row.MinHeight(minimumHeight)
 	row.Children(func() {
-		ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
-			components.Text(c, label).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
-			if pending {
-				detailPlaceholder(c, 164)
-			} else {
+		components.Text(c, label).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+		valueRow := ui.Row(c).Key("field-value").FillWidth().MinHeight(32).AlignItems(ui.Center).Gap(12)
+		if pending {
+			valueRow.MinHeight(max(32, valueRow.LayoutBounds().H))
+		}
+		valueRow.Children(func() {
+			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 				shown := value
-				if secret && !revealed {
+				if secret && (!revealed || pending) {
 					shown = "••••••••••••"
 				}
 				text := components.Text(c, shown).Wrap().FontSize(scaledFontSize(c, 13))
 				if secret {
 					text.Font("monospace")
 				}
-			}
-		})
-		ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(2).Children(func() {
-			if secret {
-				icon := lucide.Eye()
-				if revealed {
-					icon = lucide.EyeOff()
-				}
-				if iconButton(c, icon, a.t("显示或隐藏%s", label), components.ButtonGhost).Disabled(pending).Clicked() {
-					if a.revealedFields == nil {
-						a.revealedFields = make(map[string]bool)
-					}
-					a.revealedFields[key] = !revealed
-				}
-			}
-			copyText := a.t("复制")
-			if key == "password" {
-				copyText = a.t("复制密码")
-			}
-			copy := components.Button(c, "", components.ButtonGhost).Label(a.t("复制%s", label)).Height(32).Shrink(0).Padding(0, 9).Gap(6).Border(0, c.Theme().Border).TextColor(c.Theme().TextMuted).Disabled(pending)
-			copy.Children(func() {
-				components.Icon(c, lucide.Copy()).Size(16, 16)
-				components.Text(c, copyText).FontSize(scaledFontSize(c, 12)).SingleLine()
 			})
-			if copy.Clicked() {
-				copyLabel := label
-				switch key {
-				case "password":
-					copyLabel = "密码"
-				case "username":
-					copyLabel = "用户名"
-				case "otp":
-					copyLabel = "一次性密码"
+			ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(2).Children(func() {
+				if secret {
+					icon := lucide.Eye()
+					if revealed {
+						icon = lucide.EyeOff()
+					}
+					if iconButton(c, icon, a.t("显示或隐藏%s", label), components.ButtonGhost).Disabled(pending).Clicked() {
+						if a.revealedFields == nil {
+							a.revealedFields = make(map[string]bool)
+						}
+						a.revealedFields[key] = !revealed
+					}
 				}
-				a.copy(key, value, copyLabel)
-			}
+				copy := components.Button(c, "", components.ButtonGhost).Label(a.t("复制%s", label)).Tooltip(a.t("复制%s", label)).Height(32).MinWidth(c.Theme().Rem(5.6)).Shrink(0).Padding(0, 9).Gap(6).AlignItems(ui.Center).Border(0, c.Theme().Border).TextColor(c.Theme().TextMuted).Disabled(pending)
+				copy.Children(func() {
+					components.Icon(c, lucide.Copy()).Size(managerGlyphSize(c), managerGlyphSize(c))
+					components.Text(c, a.t("复制")).FontSize(scaledFontSize(c, 12)).SingleLine()
+				})
+				if copy.Clicked() {
+					copyLabel := label
+					switch key {
+					case "password":
+						copyLabel = "密码"
+					case "username":
+						copyLabel = "用户名"
+					case "otp":
+						copyLabel = "一次性密码"
+					}
+					a.copy(key, value, copyLabel)
+				}
+			})
 		})
 	})
 }

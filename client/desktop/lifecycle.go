@@ -28,22 +28,11 @@ type lifecycleState struct {
 	setOpenAtLogin                      func(bool) error
 	configureDone                       func(app.Data)
 	trayMenu                            *mygo.Menu
+	trayButton                          trayButtonController
 }
 
 func (a *application) newMainWindow() {
-	width := defaultSidebarWidth
-	if a.lifecycle.leftWidth > 0 {
-		width = int(a.lifecycle.leftWidth)
-	}
-	a.shell = sidebar.NewShell(sidebar.ShellOptions{
-		Hidden: true, Title: "Passpine", Width: 1120, Height: 760, MinWidth: 860, MinHeight: 620,
-		StateKey: "passpine-main", LeftWidth: width, LeftMinWidth: 280, LeftMaxWidth: 460,
-		LeftCollapsed: a.lifecycle.leftCollapsed,
-		Theme:         a.clientTheme, Left: a.sidebarView, Content: a.contentView,
-		ContentTitle: a.header, LeftToolbar: a.sidebarToolbar,
-		LeadingHeader: a.historyControls, LeadingHeaderWidth: 64,
-		LeftToggleLabel: "切换侧栏", LeftResizeLabel: "调整侧栏宽度",
-	})
+	a.shell = sidebar.NewShell(a.mainShellOptions())
 	window := a.shell.Window()
 	a.window = window
 	window.SetVibrancy(mygo.VibrancyNone)
@@ -56,6 +45,30 @@ func (a *application) newMainWindow() {
 	window.OnHide(func() { a.mainWindowVisibilityChanged(false) })
 	window.OnClose(a.handleMainWindowClose)
 	window.OnClosed(func() { a.mainWindowClosed(window) })
+}
+
+func (a *application) mainShellOptions() sidebar.ShellOptions {
+	width := defaultSidebarWidth
+	if a.lifecycle.leftWidth > 0 {
+		width = int(a.lifecycle.leftWidth)
+	}
+	return sidebar.ShellOptions{
+		Hidden: true, Title: "Passpine", Width: 1120, Height: 760, MinWidth: 860, MinHeight: 620,
+		StateKey: "passpine-main", LeftWidth: width, LeftMinWidth: 180, LeftMaxWidth: 280,
+		LeftResetWidth: defaultSidebarWidth,
+		OnLeftWidthChange: func(width float32) {
+			a.lifecycle.leftWidth = width
+			a.queueManagerLayoutSave()
+		},
+		LeftCollapsed:    a.lifecycle.leftCollapsed,
+		LeftOverlayBelow: 960, LeftOverlayCloseLabel: a.t("关闭左栏"),
+		Theme: a.clientTheme, Left: a.sidebarView, Content: a.contentView,
+		LeftBackground:   func(c *ui.Context) ui.Color { return c.Theme().Background },
+		HeaderBackground: func(c *ui.Context) ui.Color { return c.Theme().Background },
+		ContentTitle:     a.header, LeftToolbar: a.sidebarToolbar,
+		LeadingHeader: a.historyControls, LeadingHeaderWidth: 64,
+		LeftToggleLabel: a.t("切换侧栏"), LeftResizeLabel: a.t("调整侧栏宽度"),
+	}
 }
 
 func (a *application) mainWindowClosed(window *mygo.Window) {
@@ -197,7 +210,7 @@ func (a *application) suspendLightweightUI(now time.Time) bool {
 	a.lifecycle.suspended = true // Closing the last window must retain the process.
 	if a.shell != nil {
 		a.lifecycle.leftWidth = a.shell.LeftWidth()
-		a.lifecycle.leftCollapsed = !a.shell.LeftExpanded()
+		a.lifecycle.leftCollapsed = !a.shell.LeftDockedExpanded()
 	}
 	window := a.window
 	a.window, a.shell = nil, nil

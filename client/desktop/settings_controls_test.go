@@ -14,6 +14,9 @@ func TestWindowAndStartupSettingsAreReachableAndPreviewCannotChangeLoginItem(t *
 	a.page = "settings"
 	view := ui.NewTester(testView(a), 860, 620)
 	view.SetPreferences(ui.Preferences{ReduceMotion: true})
+	if err := view.Click("切换侧栏"); err != nil {
+		t.Fatal(err)
+	}
 	if err := view.Click("窗口与启动"); err != nil {
 		t.Fatal(err)
 	}
@@ -121,6 +124,12 @@ func TestSettingsReuseSidebarAndSearchAcrossCategories(t *testing.T) {
 		a := fixture()
 		a.page = "settings"
 		view := ui.NewTester(testView(a), width, 760)
+		view.SetPreferences(ui.Preferences{ReduceMotion: true})
+		if !a.shell.LeftExpanded() {
+			if err := view.Click("切换侧栏"); err != nil {
+				t.Fatal(err)
+			}
+		}
 		category, ok := view.Find("安全")
 		if !ok || category.X+category.W > defaultSidebarWidth {
 			t.Fatalf("settings navigation created another sidebar at width %d: %v", width, category)
@@ -132,8 +141,13 @@ func TestSettingsReuseSidebarAndSearchAcrossCategories(t *testing.T) {
 			t.Fatal(err)
 		}
 		control, ok := view.Find("空闲自动锁定")
-		if a.settingsState.Category != "security" || !ok || control.X < defaultSidebarWidth {
+		if a.settingsState.Category != "security" || !ok || control.X < float32(width)-a.shell.ContentWidth(float32(width)) {
 			t.Fatal("settings category did not render beside the existing sidebar")
+		}
+		if !a.shell.LeftExpanded() {
+			if err := view.Click("切换侧栏"); err != nil {
+				t.Fatal(err)
+			}
 		}
 		if err := view.Click("搜索设置"); err != nil {
 			t.Fatal(err)
@@ -143,6 +157,7 @@ func TestSettingsReuseSidebarAndSearchAcrossCategories(t *testing.T) {
 			t.Fatal("settings search did not find another category or lost the selected category")
 		}
 		a.settingsState.Query = ""
+		a.shell.SetLeftExpanded(false)
 		view.Frame()
 		if !view.HasText("空闲自动锁定") {
 			t.Fatal("clearing search did not restore the selected category")
@@ -171,7 +186,11 @@ func TestSettingsKeepRecoveryAndActivityDestinations(t *testing.T) {
 		}
 		awaitMain(t, callbacks)
 		view.Frame()
-		category, ok := view.Find("安全")
+		label := "安全"
+		if test.page == "recovery" {
+			label = "文件夹 开发"
+		}
+		category, ok := view.Find(label)
 		if !ok || category.X+category.W > defaultSidebarWidth {
 			t.Fatal("settings destination did not retain the shared sidebar")
 		}

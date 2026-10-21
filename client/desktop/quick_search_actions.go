@@ -21,6 +21,40 @@ func quickSearchHeaderButton(c *ui.Context, icon *ui.SVG, label string, refreshi
 	return button
 }
 
+func (a *application) quickSearchEntryButton(c *ui.Context, icon *ui.SVG, label string, index int, field string) {
+	button := components.Button(c, "", components.ButtonGhost).Label(label).Tooltip(label).
+		Size(30, 34).Padding(6).Shrink(0).TextColor(c.Theme().TextMuted).Disabled(a.busy)
+	a.bindQuickSearchEntryAction(button, index, field)
+	button.Children(func() { components.Icon(c, icon).Size(17, 17).Role(ui.RoleNone) })
+}
+
+func (a *application) bindQuickSearchEntryAction(button ui.Element, index int, field string) {
+	activate := func() { a.activateQuickSearchEntry(index, field) }
+	// The list owns Enter and typeahead for its own focus. Child buttons must
+	// handle activation closer to their focus before those collection handlers.
+	button.OnClick(activate).OnShortcut(0, ui.KeyEnter, activate).OnShortcut(0, ui.KeySpace, activate)
+}
+
+func (a *application) openQuickSearchEntryInManager(entry string) {
+	query := a.quick.query
+	vaultID, generation := a.state.VaultID, a.generation
+	a.hideQuickSearch()
+	open := func() {
+		if a.closing || a.state.VaultID != vaultID || a.generation != generation {
+			return
+		}
+		a.query = query
+		a.navigate("entries", "all")
+		a.selectEntry(entry)
+	}
+	if a.editor.open {
+		a.requestEditorClose(open)
+	} else {
+		open()
+	}
+	a.show()
+}
+
 func (a *application) quickSearchHeaderActions(c *ui.Context) {
 	ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
 		if quickSearchHeaderButton(c, lucide.RefreshCw(), a.t("刷新条目"), a.quick.operation == "configure").

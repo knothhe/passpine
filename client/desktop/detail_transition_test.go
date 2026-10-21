@@ -11,26 +11,30 @@ import (
 	"github.com/knothhe/passpine/client/app"
 )
 
-func TestDetailTransitionPreservesOnlyFieldStructure(t *testing.T) {
+func TestDetailTransitionPreservesReadOnlyDisplayWithoutCredentials(t *testing.T) {
 	a := fixture()
 	a.detail.OTP = "123456"
 	a.detail.Contents += "recovery: synthetic-recovery-value\n"
 	a.reveal, a.deleteOpen = true, true
 	a.revealedFields = map[string]bool{"password": true}
-	values := []string{a.detail.Password, a.detail.Username, a.detail.URL, a.detail.Notes, a.detail.OTP, "synthetic-recovery-value"}
+	values := []string{a.detail.Password, a.detail.Contents, a.detail.OTP, "synthetic-recovery-value"}
+	original := a.detail
 	a.busy, a.backgroundBusy = true, true
 	a.selectEntry("工作/Figma")
 	presentation := a.detailTransitionPresentation(a.detailLoadingStarted)
 	if !presentation.Pending || presentation.Delayed || presentation.Entry != a.selected || !presentation.HasNotes || !presentation.HasWebsite {
 		t.Fatalf("entry selection discarded the detail structure: %+v", presentation)
 	}
-	want := []detailPlaceholderField{
-		{Key: "password", Label: "密码", Secret: true}, {Key: "username", Label: "用户名"},
-		{Key: "url", Label: "网址"}, {Key: "otp", Label: "一次性密码", Secret: true},
+	want := []detailDisplayField{
+		{Key: "password", Label: "密码", Secret: true}, {Key: "username", Label: "用户名", Value: original.Username},
+		{Key: "url", Label: "网址", Value: original.URL}, {Key: "otp", Label: "一次性密码", Secret: true},
 		{Key: "custom:0", Label: "recovery", Secret: true},
 	}
 	if !reflect.DeepEqual(presentation.Fields, want) || !reflect.DeepEqual(a.detail, app.Data{}) || a.reveal || len(a.revealedFields) != 0 || a.deleteOpen {
 		t.Fatal("transition retained decrypted detail or active detail actions")
+	}
+	if presentation.DisplayEntry != original.Entry || presentation.Notes != original.Notes {
+		t.Fatal("loading mixed the target heading with the previous presentation")
 	}
 	snapshot := fmt.Sprintf("%+v %+v", a.detailTransition, presentation)
 	for _, value := range values {
@@ -83,7 +87,7 @@ func TestDetailTransitionClearsAcrossSecretAndNavigationBoundaries(t *testing.T)
 				a.activeRequestAction = "fetch"
 				a.receiveResponse(a.generation, app.Response{Status: "error", Message: "synthetic failure", Data: a.state}, nil)
 			}
-			if a.detailTransition.entry != "" || len(a.detailTransition.fields) != 0 || !a.detailLoadingStarted.IsZero() || a.detailSelectionSerial <= before || a.detailTransitionPresentation(time.Now()).Pending {
+			if a.detailTransition.entry != "" || len(a.detailTransition.fields) != 0 || a.detailTransition.displayEntry != "" || a.detailTransition.notes != "" || a.detailTransition.unlocking || !a.detailLoadingStarted.IsZero() || a.detailSelectionSerial <= before || a.detailTransitionPresentation(time.Now()).Pending {
 				t.Fatal("invalidated transition retained its structure or request lease")
 			}
 		})
@@ -176,9 +180,12 @@ func TestDetailTransitionKeepsControlsInPlaceAndInactive(t *testing.T) {
 						t.Fatalf("selection moved or removed %s: before=%v pending=%v", label, positions[label], position)
 					}
 				}
-				for _, value := range []string{original.Password, original.Username, original.URL, original.Notes} {
-					if view.HasText(value) {
-						t.Fatalf("pending detail displayed the previous entry value %q", value)
+				if view.HasText(original.Password) {
+					t.Fatal("pending detail revealed the previous password")
+				}
+				for _, value := range []string{original.Username, original.URL, original.Notes} {
+					if !view.HasText(value) {
+						t.Fatal("pending detail replaced the previous read-only display with a placeholder")
 					}
 				}
 				for _, label := range []string{"显示全部字段", "编辑条目", "移到回收站", "显示或隐藏密码", "复制密码", "复制用户名", "打开网站"} {
@@ -205,14 +212,27 @@ func TestDetailTransitionKeepsControlsInPlaceAndInactive(t *testing.T) {
 func TestNewDetailSelectionReturnsToTop(t *testing.T) {
 	a := fixture()
 	a.detail.Notes = strings.Repeat("较长备注用于滚动详情。", 200)
-	a.busy, a.backgroundBusy = true, true
+	state := a.state
+	callbacks := make(chan func(), 1)
+	a.runOnMain = func(callback func()) { callbacks <- callback }
+	a.service = backendFunc(func(request app.Request) app.Response {
+		data := state
+		data.Entry, data.Password = request.Entry, "new-password"
+		return app.Response{Status: "ok", Data: data}
+	})
 	view := ui.NewTester(testView(a), 1120, 760)
 	a.detailScroll.Y = a.detailScroll.MaxY
 	view.Frame()
 	if a.detailScroll.Y <= 0 {
 		t.Fatal("fixture did not scroll a long detail")
 	}
+	previousOffset := a.detailScroll.Y
 	a.selectEntry("工作/Figma")
+	view.Frame()
+	if a.detailScroll.Y != previousOffset {
+		t.Fatal("a pending read jumped the previous presentation to the top")
+	}
+	awaitMain(t, callbacks)
 	view.Frame()
 	if a.detailScroll.Y != 0 {
 		t.Fatalf("new selection inherited the previous entry scroll offset: %v", a.detailScroll.Y)
@@ -224,10 +244,11 @@ func TestDelayedDetailFeedbackKeepsLongPathGeometry(t *testing.T) {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			a := fixture()
 			a.busy, a.backgroundBusy = true, true
+			a.detail.Entry = strings.Repeat("long-directory-name/", 7) + "Example"
 			view := ui.NewTester(testView(a), size[0], size[1])
 			// The target path wraps in both viewports. Showing delayed feedback
 			// must not take width from that path and push the fields downward.
-			a.selectEntry(strings.Repeat("long-directory-name/", 7) + "Example")
+			a.selectEntry("工作/Figma")
 			view.Frame()
 			if view.HasText(a.t("正在读取账号…")) {
 				t.Fatal("detail feedback appeared before its delay")

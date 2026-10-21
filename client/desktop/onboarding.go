@@ -296,6 +296,8 @@ func (a *application) unlock(mode string) {
 			entry, vaultID := a.pendingCopyEntry, a.pendingCopyVaultID
 			a.pendingCopyEntry, a.pendingCopyVaultID = "", ""
 			if !a.state.Locked && a.state.VaultID == vaultID && a.selected == entry && a.page == "entries" && !a.setup {
+				a.beginDetailTransition(entry)
+				a.detailTransition.unlocking = true
 				a.call(app.Request{Action: "copy", Entry: entry, Field: "password"}, func(app.Data) {
 					a.notice = a.t("已复制密码")
 					a.selectEntry(entry)
@@ -307,6 +309,9 @@ func (a *application) unlock(mode string) {
 			a.loadRecovery()
 		} else if a.selected != "" {
 			a.selectEntry(a.selected)
+			if a.detailTransition.entry == a.selected {
+				a.detailTransition.unlocking = true
+			}
 		}
 	})
 }

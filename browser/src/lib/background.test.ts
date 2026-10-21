@@ -51,6 +51,16 @@ beforeEach(async () => {
 });
 
 describe('background fill and website associations', () => {
+  it('forwards activity alone without reading credentials, tabs or associations', async () => {
+    environment.native.mockResolvedValue({});
+    expect(await request({ action: 'touch' })).toEqual({ protocol: 1, status: 'ok', data: {} });
+    expect(environment.native).toHaveBeenCalledExactlyOnceWith({ protocol: 1, action: 'touch' });
+    expect(environment.browser.tabs.query).not.toHaveBeenCalled();
+    expect(environment.browser.storage.local.get).not.toHaveBeenCalled();
+    expect(environment.browser.storage.local.set).not.toHaveBeenCalled();
+    expect(environment.browser.scripting.executeScript).not.toHaveBeenCalled();
+  });
+
   it('copies generated passwords directly through native messaging without reading vault or tab state', async () => {
     environment.native.mockResolvedValue({});
     expect(await request({ action: 'copy-generated', contents: 'fresh-password' })).toEqual({ protocol: 1, status: 'ok', data: {} });

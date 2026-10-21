@@ -17,6 +17,9 @@ describe('extension boundary', () => {
     expect(generated).not.toHaveProperty('passphrase');
     const copied = nativeRequest({ action: 'copy-generated', contents: 'fresh-password', vaultId: 'injected', interactive: true } as Extract<UIRequest, { action: 'copy-generated' }>);
     expect(copied).toEqual({ protocol: 1, action: 'copy-generated', contents: 'fresh-password' });
+    const activity = nativeRequest({ action: 'touch', contents: 'private entry', vaultId: 'injected', interactive: true } as Extract<UIRequest, { action: 'touch' }>);
+    expect(activity).toEqual({ protocol: 1, action: 'touch' });
+    expect(validUIRequest({ action: 'touch' })).toBe(true);
   });
   it('accepts only bounded, nonempty generated password contents without requiring a vault', () => {
     expect(validUIRequest({ action: 'copy-generated', contents: 'fresh-password' })).toBe(true);
