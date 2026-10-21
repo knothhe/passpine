@@ -1,5 +1,13 @@
 .DEFAULT_GOAL := build
+ifeq ($(OS),Windows_NT)
+SHELL := cmd.exe
+CLIENT_BUILD = powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-client.ps1
+CLIENT_INSTALL = powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-client.ps1
+else
 SHELL := /bin/bash
+CLIENT_BUILD = bash scripts/build-client.sh
+CLIENT_INSTALL = bash scripts/install-client.sh
+endif
 
 # Empty values use the installer defaults or .install-local.json.
 CLIENT_INSTALL_DIR ?=
@@ -19,11 +27,11 @@ install:
 	$(MAKE) client:install browser:install
 
 client\:build: FORCE
-	bash scripts/build-client.sh
+	$(CLIENT_BUILD)
 
 client\:install: FORCE
 	$(MAKE) client:build
-	bash scripts/install-client.sh "$(CLIENT_INSTALL_DIR)"
+	$(CLIENT_INSTALL) "$(CLIENT_INSTALL_DIR)"
 
 browser\:deps: browser/node_modules/.modules.yaml FORCE
 
@@ -73,20 +81,4 @@ release-initial:
 FORCE:
 
 help:
-	@printf '%s\n' \
-	  'make / make build        Build the client and Chrome/Firefox extensions' \
-	  'make install             Build and install the client and configured extension' \
-	  'make client:build        Build the native client and Native Messaging host' \
-	  'make client:install      Build, install and register the native client' \
-	  'make browser:build       Build Chrome and Firefox extensions' \
-	  'make browser:build:chrome / browser:build:firefox / browser:build:edge' \
-	  'make browser:install     Build and install the configured browser extension' \
-	  'make version:show / version:check / version:patch / version:minor / version:major' \
-	  'make version:set VERSION_VALUE=0.2.0  Update desktop and browser version sources' \
-	  'make release-initial     Preview first release of the current version' \
-	  'make release-initial RELEASE_FLAGS=--apply  Publish the current version for the first time' \
-	  'make release             Preview a patch release; VERSION_BUMP=patch|minor|major|<version>' \
-	  'make release VERSION_BUMP=patch RELEASE_FLAGS=--apply  Test, build, tag, push and publish GitHub Release with packages' \
-	  'make release VERSION_BUMP=<version> RELEASE_FLAGS="--resume --apply"  Resume an interrupted release' \
-	  'Options: CLIENT_INSTALL_DIR="...", BROWSER=chrome|firefox|edge, INSTALL_ARGS="..."' \
-	  'Extension installation: see docs/install-local.md'
+	@node scripts/help.mjs

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -55,7 +56,7 @@ func TestEncryptedStoreLifecycle(t *testing.T) {
 		t.Fatal("plaintext leaked into encrypted file")
 	}
 	info, _ := os.Stat(filepath.Join(v.config.Directory, "Work/example.gpg"))
-	if info.Mode().Perm() != 0600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatalf("insecure file mode: %v", info.Mode())
 	}
 	read, e := v.Read("Work/example")
@@ -110,6 +111,9 @@ func TestUnsafePathsAndSymlinksCannotEscape(t *testing.T) {
 	}
 	outside := t.TempDir()
 	if e := os.Symlink(outside, filepath.Join(v.config.Directory, "escape")); e != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("Windows symlink privilege unavailable: %v", e)
+		}
 		t.Fatal(e)
 	}
 	if _, e := v.Save("escape/password", "must never leave root", ""); e == nil {
@@ -520,6 +524,9 @@ func TestVerifyBackupChecksEntriesAndNestedPolicies(t *testing.T) {
 }
 
 func TestGitNetworkDoesNotBlockReadsAndOnlyCloseCancelsProcess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture requires a Unix executable shell wrapper")
+	}
 	git, e := exec.LookPath("git")
 	if e != nil {
 		t.Skip("git unavailable")

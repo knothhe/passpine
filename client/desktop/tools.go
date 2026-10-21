@@ -244,9 +244,9 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 		}},
 	}
 	security := []components.SettingsItem{
-		{ID: "device", Title: a.t("使用 Touch ID 或 Mac 登录密码解锁"), Description: a.deviceUnlockDescription(), Build: func(c *ui.Context) {
+		{ID: "device", Title: a.t("使用系统验证解锁"), Description: a.deviceUnlockDescription(), Build: func(c *ui.Context) {
 			ui.Column(c).AlignSelf(ui.Center).Disabled(!a.state.DeviceUnlockAvailable && !a.state.DeviceUnlockEnrolled).Children(func() {
-				a.booleanSettingSegments(c, &a.settings.DeviceUnlock, a.t("使用 Touch ID 或 Mac 登录密码解锁"))
+				a.booleanSettingSegments(c, &a.settings.DeviceUnlock, a.t("使用系统验证解锁"))
 			})
 		}},
 		{ID: "idle", Title: a.t("空闲自动锁定"), Build: func(c *ui.Context) {

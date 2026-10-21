@@ -59,10 +59,7 @@ func TestDeviceUnlockDefaultsEnrollmentAndRevocation(t *testing.T) {
 	if err != nil || strings.Contains(string(envelope), "device-fixture-passphrase") {
 		t.Fatal("invalid persisted envelope", err)
 	}
-	info, err := os.Stat(file)
-	if err != nil || info.Mode().Perm() != 0600 {
-		t.Fatal("device envelope is not private", err)
-	}
+	assertPrivateFile(t, file)
 	saved := must(t, s, Request{Action: "save", Entry: "visible-name", Contents: "fixture-entry-secret", Mode: "create"})
 	must(t, s, Request{Action: "lock"})
 	locked := must(t, s, Request{Action: "configure"})

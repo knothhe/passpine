@@ -3,14 +3,11 @@
 package i18n
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
-	"time"
 )
 
 const (
@@ -49,22 +46,17 @@ func Resolve(preference, system string) string {
 }
 
 var systemLocale = sync.OnceValue(func() string {
-	return detectSystemLocale(runtime.GOOS, os.Getenv, func() (string, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		output, err := exec.CommandContext(ctx, "/usr/bin/defaults", "read", "-g", "AppleLanguages").Output()
-		return string(output), err
-	})
+	return detectSystemLocale(runtime.GOOS, os.Getenv, preferredSystemLanguages)
 })
 
-// SystemLocale reads macOS's preferred application language even for GUI
-// launches that do not inherit LANG. Other platforms use locale environment
-// variables; missing or unsupported locales resolve to English.
+// SystemLocale reads the preferred UI language on macOS and Windows, including
+// GUI launches without LANG. Other platforms use locale environment variables;
+// missing or unsupported locales resolve to English.
 func SystemLocale() string { return systemLocale() }
 
-func detectSystemLocale(platform string, getenv func(string) string, appleLanguages func() (string, error)) string {
-	if platform == "darwin" {
-		if value, err := appleLanguages(); err == nil {
+func detectSystemLocale(platform string, getenv func(string) string, preferredLanguages func() (string, error)) string {
+	if platform == "darwin" || platform == "windows" {
+		if value, err := preferredLanguages(); err == nil {
 			if first := firstAppleLanguage(value); first != "" {
 				return Resolve(first, "")
 			}

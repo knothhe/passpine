@@ -8,12 +8,16 @@ import (
 
 	"github.com/knothhe/passpine/client/app"
 	"github.com/knothhe/passpine/client/desktop"
+	"github.com/knothhe/passpine/client/deviceunlock"
 	"github.com/knothhe/passpine/client/nativehost"
 )
 
 var version = "development"
 
 func main() {
+	if deviceunlock.RunHelper() {
+		return
+	}
 	showVersion := flag.Bool("version", false, "Print the application version and exit")
 	preview := flag.Bool("preview", false, "Create and open an isolated vault with fictional entries")
 	dataDir := flag.String("data-dir", "", "Override the application data directory")

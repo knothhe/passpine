@@ -11,7 +11,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -40,13 +39,7 @@ func gitCommand(ctx context.Context, directory string, args ...string) (string, 
 	base = append(base, args...)
 	command := exec.CommandContext(ctx, "git", base...)
 	command.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never", "GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=15", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
-	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	command.Cancel = func() error {
-		if command.Process == nil {
-			return nil
-		}
-		return syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
-	}
+	configureGitProcess(command)
 	command.WaitDelay = 2 * time.Second
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout
@@ -68,7 +61,7 @@ func gitCommand(ctx context.Context, directory string, args ...string) (string, 
 			return "", fmt.Errorf("git %s failed: %w", args[0], e)
 		}
 	}
-	return strings.TrimSuffix(stdout.String(), "\n"), nil
+	return strings.TrimRight(stdout.String(), "\r\n"), nil
 }
 
 func managedStore(ctx context.Context, directory string) bool {
@@ -436,7 +429,7 @@ func Clone(ctx context.Context, remote, destination string) error {
 	// The native rename replaces an empty directory atomically, but refuses to
 	// overwrite a file or populated directory created during the download.
 	// os.Rename adds a precheck that rejects even an empty destination directory.
-	if e = syscall.Rename(checkout, absolute); e != nil {
+	if e = renameCheckout(checkout, absolute); e != nil {
 		return &os.LinkError{Op: "rename", Old: checkout, New: absolute, Err: e}
 	}
 	return nil

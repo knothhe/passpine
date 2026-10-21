@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"image/png"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +34,6 @@ func awaitMain(t *testing.T, callbacks <-chan func()) {
 
 func fixture() *application {
 	a := newApplication(nil)
-	a.state.Settings.Language = "zh-CN"
 	a.state = app.Data{Configured: true, VaultName: "个人密码库", Preview: true, Settings: app.DefaultSettings(), Entries: []app.Entry{
 		{Path: "开发/GitHub", Name: "GitHub", Folder: "开发"},
 		{Path: "工作/Figma", Name: "Figma", Folder: "工作"},
@@ -477,7 +478,15 @@ func TestDefaultVaultDiscovery(t *testing.T) {
 					}
 				}
 				if scenario == "symlink" {
-					if err := os.Symlink(store, directory); err != nil {
+					var err error
+					if runtime.GOOS == "windows" {
+						// Directory junctions exercise the same reparse-point boundary
+						// without requiring Developer Mode or elevated tests.
+						err = exec.Command("cmd.exe", "/c", "mklink", "/J", directory, store).Run()
+					} else {
+						err = os.Symlink(store, directory)
+					}
+					if err != nil {
 						t.Fatal(err)
 					}
 				}

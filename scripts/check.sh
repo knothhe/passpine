@@ -7,6 +7,8 @@ cd "$root_dir"
 node scripts/version.mjs check
 node scripts/dependencies.mjs --check
 node --test scripts/version.test.mjs scripts/release.test.mjs scripts/release-artifacts.test.mjs scripts/dependencies.test.mjs
+cd "$root_dir/scripts/windows-resources"
+go test ./...
 cd "$root_dir/client"
 if [[ "$(uname -s)" == "Darwin" ]]; then
   xcrun swiftc -O -parse-as-library -swift-version 5 \

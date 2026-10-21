@@ -1,4 +1,4 @@
-// Package deviceunlock bridges macOS authentication and device-bound encryption.
+// Package deviceunlock bridges system authentication and locally protected encryption.
 package deviceunlock
 
 import (
@@ -9,9 +9,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 	"time"
+
+	"github.com/knothhe/passpine/client/i18n"
 )
 
 type Provider interface {
@@ -22,10 +22,12 @@ type Provider interface {
 
 type systemProvider struct {
 	binary    string
+	args      []string
 	available bool
 }
 
 type request struct {
+	Language string          `json:"language,omitempty"`
 	Action   string          `json:"action"`
 	Account  string          `json:"account,omitempty"`
 	Secret   []byte          `json:"secret,omitempty"`
@@ -40,14 +42,11 @@ type response struct {
 
 func New() Provider {
 	p := &systemProvider{}
-	if runtime.GOOS != "darwin" {
-		return p
-	}
 	executable, err := os.Executable()
 	if err != nil {
 		return p
 	}
-	p.binary = filepath.Join(filepath.Dir(executable), "passpine-device-unlock")
+	configureProvider(p, executable)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	result, err := p.run(ctx, request{Action: "status"})
@@ -79,12 +78,17 @@ func (p *systemProvider) run(ctx context.Context, req request) (response, error)
 	if p.binary == "" {
 		return response{}, errors.New("此设备不支持系统解锁")
 	}
+	req.Language, _ = ctx.Value(languageKey{}).(string)
+	if req.Language == "" {
+		req.Language = i18n.SystemLocale()
+	}
 	input, err := json.Marshal(req)
 	if err != nil {
 		return response{}, err
 	}
 	defer clear(input)
-	cmd := exec.CommandContext(ctx, p.binary)
+	cmd := exec.CommandContext(ctx, p.binary, p.args...)
+	configureCommand(cmd)
 	cmd.Stdin = bytes.NewReader(input)
 	cmd.Stderr = io.Discard
 	cmd.WaitDelay = time.Second
@@ -104,6 +108,13 @@ func (p *systemProvider) run(ctx context.Context, req request) (response, error)
 		return response{}, errors.New(result.Error)
 	}
 	return result, nil
+}
+
+type languageKey struct{}
+
+// WithLanguage snapshots the selected language for this authentication request.
+func WithLanguage(ctx context.Context, language string) context.Context {
+	return context.WithValue(ctx, languageKey{}, i18n.Resolve(language, i18n.SystemLocale()))
 }
 
 type limitedOutput struct{ buffer bytes.Buffer }

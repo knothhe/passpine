@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/knothhe/passpine/client/deviceunlock"
 )
 
 func (s *Service) deviceFile() string {
@@ -36,7 +38,7 @@ func (s *Service) deviceContext(epoch uint64) (context.Context, func()) {
 		cancel()
 	}
 	s.deviceMu.Unlock()
-	return ctx, func() { cancel(); s.deviceMu.Lock(); s.deviceCancel = nil; s.deviceMu.Unlock() }
+	return deviceunlock.WithLanguage(ctx, s.prefs.Settings.Language), func() { cancel(); s.deviceMu.Lock(); s.deviceCancel = nil; s.deviceMu.Unlock() }
 }
 func (s *Service) enrollDevice(passphrase string, epoch uint64) string {
 	if s.preview || s.device == nil || !s.device.Available() || !s.prefs.Settings.DeviceUnlock || s.deviceEnrolled() || passphrase == "" || s.active == nil {
@@ -59,7 +61,7 @@ func (s *Service) enrollDevice(passphrase string, epoch uint64) string {
 	if err != nil {
 		return "系统解锁未启用，可继续使用私钥口令"
 	}
-	return "已启用 Touch ID 或 Mac 登录密码解锁"
+	return "已启用系统解锁"
 }
 func (s *Service) unlockDevice(epoch uint64) error {
 	if s.preview || s.device == nil || !s.device.Available() || !s.deviceEnrolled() {
@@ -104,7 +106,7 @@ func (s *Service) unlockForBrowser(epoch uint64) error {
 		if s.onOpen != nil {
 			go s.onOpen()
 		}
-		return &browserUnlockError{code: "system_unlock_required", message: "请先在客户端使用私钥口令解锁，并启用 Touch ID 或 Mac 登录密码解锁，然后重试此操作"}
+		return &browserUnlockError{code: "system_unlock_required", message: "请先在客户端使用私钥口令解锁，并启用系统解锁，然后重试此操作"}
 	}
 	if err := s.unlockDevice(epoch); err != nil {
 		return &browserUnlockError{code: "authentication_cancelled", message: "系统验证未完成，请重试或在客户端使用私钥口令解锁"}

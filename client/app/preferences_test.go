@@ -152,6 +152,7 @@ func TestRetentionSettingsRejectInvalidLimits(t *testing.T) {
 func TestVaultDirectoryNameAndRenamePersistWithoutOverwritingCustomName(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	s, err := New(Options{DataDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
@@ -165,7 +166,7 @@ func TestVaultDirectoryNameAndRenamePersistWithoutOverwritingCustomName(t *testi
 		t.Fatal(err)
 	}
 	data := must(t, s, Request{Action: "status"})
-	if data.VaultName != "~/.password-store" {
+	if data.VaultName != filepath.Join("~", ".password-store") {
 		t.Fatalf("default name does not identify directory: %q", data.VaultName)
 	}
 	data = must(t, s, Request{Action: "vault-rename", Name: "  Work passwords  "})
@@ -188,7 +189,7 @@ func TestVaultDirectoryNameAndRenamePersistWithoutOverwritingCustomName(t *testi
 		t.Fatal("renamed vault was not persisted")
 	}
 	data = must(t, s, Request{Action: "vault-rename", Name: " "})
-	if data.VaultName != "~/.password-store" || data.Vaults[0].NameCustomized {
+	if data.VaultName != filepath.Join("~", ".password-store") || data.Vaults[0].NameCustomized {
 		t.Fatal("blank rename did not restore directory default")
 	}
 	var response Response
@@ -201,6 +202,7 @@ func TestVaultDirectoryNameAndRenamePersistWithoutOverwritingCustomName(t *testi
 func TestLegacyAutomaticVaultNameMigratesAndExplicitNameSurvives(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	dir := t.TempDir()
 	prefs := preferences{Settings: DefaultSettings(), Vaults: []VaultInfo{
 		{ID: "legacy", Name: "我的密码库", Directory: filepath.Join(home, ".password-store")},
@@ -217,7 +219,7 @@ func TestLegacyAutomaticVaultNameMigratesAndExplicitNameSurvives(t *testing.T) {
 	}
 	defer s.Close()
 	got := must(t, s, Request{Action: "status"}).Vaults
-	if got[0].Name != "~/.password-store" || got[1].Name != "Team vault" || got[2].Name != "我的密码库" {
+	if got[0].Name != filepath.Join("~", ".password-store") || got[1].Name != "Team vault" || got[2].Name != "我的密码库" {
 		t.Fatalf("migration changed explicit names or missed the default: %+v", got)
 	}
 	must(t, s, Request{Action: "vault-rename", ID: "legacy", Name: "我的密码库"})

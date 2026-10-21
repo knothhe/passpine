@@ -36,15 +36,28 @@ test('all version entry points synchronize packages without touching the lock', 
   for (const name of ['pnpm-lock.yaml', 'browser/pnpm-lock.yaml']) assert.equal(fs.readFileSync(path.join(root, name), 'utf8'), "lockfileVersion: '9.0'\n");
 });
 
-test('mismatched sources, symlinks and unexpected arguments fail before writes', t => {
+test('mismatched sources and unexpected arguments fail before writes', t => {
   const root = fixture(t);
   const browser = path.join(root, 'browser/package.json');
   const before = fs.readFileSync(path.join(root, 'package.json'), 'utf8');
   fs.writeFileSync(browser, '{"version":"0.2.0"}');
   assert.throws(() => manageVersion(['patch'], root), /differs/);
   assert.equal(fs.readFileSync(path.join(root, 'package.json'), 'utf8'), before);
-  fs.unlinkSync(browser);
-  fs.symlinkSync(path.join(root, 'package.json'), browser);
-  assert.throws(() => manageVersion(['patch'], root), /symlinked/);
   for (const argv of [['set'], ['show', 'extra'], ['patch', 'extra'], ['set', '0.2.0', '--apply']]) assert.throws(() => manageVersion(argv, root), /Unexpected/);
+});
+
+test('symlinked version files fail before writes', t => {
+  const root = fixture(t);
+  const browser = path.join(root, 'browser/package.json');
+  fs.unlinkSync(browser);
+  try {
+    fs.symlinkSync(path.join(root, 'package.json'), browser);
+  } catch (error) {
+    if (process.platform === 'win32' && error.code === 'EPERM') {
+      t.skip('Windows account lacks the privilege to create file symlinks');
+      return;
+    }
+    throw error;
+  }
+  assert.throws(() => manageVersion(['patch'], root), /symlinked/);
 });

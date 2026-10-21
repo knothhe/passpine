@@ -683,7 +683,7 @@ func TestLockedNarrowUnlockControlsFitDetailPane(t *testing.T) {
 		view := ui.NewTester(testView(a), 860, 620)
 		label := "打开其他密码库"
 		if device {
-			label = "使用 Touch ID 或 Mac 登录密码"
+			label = "使用系统验证"
 		}
 		button, ok := view.Find(label)
 		if !ok || button.X < defaultSidebarWidth || button.X+button.W > 860 {

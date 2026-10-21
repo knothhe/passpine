@@ -255,7 +255,7 @@ func (a *application) unlockView(c *ui.Context) {
 			}
 			ui.Column(c).FillWidth().Gap(16).Disabled(a.busy).Children(func() {
 				if a.state.DeviceUnlockEnrolled && a.state.Settings.DeviceUnlock {
-					if components.Button(c, a.t("使用 Touch ID 或 Mac 登录密码"), components.ButtonPrimary).FillWidth().Disabled(!a.state.DeviceUnlockAvailable).Clicked() {
+					if components.Button(c, a.t("使用系统验证"), components.ButtonPrimary).FillWidth().Disabled(!a.state.DeviceUnlockAvailable).Clicked() {
 						a.unlock("device")
 					}
 					if !a.state.DeviceUnlockAvailable {

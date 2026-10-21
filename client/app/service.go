@@ -931,7 +931,7 @@ func writePrivate(path string, data []byte, noReplace bool) error {
 	}
 	name := file.Name()
 	defer os.Remove(name)
-	if e = file.Chmod(0600); e == nil {
+	if e = restrictPrivateFile(file); e == nil {
 		_, e = file.Write(data)
 	}
 	if e == nil {

@@ -566,7 +566,7 @@ func (a *application) quickSearchUnlockView(c *ui.Context) {
 			components.Text(c, entryName(a.quick.pendingCopy.entry)).Bold().SingleLine()
 		}
 		if a.state.DeviceUnlockEnrolled && a.state.Settings.DeviceUnlock {
-			if components.Button(c, a.t("使用 Touch ID 或 Mac 登录密码"), components.ButtonPrimary).FillWidth().Disabled(a.busy || !a.state.DeviceUnlockAvailable).Clicked() {
+			if components.Button(c, a.t("使用系统验证"), components.ButtonPrimary).FillWidth().Disabled(a.busy || !a.state.DeviceUnlockAvailable).Clicked() {
 				a.unlockQuickSearch("device")
 			}
 			if !a.state.DeviceUnlockAvailable {

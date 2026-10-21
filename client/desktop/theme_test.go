@@ -87,7 +87,9 @@ func TestSettingsSwitchThemeImmediatelyInManagerAndQuickSearch(t *testing.T) {
 	}
 	view.Frame()
 	monochrome := clientPalette(app.ThemeStyleMonochrome, false)
-	if pixel := view.Image().RGBAAt(1000, 700); pixel.R != monochrome.Background.R || pixel.G != monochrome.Background.G || pixel.B != monochrome.Background.B {
+	// Sample the right content gutter. The old point falls on a settings
+	// group separator with Windows font metrics, whose color is Border.
+	if pixel := view.Image().RGBAAt(1100, 700); pixel.R != monochrome.Background.R || pixel.G != monochrome.Background.G || pixel.B != monochrome.Background.B {
 		t.Fatalf("manager retained the previous background: %v", pixel)
 	}
 	quick := ui.NewTester(a.quickSearchView, 660, 460)

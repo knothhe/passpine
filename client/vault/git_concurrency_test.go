@@ -5,12 +5,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestGitFetchAndPushPreserveConcurrentSavesAndDeletes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture requires a Unix executable shell wrapper")
+	}
 	git, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("git unavailable")

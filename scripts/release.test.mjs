@@ -135,7 +135,7 @@ test('initial release resumes from a signed annotated tag without rewriting it',
 
 test('Make release entry points pass the default bump, initial operation and flags without dirtying the checkout', t => {
   const { root, git } = fixture(t);
-  const make = command(root, 'which', ['make']).stdout.trim();
+  const make = 'make';
   fs.copyFileSync(path.join(scriptsDir, '../Makefile'), path.join(root, 'Makefile'));
   git('add', 'Makefile'); git('commit', '-m', 'test: add Make release entry points');
   const original = git('rev-parse', 'HEAD');
@@ -196,7 +196,7 @@ test('initial release rejects a remote tag and local-only preview does not query
   assert.equal(git('tag'), ''); assert.equal(git('status', '--porcelain'), '');
 });
 
-test('initial GitHub preflight checks visible releases with pagination even when creation is disabled, and fails closed', t => {
+test('initial GitHub preflight checks visible releases with pagination even when creation is disabled, and fails closed', { skip: process.platform === 'win32' && 'POSIX executable fixtures require Unix shebang support' }, t => {
   const { root, git, release, env } = fixture(t);
   const bare = path.join(root, '.git/remote.git');
   command(root, 'git', ['init', '--bare', bare]);

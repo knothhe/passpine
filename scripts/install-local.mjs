@@ -156,7 +156,10 @@ function build(browser, root, options) {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"))
   requireThat(typeof pkg.scripts?.[script] === "string", `Missing build script: ${script}. Configure build_scripts for ${browser}.`)
   const command = options.packageManager + (process.platform === "win32" ? ".cmd" : "")
-  const result = spawnSync(command, ["run", script], { cwd: root, stdio: "inherit" })
+  requireThat(/^[a-zA-Z0-9:_-]+$/.test(script), "Build script names may contain only letters, numbers, colons, underscores and hyphens.")
+  const result = process.platform === "win32"
+    ? spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `${command} run ${script}`], { cwd: root, stdio: "inherit" })
+    : spawnSync(command, ["run", script], { cwd: root, stdio: "inherit" })
   if (result.error)
     throw result.error
   requireThat(result.status === 0, `Build failed for ${browser}; installation was not changed.`)

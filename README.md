@@ -2,7 +2,7 @@
 
 兼容 pass 的本地密码管理器，包含 Go 原生客户端和浏览器扩展。支持密码生成、TOTP、Git 同步及浏览器填充，客户端与扩展共用解锁会话。
 
-目前已验收 macOS Apple Silicon；其他平台仍需验证，Windows 尚未实现安全文件访问和浏览器 Host 注册。
+目前已验收 macOS Apple Silicon；Windows 提供原生构建、NSIS 安装包、安全文件访问和浏览器 Host 注册，其他平台仍需验证。
 
 ## 构建与安装
 
@@ -18,6 +18,17 @@ make help               # 查看全部命令和参数
 ```
 
 macOS 构建产物为 `dist/Passpine.app`，默认安装到 `~/Applications/Passpine.app`。应用使用本地签名，未配置 Developer ID 公证。
+
+Windows（64 位）还需要 NSIS 3，用于生成安装包。使用管理员 PowerShell 安装全局依赖（需先安装 Chocolatey）：
+
+```powershell
+choco install golang nodejs-lts make nsis -y
+npm.cmd install --global pnpm@12.11.2
+```
+
+重新打开终端后，在仓库根目录运行相同的 `make build` / `make install`，Make 自动选择 Windows PowerShell 或 macOS/Linux Bash 流程。Windows 构建生成 `dist/passpine.exe`、`dist/passpine-host.exe` 和 `dist/Passpine-<版本>-windows-amd64-setup.exe`；安装包默认安装到 `%LOCALAPPDATA%\Programs\Passpine`，创建开始菜单快捷方式和卸载入口，并通过当前用户注册表注册已安装的 Chrome、Edge、Brave、Firefox。卸载保留密码库及应用数据。安装包尚未配置 Authenticode 签名。
+
+`make client:install CLIENT_INSTALL_DIR="C:\Apps\Passpine"` 可指定客户端安装目录。`make install` 还会按下方的本地配置安装浏览器扩展；仅安装客户端使用 `make client:install`。Windows 支持使用当前账户的登录密码进行系统解锁，首次使用私钥口令打开密码库后完成启用；修改 Windows 登录密码后需重新启用。
 
 扩展安装前需配置安装目录，安装后需在浏览器中加载。详见[本地安装说明](docs/install-local.md)。
 

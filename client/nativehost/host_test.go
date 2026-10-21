@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -107,6 +108,9 @@ func TestEndpointPermissionsAndReconnect(t *testing.T) {
 		t.Fatal(string(got))
 	}
 	ep := filepath.Join(dir, "browser-endpoint.json")
+	if runtime.GOOS == "windows" {
+		return
+	} // Windows uses ACLs rather than chmod permission bits.
 	if e = os.Chmod(ep, 0644); e != nil {
 		t.Fatal(e)
 	}

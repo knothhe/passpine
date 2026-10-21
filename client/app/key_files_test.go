@@ -2,8 +2,11 @@ package app
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"syscall"
 	"testing"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
@@ -40,8 +43,9 @@ func TestOpenVaultWithKeyFilesWithoutSystemGPG(t *testing.T) {
 	if err = os.WriteFile(emptyFile, nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.Symlink(privateFile, symlinkFile); err != nil {
-		t.Fatal(err)
+	symlinkErr := os.Symlink(privateFile, symlinkFile)
+	if symlinkErr != nil && !(runtime.GOOS == "windows" && errors.Is(symlinkErr, syscall.Errno(1314))) {
+		t.Fatal(symlinkErr)
 	}
 	// Any attempted GPG use fails and leaves a marker, including on machines
 	// where findSystemGPG could otherwise find a Homebrew installation.
@@ -71,6 +75,9 @@ func TestOpenVaultWithKeyFilesWithoutSystemGPG(t *testing.T) {
 		{"wrong-passphrase", privateFile, publicFile, "incorrect-passphrase", "私钥口令错误或私钥不可用"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.name == "symlink-private" && symlinkErr != nil {
+				t.Skipf("file symlinks require Windows Developer Mode or administrator privilege: %v", symlinkErr)
+			}
 			opened, err := New(Options{DataDir: t.TempDir()})
 			if err != nil {
 				t.Fatal(err)

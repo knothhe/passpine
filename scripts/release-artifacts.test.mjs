@@ -32,7 +32,7 @@ test('artifact names specify the version and Mac architecture, with one Chromium
   assert.throws(() => artifactPlan('0.1.0', 'linux', 'x86_64'), /require macOS/);
 });
 
-test('packaging rejects stale archives and mismatched versions before staging any assets', t => {
+test('packaging rejects stale archives and mismatched versions before staging any assets', { skip: process.platform === 'win32' && 'macOS release archive validation uses POSIX zip/unzip' }, t => {
   const { root, plan, archive } = fixture(t);
   plan.forEach(item => archive(item));
   assert.throws(() => buildArtifacts('0.1.0', plan, () => {}, root), /ENOENT/);
@@ -42,7 +42,7 @@ test('packaging rejects stale archives and mismatched versions before staging an
   assert.equal(fs.existsSync(path.join(root, 'dist/releases/0.1.0')), false);
 });
 
-test('resume caches bind all artifact checksums to the tag commit and reject modified files', t => {
+test('resume caches bind all artifact checksums to the tag commit and reject modified files', { skip: process.platform === 'win32' && 'macOS release archive validation uses POSIX zip/unzip' }, t => {
   const { root, plan, archive } = fixture(t);
   const commands = [];
   const artifacts = buildArtifacts('0.1.0', plan, command => {

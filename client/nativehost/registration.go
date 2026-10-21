@@ -50,6 +50,14 @@ type hostManifest struct {
 func registrationTargets(home, platform string) []registrationTarget {
 	var targets []registrationTarget
 	switch platform {
+	case "windows":
+		targets = []registrationTarget{
+			{"chrome", "Chrome", "chrome", false},
+			{"edge", "Microsoft Edge", "edge", false},
+			{"brave", "Brave", "brave", false},
+			{"firefox", "Firefox", "firefox", true},
+		}
+		home = filepath.Join(home, "AppData", "Local", "Passpine", "NativeMessagingHosts")
 	case "darwin":
 		targets = []registrationTarget{
 			{"chrome", "Chrome", "Google/Chrome/NativeMessagingHosts", false},
@@ -105,7 +113,13 @@ func Registrations(executable string) []BrowserRegistration {
 	if err != nil || executable == "" {
 		path = ""
 	}
-	return inspectRegistrations(path, installedTargets(registrationTargets(home, runtime.GOOS), browserInstalled))
+	items := inspectRegistrations(path, installedTargets(platformRegistrationTargets(home), browserInstalled))
+	for i := range items {
+		if items[i].Registered && !platformRegistrationMatches(items[i]) {
+			items[i].Registered, items[i].Status = false, "missing"
+		}
+	}
+	return items
 }
 
 func inspectRegistrations(executable string, targets []registrationTarget) []BrowserRegistration {
@@ -173,12 +187,23 @@ func RegisterBrowser(executable, browserID string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	targets := registrationTargets(home, runtime.GOOS)
+	targets := platformRegistrationTargets(home)
 	if len(targets) == 0 {
-		return nil, errors.New("automatic host registration is supported on macOS and Linux")
+		return nil, errors.New("automatic host registration is unsupported on this platform")
 	}
 	targets = installedTargets(targets, browserInstalled)
-	return registerBrowserTargets(path, targets, browserID)
+	paths, err := registerBrowserTargets(path, targets, browserID)
+	if err != nil {
+		return paths, err
+	}
+	for _, target := range targets {
+		if browserID == "" || target.id == browserID {
+			if err := registerPlatformHost(target); err != nil {
+				return paths, err
+			}
+		}
+	}
+	return paths, nil
 }
 
 func registerBrowserTargets(executable string, targets []registrationTarget, browserID string) ([]string, error) {

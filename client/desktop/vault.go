@@ -141,7 +141,9 @@ func (a *application) detailView(c *ui.Context) {
 							components.Text(c, entryName(path)).FillWidth().FontSize(scaledFontSize(c, 22)).FontWeight(500).Wrap()
 						})
 						ui.Row(c).Key("detail-path").FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-							components.Text(c, path).Grow(1).MinWidth(0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).Wrap()
+							// Fix line spacing so fallback font metrics for different
+							// entry names cannot shift the controls below the heading.
+							components.Text(c, path).Grow(1).MinWidth(0).FontSize(scaledFontSize(c, 11)).LineHeight(1.4).TextColor(c.Theme().TextMuted).Wrap()
 						})
 					})
 					ui.Row(c).Key("detail-actions").Height(32).Shrink(0).AlignItems(ui.Center).Children(func() {

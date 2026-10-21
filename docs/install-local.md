@@ -11,6 +11,31 @@
 
 macOS 构建产物为 `dist/Passpine.app`，安装到 `~/Applications/Passpine.app`；Linux 将 `dist/passpine` 和 `dist/passpine-host` 安装到 `~/.local/bin`。客户端安装完成后，使用安装位置中的 Host 注册浏览器连接。
 
+Windows 还需安装 NSIS 3（例如 `choco install nsis`）。Make 根据系统自动分流；Windows 使用系统 PowerShell，无需 Bash。`make build` 同时生成 `dist/passpine.exe`、`dist/passpine-host.exe`、`dist/Passpine-<版本>-windows-amd64-setup.exe` 和 Chrome/Firefox 扩展。`make client:install` 静默运行安装包，默认安装到 `%LOCALAPPDATA%\Programs\Passpine`；Windows 的 `CLIENT_INSTALL_DIR` 指应用目录本身，例如 `make client:install CLIENT_INSTALL_DIR="C:\Apps\Passpine"`。`make install` 与直接运行 setup.exe 使用相同的默认目录；未指定目录时会沿用注册表中记录的上次安装位置。客户端安装成功后，Make 安装命令会从注册表读取并输出实际安装目录。
+
+Windows 安装包使用当前用户权限，创建开始菜单快捷方式和系统卸载入口，为已安装的 Chrome、Edge、Brave 和 Firefox 写入 HKCU Native Messaging 注册表项。卸载会清理本安装的注册项和程序文件，保留密码库、密钥及用户数据。更新前应退出客户端。安装包没有 Authenticode 签名；Windows 支持使用当前账户的登录密码进行系统解锁；修改登录密码后，在安全设置中关闭系统解锁，用私钥口令打开密码库，再重新开启并锁定、使用私钥口令解锁以完成注册。
+
+Windows 构建会从现有黑白图稿生成多尺寸图标并嵌入主程序、安装程序和卸载程序，无需额外安装资源编译器。图标与代码签名相互独立。开机自启通过当前用户的 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 注册，普通偏好设置及浏览器连接注册也不要求 Authenticode 签名；应在固定安装位置运行后启用自启，移动程序后重新关闭再开启。未签名程序可能触发 SmartScreen 提示，开启 Smart App Control 或企业应用控制策略时也可能被阻止执行，进而影响实际自启；签名也不保证立即获得 SmartScreen 信誉。参见 [Microsoft 的签名与信誉说明](https://learn.microsoft.com/windows/apps/package-and-deploy/smartscreen-reputation)。
+
+Windows 回归验证可在 PowerShell 中运行：
+
+```powershell
+Push-Location client
+go test -timeout 120s ./...
+go vet ./...
+# 在有桌面的 Windows 会话中，打开隔离的演示窗口、验证渲染后自动退出。
+$env:PASSPINE_NATIVE_SMOKE = '1'
+go test ./cmd/passpine -run TestNativePreviewStartup -count=1 -v
+Remove-Item Env:PASSPINE_NATIVE_SMOKE
+Pop-Location
+pnpm run test:windows-resources
+pnpm run test:tooling
+pnpm run test:browser
+make build
+```
+
+常规客户端测试包含临时密码库的新建、编辑、加密落盘、锁定/解锁和重新打开验证。原生启动测试使用临时数据及独立单实例目录，不连接已运行的正式客户端。Windows 私有文件权限按受保护的 DACL 验证；缺少文件符号链接权限时，仅跳过对应符号链接用例，目录跳转使用 junction 测试。工具测试在 Windows 跳过 macOS ZIP 发布与 Unix shebang 模拟程序用例；`make release` 的 GitHub 制品发布目前仍限定 macOS。
+
 ```sh
 make client:install
 make client:install CLIENT_INSTALL_DIR="/Applications"
@@ -78,7 +103,7 @@ node scripts/install-local.mjs --help
 1. 运行 `make client:install`，打开安装后的客户端并创建或打开密码库。
 2. Chrome 在 `chrome://extensions`、Edge 在 `edge://extensions` 开启开发者模式，加载配置中的固定插件子目录。Brave 可加载同一 Chromium 产物。Firefox 在 `about:debugging#/runtime/this-firefox` 临时加载固定目录中的 `manifest.json`，重启浏览器后需再次加载；商店分发需要 Firefox 签名。
 3. 更新后，在扩展管理页重新加载扩展。同步到安装目录不代表浏览器已加载新版本。
-4. 支持的 Mac 默认启用系统解锁，首次用私钥口令打开密码库后完成 Touch ID 或登录密码验证。扩展锁定时操作条目会自动请求系统验证，成功后继续操作；尚未启用系统解锁时会唤出客户端。客户端关闭则连接断开，可在客户端开启“关闭窗口后继续运行”。
+4. 支持的 Mac 和 Windows 默认启用系统解锁，首次用私钥口令打开密码库后完成系统验证：Mac 使用 Touch ID 或登录密码，Windows 使用当前账户的登录密码。扩展锁定时操作条目会自动请求系统验证，成功后继续操作；尚未启用系统解锁时会唤出客户端。客户端关闭则连接断开，可在客户端开启“关闭窗口后继续运行”。
 5. 点击账号正文直接填充，右侧详情图标用于查看。无需提前关联网站，成功填充后默认关联当前精确 hostname 并自动关闭弹窗；关联保存失败但网页已填充时同样关闭。再次打开后可在更多菜单或详情中取消关联，再次成功填充会重新关联。关联不自动继承子域，填充不会提交表单；无可填写表单时保留弹窗显示错误，且不会新增关联。独立 demo 保留弹窗和关联保存失败提示，用于检查界面状态。
 
 Chrome / Edge 固定扩展 ID 为 `obnlebeedcbbchadakacilopfdaifgjh`，Firefox ID 为 `passpine@knothhe.com`，Native Host 为 `com.knothhe.passpine`。Chromium ID 保持不变；Firefox ID 与旧插件相同，新版会替换对应扩展。更换客户端后，重新加载扩展并在客户端设置中修复浏览器连接。

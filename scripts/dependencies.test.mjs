@@ -15,6 +15,9 @@ test('only direct client modules are included and stale versions cannot silently
   assert.throws(() => generateDependencies(root, true), /stale/);
   assert.deepEqual(generateDependencies(root).map(dep => dep.version), ['v1.2.3']);
   assert.doesNotThrow(() => generateDependencies(root, true));
+  const file = path.join(root, 'client/about/dependencies.json');
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/\n/g, '\r\n'));
+  assert.doesNotThrow(() => generateDependencies(root, true));
   assert.throws(() => resolveDependencies(root, []), /exactly once/);
   assert.throws(() => resolveDependencies(root, [{ ...catalog[0], url: 'javascript:alert(1)' }]), /Invalid dependency link/);
 });

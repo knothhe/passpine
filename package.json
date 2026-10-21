@@ -13,6 +13,7 @@
     "build:browser:edge": "make browser:build:edge",
     "build": "make build",
     "test:client": "cd client && go test -race ./...",
+    "test:windows-resources": "cd scripts/windows-resources && go test ./...",
     "test:browser": "pnpm --dir browser run typecheck && pnpm --dir browser test",
     "test": "bash scripts/check.sh",
     "preview:browser": "pnpm --dir browser run preview",

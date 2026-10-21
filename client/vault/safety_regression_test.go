@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -206,6 +207,9 @@ func TestParseNotesPreservesParagraphOrder(t *testing.T) {
 }
 
 func TestGitStagesWildcardEntryNamesLiterally(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows filenames cannot contain wildcards")
+	}
 	if _, e := exec.LookPath("git"); e != nil {
 		t.Skip("git unavailable")
 	}
@@ -258,6 +262,9 @@ func TestGitClonePreservesFileCreatedDuringDownload(t *testing.T) {
 	}
 	if e = Clone(ctx, source.config.Directory, empty); e != nil {
 		t.Fatal("clone into an empty directory failed", e)
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("concurrent-download fixture requires a Unix executable shell wrapper; empty-directory clone verified")
 	}
 	target := filepath.Join(t.TempDir(), "concurrent-file")
 	wrapperDirectory := t.TempDir()

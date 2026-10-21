@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -94,7 +95,7 @@ func TestRegistrationRequiresExecutableHelperAndRegularManifest(t *testing.T) {
 	if err := os.Chmod(helper, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if HelperAvailable(helper) || inspectRegistrations(helper, targets)[0].Registered {
+	if runtime.GOOS != "windows" && (HelperAvailable(helper) || inspectRegistrations(helper, targets)[0].Registered) {
 		t.Fatal("non-executable helper reported ready")
 	}
 	path := filepath.Join(targets[0].directory, Name+".json")
@@ -102,6 +103,9 @@ func TestRegistrationRequiresExecutableHelperAndRegularManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(path+".target", path); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("Windows symlink privilege unavailable: %v", err)
+		}
 		t.Fatal(err)
 	}
 	if got := inspectRegistrations(helper, targets)[0]; got.Registered || got.Status != "invalid" {

@@ -19,6 +19,8 @@
 
 两套 ICNS 资源均包含完整 macOS 标准与 Retina 尺寸。Dock 在运行时直接加载完整 ICNS，保留小尺寸光学校正与多分辨率表示；窗口与其他平台使用 PNG。图标在运行时跟随主题风格；构建时 Finder 的默认应用包图标使用黑白版。其他平台托盘使用当前风格的完整应用图标。
 
+Windows 构建使用 `scripts/windows-resources` 中锁定版本的 Go 工具，从同一张 `app-icon-monochrome.png` 生成 16、20、24、32、40、48、64、128、256px 的 ICO 和对应架构的 COFF 资源。资源以 ID 1 链接进主程序，供 Explorer、开始菜单、任务栏固定项和 MyGo 初始窗口使用；同一 ICO 用作 NSIS 安装及卸载程序图标。生成文件位于 `dist/windows-resources`，主程序目录中的临时 `.syso` 在构建后清理。直接运行 `go run` 不包含这一步，验证程序文件图标请使用 `make client:build` 的产物。
+
 修改几何或配色后，在仓库根目录重新生成全部资源：
 
 ```sh

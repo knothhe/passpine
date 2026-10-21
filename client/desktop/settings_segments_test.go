@@ -32,7 +32,7 @@ var booleanSettingsCases = []struct {
 	{"关闭窗口后继续运行", func(s *app.Settings) *bool { return &s.CloseToTray }},
 	{"轻量模式", func(s *app.Settings) *bool { return &s.LightweightMode }},
 	{"开机自启", func(s *app.Settings) *bool { return &s.LaunchAtLogin }},
-	{"使用 Touch ID 或 Mac 登录密码解锁", func(s *app.Settings) *bool { return &s.DeviceUnlock }},
+	{"使用系统验证解锁", func(s *app.Settings) *bool { return &s.DeviceUnlock }},
 	{"锁定时允许列出名称", func(s *app.Settings) *bool { return &s.BrowseWhileLocked }},
 	{"自动同步", func(s *app.Settings) *bool { return &s.AutoSync }},
 	{"本机操作记录", func(s *app.Settings) *bool { return &s.RecordActivity }},
@@ -130,7 +130,7 @@ func TestBooleanSettingsSegmentsRespectNativeAvailabilityAndKeyboardNavigation(t
 		value   func(*app.Settings) *bool
 	}{
 		{"开机自启", true, func(s *app.Settings) *bool { return &s.LaunchAtLogin }},
-		{"使用 Touch ID 或 Mac 登录密码解锁", false, func(s *app.Settings) *bool { return &s.DeviceUnlock }},
+		{"使用系统验证解锁", false, func(s *app.Settings) *bool { return &s.DeviceUnlock }},
 	} {
 		t.Run(test.title, func(t *testing.T) {
 			a := fixture()

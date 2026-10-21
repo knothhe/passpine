@@ -50,6 +50,23 @@ func TestLocaleEnvironmentFallback(t *testing.T) {
 	}
 }
 
+func TestWindowsPreferredUILanguage(t *testing.T) {
+	for _, test := range []struct{ preferred, want string }{
+		{"zh-CN", SimplifiedChinese},
+		{"en-US", English},
+		{"fr-FR", English},
+		{"zh-TW", English},
+	} {
+		got := detectSystemLocale("windows", func(string) string { return "zh_CN.UTF-8" }, func() (string, error) { return test.preferred, nil })
+		if got != test.want {
+			t.Errorf("Windows UI language %q = %q, want %q", test.preferred, got, test.want)
+		}
+	}
+	if got := detectSystemLocale("windows", func(string) string { return "zh_CN.UTF-8" }, func() (string, error) { return "", errors.New("unavailable") }); got != SimplifiedChinese {
+		t.Fatalf("Windows locale fallback = %q", got)
+	}
+}
+
 func TestMessagesTranslateBeforeFormattingAndPreserveData(t *testing.T) {
 	if got := Text(English, "%d 个条目", 17); got != "17 entries" {
 		t.Fatalf("English count = %q", got)

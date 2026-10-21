@@ -23,7 +23,7 @@ export function resolveDependencies(root, catalog) {
 
 export function generateDependencies(root = projectRoot, check = false) {
   const file = path.join(root, 'client/about/dependencies.json');
-  const source = fs.readFileSync(file, 'utf8');
+  const source = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
   const output = JSON.stringify(resolveDependencies(root, JSON.parse(source)), null, 2) + '\n';
   if (check && output !== source) throw new Error('Dependency information is stale. Run node scripts/dependencies.mjs.');
   if (!check && output !== source) fs.writeFileSync(file, output);

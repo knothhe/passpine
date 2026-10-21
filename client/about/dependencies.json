@@ -40,6 +40,16 @@
     "source": "https://github.com/oneo-me/onevra"
   },
   {
+    "id": "xcrypto",
+    "name": "x/crypto",
+    "module": "golang.org/x/crypto",
+    "group": "desktop",
+    "version": "v0.41.0",
+    "license": "BSD-3-Clause",
+    "url": "https://pkg.go.dev/golang.org/x/crypto",
+    "source": "https://go.googlesource.com/crypto"
+  },
+  {
     "id": "sys",
     "name": "x/sys",
     "module": "golang.org/x/sys",
