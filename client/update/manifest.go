@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const maxManifestSize = 4 << 20
@@ -75,6 +76,12 @@ func (m *Manager) parseFeed(data []byte) (*Manifest, *Asset, error) {
 		if selected.Schema != 2 || !validVersion(selected.Version) || selected.InstallerUpdate != nil {
 			return nil, nil, errors.New(ErrorManifest)
 		}
+	}
+	// Select the installer protocol before comparing versions: the outer
+	// compatibility version remains fixed at v0.1.5. Historical feeds need
+	// not contain an asset for the current platform.
+	if compareVersions(selected.Version, m.cfg.CurrentVersion) <= 0 {
+		return selected, nil, nil
 	}
 	var asset *Asset
 	for i := range selected.Assets {
@@ -173,6 +180,14 @@ func (m *Manager) request(ctx context.Context, raw string) (*http.Response, erro
 
 // Check never discards an already verified, pending installation.
 func (m *Manager) Check(ctx context.Context) error {
+	return m.check(ctx, time.Now)
+}
+
+func (m *Manager) check(ctx context.Context, now func() time.Time) error {
+	return m.checkMode(ctx, now, false)
+}
+
+func (m *Manager) checkMode(ctx context.Context, now func() time.Time, scheduled bool) error {
 	if !m.Snapshot().Configured {
 		return ErrUnavailable
 	}
@@ -180,50 +195,77 @@ func (m *Manager) Check(ctx context.Context) error {
 		return ErrBusy
 	}
 	defer m.end()
-	if s := m.Snapshot(); s.State == StateReady || s.State == StateInstalling || m.readyDir != "" && s.State == StateFailed && s.ErrorCode == ErrorInstall {
+	if m.pendingInstallation() {
 		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if scheduled && m.cfg.CheckInterval <= 0 {
+		// A manual operation may have completed after the scheduler decided
+		// to check. Re-read the record only after acquiring the operation.
+		current := now()
+		r := m.scheduledRecord(current)
+		satisfied := !r.CheckedAt.IsZero() && !r.CheckedAt.Before(currentCheckPeriod(current))
+		if r.Retry == "feed" && current.Before(r.RetryAt) || satisfied && r.Retry != "feed" {
+			return nil
+		}
 	}
 	m.publish(func(s *Snapshot) { s.State = StateChecking; s.ErrorCode = "" })
-	resp, e := m.request(ctx, m.cfg.FeedURL)
-	if e != nil {
-		return m.fail(ErrorNetwork, e)
+	resp, err := m.request(ctx, m.cfg.FeedURL)
+	if err != nil {
+		m.recordFailure(ctx, "feed", now())
+		return m.fail(ErrorNetwork, err)
 	}
-	body, e := io.ReadAll(io.LimitReader(resp.Body, maxManifestSize+1))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxManifestSize+1))
 	resp.Body.Close()
-	if e != nil {
-		return m.fail(ErrorNetwork, e)
+	if err != nil {
+		m.recordFailure(ctx, "feed", now())
+		return m.fail(ErrorNetwork, err)
 	}
-	manifest, asset, e := m.parseFeed(body)
-	if e != nil {
+	manifest, asset, err := m.parseFeed(body)
+	if err != nil {
+		m.recordFailure(ctx, "feed", now())
 		code := ErrorManifest
-		if e.Error() == ErrorSignature {
+		if err.Error() == ErrorSignature {
 			code = ErrorSignature
 		}
-		return m.fail(code, e)
+		return m.fail(code, err)
 	}
-	if compareVersions(manifest.Version, m.cfg.CurrentVersion) <= 0 {
-		m.publish(func(s *Snapshot) {
-			s.State, s.ErrorCode, s.Version = StateLatest, "", ""
-			if manifest.Version == m.cfg.CurrentVersion {
-				s.Version = manifest.Version
-			}
-		})
-		return nil
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	m.manifest, m.asset, m.envelope = manifest, asset, bytes.Clone(body)
-	m.publish(func(s *Snapshot) {
-		s.State = StateAvailable
-		s.Version = manifest.Version
-		s.ErrorCode = ""
-		s.Progress = 0
-		s.Downloaded = 0
-		s.Total = 0
-	})
-	if m.Snapshot().AutoDownload {
-		return m.download(ctx)
+	m.applyFeed(manifest, asset, body)
+	// Feed success is independent of the subsequent package download. Record
+	// completion time so a slow request crossing 04:00 satisfies the new period.
+	m.recordSuccess(body, now())
+	if m.Snapshot().State == StateAvailable && m.Snapshot().AutoDownload {
+		return m.downloadWithRetry(ctx, now)
 	}
 	return nil
 }
+
+func (m *Manager) applyFeed(manifest *Manifest, asset *Asset, body []byte) {
+	m.manifest, m.asset, m.envelope = manifest, asset, bytes.Clone(body)
+	m.publish(func(s *Snapshot) {
+		s.ErrorCode, s.Progress, s.Downloaded, s.Total = "", 0, 0, 0
+		if compareVersions(manifest.Version, m.cfg.CurrentVersion) <= 0 {
+			s.State, s.Version = StateLatest, ""
+			if manifest.Version == m.cfg.CurrentVersion {
+				s.Version = manifest.Version
+			}
+		} else {
+			s.State, s.Version = StateAvailable, manifest.Version
+		}
+	})
+}
+
+// pendingInstallation is called only while holding the operation token.
+func (m *Manager) pendingInstallation() bool {
+	s := m.Snapshot()
+	return s.State == StateReady || s.State == StateInstalling || m.readyDir != "" && s.State == StateFailed && s.ErrorCode == ErrorInstall
+}
+
 func (m *Manager) Download(ctx context.Context) error {
 	if !m.Snapshot().Configured {
 		return ErrUnavailable
@@ -235,10 +277,19 @@ func (m *Manager) Download(ctx context.Context) error {
 	if m.Snapshot().State == StateReady {
 		return nil
 	}
-	return m.download(ctx)
+	return m.downloadWithRetry(ctx, time.Now)
+}
+func (m *Manager) downloadWithRetry(ctx context.Context, now func() time.Time) error {
+	err := m.download(ctx)
+	if err == nil {
+		m.clearRetry()
+	} else if err != ErrUnavailable {
+		m.recordFailure(ctx, "download", now())
+	}
+	return err
 }
 func (m *Manager) download(ctx context.Context) error {
-	if m.manifest == nil || m.asset == nil {
+	if m.manifest == nil || m.asset == nil || compareVersions(m.manifest.Version, m.cfg.CurrentVersion) <= 0 {
 		return ErrUnavailable
 	}
 	m.publish(func(s *Snapshot) { s.ErrorCode = "" })
