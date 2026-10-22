@@ -9,6 +9,6 @@ func DependencyDescriptionKey(id string) string {
 		"mygo":    "原生窗口、界面、托盘、菜单与全局快捷键。",
 		"onevra":  "桌面界面组件、主题与图标。",
 		"sys":     "底层系统调用与安全文件访问。",
-		"xcrypto": "Windows 系统解锁的密码密钥派生。",
+		"xcrypto": "Windows 和 Linux 系统解锁的密码密钥派生。",
 	}[id]
 }

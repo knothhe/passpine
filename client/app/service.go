@@ -97,6 +97,7 @@ func New(o Options) (*Service, error) {
 		return nil, err
 	}
 	s := &Service{directory: dir, preview: o.Preview, done: make(chan struct{}), prefs: preferences{Vaults: []VaultInfo{}, Settings: DefaultSettings()}}
+	s.prefs.Settings.ThemeStyle = defaultThemeStyle()
 	initialized := false
 	defer func() {
 		if !initialized {
@@ -118,6 +119,9 @@ func New(o Options) (*Service, error) {
 		return nil, e
 	}
 
+	if s.prefs.Settings.ThemeStyle == "" {
+		s.prefs.Settings.ThemeStyle = defaultThemeStyle()
+	}
 	s.prefs.Settings.ThemeStyle = NormalizeThemeStyle(s.prefs.Settings.ThemeStyle)
 	normalizeLifecycleSettings(&s.prefs.Settings, DefaultSettings())
 	normalizeTypographySettings(&s.prefs.Settings, DefaultSettings())
@@ -864,7 +868,7 @@ func validateSettings(v Settings) error {
 	if v.Theme != "system" && v.Theme != "light" && v.Theme != "dark" {
 		return errors.New("invalid theme")
 	}
-	if v.ThemeStyle != ThemeStyleOnevra && v.ThemeStyle != ThemeStyleMonochrome {
+	if v.ThemeStyle != ThemeStyleOnevra && v.ThemeStyle != ThemeStyleMonochrome && (v.ThemeStyle != ThemeStyleOmarchy || NormalizeThemeStyle(v.ThemeStyle) != v.ThemeStyle) {
 		return errors.New("invalid theme style")
 	}
 	if v.Language != "zh-CN" && v.Language != "en" && v.Language != "system" {

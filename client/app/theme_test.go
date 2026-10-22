@@ -3,10 +3,13 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestThemeStyleLegacyPreferencesPreserveExistingSettings(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	for _, style := range []string{"", `,"themeStyle":""`, `,"themeStyle":"removed-style"`} {
 		dir := t.TempDir()
 		contents := `{"settings":{"theme":"dark","language":"en","clipboardSeconds":45` + style + `}}`
@@ -57,6 +60,70 @@ func TestThemeStylePersistsSeparatelyFromAppearanceAndLegacyUpdates(t *testing.T
 		}
 		if got := must(t, s, Request{Action: "settings"}).Settings; got.ThemeStyle != ThemeStyleMonochrome {
 			t.Fatal("invalid update changed the saved theme")
+		}
+	}
+}
+
+func TestOmarchyThemeStylePersists(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux only")
+	}
+	dir := t.TempDir()
+	s, err := New(Options{DataDir: dir, Preview: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := must(t, s, Request{Action: "settings"}).Settings
+	settings.ThemeStyle = ThemeStyleOmarchy
+	if got := must(t, s, Request{Action: "settings", Settings: &settings}).Settings; got.ThemeStyle != ThemeStyleOmarchy {
+		t.Fatal("Omarchy style not retained")
+	}
+	_ = s.Close()
+	s, err = New(Options{DataDir: dir, Preview: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if got := must(t, s, Request{Action: "settings"}).Settings; got.ThemeStyle != ThemeStyleOmarchy {
+		t.Fatal("Omarchy style did not survive restart")
+	}
+}
+
+func TestOmarchyDefaultPreservesExplicitChoices(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux only")
+	}
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if defaultThemeStyle() != ThemeStyleMonochrome {
+		t.Fatal("non-Omarchy default changed")
+	}
+	theme := filepath.Join(os.Getenv("XDG_STATE_HOME"), "omarchy", "current", "theme")
+	if err := os.MkdirAll(theme, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(theme, "colors.toml"), []byte("accent = '#abcdef'"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, choice := range []string{"", ThemeStyleMonochrome, ThemeStyleOnevra} {
+		dir := t.TempDir()
+		if choice != "" {
+			if err := os.WriteFile(filepath.Join(dir, "preferences.json"), []byte(`{"settings":{"themeStyle":"`+choice+`"}}`), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		s, err := New(Options{DataDir: dir, Preview: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := must(t, s, Request{Action: "settings"}).Settings.ThemeStyle
+		_ = s.Close()
+		want := choice
+		if want == "" {
+			want = ThemeStyleOmarchy
+		}
+		if got != want {
+			t.Fatalf("saved=%q: got %q, want %q", choice, got, want)
 		}
 	}
 }

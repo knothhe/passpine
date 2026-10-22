@@ -28,6 +28,11 @@ func clientPalette(style string, dark bool) *ui.Theme {
 	// A compact default; the user's percentage and system accessibility scale
 	// are applied together when the frame's palette is installed.
 	t.FontSize = 12
+	if style == app.ThemeStyleOmarchy {
+		if applyOmarchyPalette(t) {
+			return t
+		}
+	}
 	if app.NormalizeThemeStyle(style) == app.ThemeStyleOnevra {
 		// Preserve Passpine's existing opaque navigation surfaces.
 		if dark {
