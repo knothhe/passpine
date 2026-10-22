@@ -65,14 +65,14 @@ bash scripts/check.sh                            # 运行检查与测试
 
 ## 发版
 
-提交所有修改后，在干净的 `main` 分支使用已登录的 GitHub CLI 执行：
+提交所有修改后，在干净的 `main` 分支执行（首次发布检查还需要已登录的 GitHub CLI）：
 
 ```sh
 make release-initial RELEASE_FLAGS=--apply    # 首次发布当前版本
 make release RELEASE_FLAGS=--apply            # 后续升级 patch 并发布
 ```
 
-省略 `RELEASE_FLAGS=--apply` 可预览。脚本自动运行检查、构建当前 Mac 架构客户端和 Chrome / Firefox 扩展、创建 annotated tag 并推送，上传三个成品 ZIP 后公开 GitHub Release。失败续传、附件和签名范围见[版本与发布](docs/versioning.md)。
+省略 `RELEASE_FLAGS=--apply` 可预览。脚本自动运行检查、同步版本、创建 annotated tag 并推送；tag 触发 GitHub Actions，构建 macOS arm64 / Intel、Windows amd64、Linux amd64 和 Chrome / Firefox 扩展，全部通过后公开 GitHub Release。失败重跑、附件和签名范围见[版本与发布](docs/versioning.md)。
 
 ## 文档
 

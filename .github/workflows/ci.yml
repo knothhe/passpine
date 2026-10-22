@@ -1,0 +1,193 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+    inputs:
+      tag:
+        description: Existing release tag to check out and package
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ inputs.tag || github.ref }}
+  cancel-in-progress: ${{ inputs.tag == '' }}
+
+jobs:
+  build:
+    name: Check and build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            runner: macos-15
+          - target: macos-x86_64
+            runner: macos-15-intel
+          - target: linux-amd64
+            runner: ubuntu-24.04
+          - target: windows-amd64
+            runner: windows-2025
+    defaults:
+      run:
+        shell: bash
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      CGO_ENABLED: '1'
+    steps:
+      - name: Check out sources and release history
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag != '' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Set up the pinned pnpm version
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: package.json
+          cache: true
+          cache_dependency_path: browser/pnpm-lock.yaml
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: client/go.mod
+          cache-dependency-path: |
+            client/go.sum
+            scripts/windows-resources/go.sum
+
+      - name: Verify release tag and package versions
+        if: inputs.tag != ''
+        run: node scripts/ci-release.mjs verify "$RELEASE_TAG"
+
+      - name: Install Linux runtime and archive tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libgtk-3-0 libwebkit2gtk-4.1-0 zip unzip
+
+      - name: Install Windows packaging and test tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          choco install nsis --yes --no-progress
+          gcc --version
+          make --version
+
+      - name: Install browser dependencies
+        run: pnpm --dir browser install --frozen-lockfile
+
+      - name: Check macOS and Linux sources
+        if: runner.os != 'Windows'
+        run: bash scripts/check.sh
+
+      - name: Check Windows sources
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          node scripts/version.mjs check
+          node scripts/dependencies.mjs --check
+          pnpm run test:tooling
+          Push-Location scripts/windows-resources
+          try { go test ./... } finally { Pop-Location }
+          Push-Location client
+          try {
+            $env:PASSPINE_TEST_HOST = Join-Path $env:RUNNER_TEMP 'passpine-host-test.exe'
+            go build -o $env:PASSPINE_TEST_HOST ./cmd/passpine-host
+            go test -race ./...
+            go vet ./...
+          } finally {
+            Remove-Item Env:PASSPINE_TEST_HOST -ErrorAction SilentlyContinue
+            Pop-Location
+          }
+          pnpm --dir browser run typecheck
+          pnpm --dir browser test
+
+      - name: Build macOS and Linux client packages
+        if: runner.os != 'Windows'
+        run: bash scripts/build-client.sh
+
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build-client.ps1
+
+      - name: Upload client build
+        if: inputs.tag == ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: client-${{ matrix.target }}
+          path: dist/Passpine-*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+          overwrite: true
+
+      - name: Stage client release package
+        if: inputs.tag != ''
+        run: node scripts/ci-release.mjs stage-client "$RELEASE_TAG"
+
+      - name: Upload client release package and provenance
+        if: inputs.tag != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-client-${{ matrix.target }}
+          path: |
+            dist/releases/*/Passpine-*
+            dist/releases/*/manifest-client-*.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+          overwrite: true
+
+      - name: Build Chrome and Firefox packages
+        if: runner.os == 'Linux'
+        run: pnpm --dir browser run zip
+
+      - name: Upload browser build
+        if: runner.os == 'Linux' && inputs.tag == ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser
+          path: browser/.output/passpine-*.zip
+          include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+          overwrite: true
+
+      - name: Stage browser release packages
+        if: runner.os == 'Linux' && inputs.tag != ''
+        run: node scripts/ci-release.mjs stage-browser "$RELEASE_TAG"
+
+      - name: Upload browser release packages and provenance
+        if: runner.os == 'Linux' && inputs.tag != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-browser
+          path: |
+            dist/releases/*/passpine-*.zip
+            dist/releases/*/manifest-browser.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+          overwrite: true

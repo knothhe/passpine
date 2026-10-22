@@ -42,7 +42,7 @@ pnpm run test:browser
 make build
 ```
 
-常规客户端测试包含临时密码库的新建、编辑、加密落盘、锁定/解锁和重新打开验证。原生启动测试使用临时数据及独立单实例目录，不连接已运行的正式客户端。Windows 私有文件权限按受保护的 DACL 验证；缺少文件符号链接权限时，仅跳过对应符号链接用例，目录跳转使用 junction 测试。工具测试在 Windows 跳过 macOS ZIP 发布与 Unix shebang 模拟程序用例；`make release` 的 GitHub 制品发布目前仍限定 macOS。
+常规客户端测试包含临时密码库的新建、编辑、加密落盘、锁定/解锁和重新打开验证。原生启动测试使用临时数据及独立单实例目录，不连接已运行的正式客户端。Windows 私有文件权限按受保护的 DACL 验证；缺少文件符号链接权限时，仅跳过对应符号链接用例，目录跳转使用 junction 测试。工具测试在 Windows 跳过 macOS ZIP 发布与 Unix shebang 模拟程序用例；tag release 通过 GitHub Actions 分别在 macOS、Windows、Linux 上构建成品包，见[版本与发布](versioning.md)。
 
 ```sh
 make client:install

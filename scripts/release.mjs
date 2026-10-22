@@ -205,14 +205,14 @@ function argumentsFor(argv) {
 function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--help') || argv.includes('-h')) {
-    console.log('Usage: make release-initial [RELEASE_FLAGS="..."]\n       make release VERSION_BUMP=major|minor|patch|version [RELEASE_FLAGS="..."]\nDefaults to preview. release-initial publishes the current version without a version commit; release requires a higher version. RELEASE_FLAGS accepts --apply, --no-push, --github-release, --no-github-release and --resume. Resume with make release VERSION_BUMP=<exact-version> RELEASE_FLAGS="--resume --apply". Configured artifacts are built before tagging and uploaded before publishing the GitHub Release.');
+    console.log('Usage: make release-initial [RELEASE_FLAGS="..."]\n       make release VERSION_BUMP=major|minor|patch|version [RELEASE_FLAGS="..."]\nDefaults to preview. release-initial publishes the current version without a version commit; release requires a higher version. RELEASE_FLAGS accepts --apply, --no-push, --github-release, --no-github-release and --resume. Resume with make release VERSION_BUMP=<exact-version> RELEASE_FLAGS="--resume --apply". With ci_release enabled, the pushed tag triggers GitHub Actions to build packages and publish the Release. Local package building and GitHub publication must stay disabled in this mode.');
     return;
   }
   const args = argumentsFor(argv);
   process.chdir(git('rev-parse', '--show-toplevel'));
   const config = fs.existsSync('.release.json') ? readJSON('.release.json') : {};
   requireThat(object(config), '.release.json must contain an object.');
-  requireThat(Object.keys(config).every(k => ['version_file', 'branch', 'remote', 'tag_prefix', 'checks', 'check_phase', 'github_release', 'build_artifacts'].includes(k)), 'Unknown .release.json field.');
+  requireThat(Object.keys(config).every(k => ['version_file', 'branch', 'remote', 'tag_prefix', 'checks', 'check_phase', 'github_release', 'build_artifacts', 'ci_release'].includes(k)), 'Unknown .release.json field.');
   const { branch = 'main', remote = 'origin', tag_prefix: prefix = 'v', checks = [], check_phase: checkPhase = 'before-bump' } = config;
   for (const [name, value] of [['branch', branch], ['remote', remote], ['tag_prefix', prefix]]) {
     requireThat(typeof value === 'string' && (value || name === 'tag_prefix') && !value.startsWith('-'), `Invalid ${name}.`);
@@ -221,6 +221,9 @@ function main() {
   requireThat(typeof github === 'boolean', 'github_release must be boolean.');
   const packaging = config.build_artifacts ?? false;
   requireThat(typeof packaging === 'boolean', 'build_artifacts must be boolean.');
+  const ciRelease = config.ci_release ?? false;
+  requireThat(typeof ciRelease === 'boolean', 'ci_release must be boolean.');
+  requireThat(!ciRelease || (!github && !packaging), 'CI owns release packages and GitHub publication. Keep github_release and build_artifacts disabled while ci_release is enabled.');
   requireThat(!(github && args.noPush), 'GitHub Release requires pushing. Set RELEASE_FLAGS="--no-push --no-github-release" for a local preview or release.');
   requireThat(Array.isArray(checks) && checks.every(c => Array.isArray(c) && c.length && c.every(s => typeof s === 'string' && s)), 'checks must be arrays of command arguments.');
   requireThat(['before-bump', 'after-bump'].includes(checkPhase), 'check_phase must be before-bump or after-bump.');
@@ -264,7 +267,7 @@ function main() {
   if (initialRepo && !args.resume) requireUnpublishedRelease(initialRepo, tag);
   const phase = initial ? 'current-version' : checkPhase;
   const notes = github ? releaseNotes(repo, prefix, target, head, tag) : null;
-  console.log(JSON.stringify({ mode: args.apply ? 'execute' : 'preview', release_type: initial ? 'initial' : 'upgrade', current, target, branch, remote, tag, files: bumping ? [...files.keys()] : [], create_version_commit: bumping, checks: args.resume ? [] : checks, check_phase: args.resume ? null : phase, builds: packaging ? artifactBuilds : [], artifacts: plan.map(({ name }) => `dist/releases/${target}/${name}`), reuse_artifacts: args.resume && packaging, push: !args.noPush, github_release: github, github_repo: repo, release_notes: notes, resume: args.resume }, null, 2));
+  console.log(JSON.stringify({ mode: args.apply ? 'execute' : 'preview', release_type: initial ? 'initial' : 'upgrade', current, target, branch, remote, tag, files: bumping ? [...files.keys()] : [], create_version_commit: bumping, checks: args.resume ? [] : checks, check_phase: args.resume ? null : phase, builds: packaging ? artifactBuilds : [], artifacts: plan.map(({ name }) => `dist/releases/${target}/${name}`), reuse_artifacts: args.resume && packaging, push: !args.noPush, ci_release: ciRelease && !args.noPush, github_release: github, github_repo: repo, release_notes: notes, resume: args.resume }, null, 2));
   if (!args.apply) return;
   if (github) run(['gh', 'auth', 'status', '--hostname', 'github.com']);
   let artifacts = args.resume && packaging ? cachedArtifacts(target, head, plan) : null;
@@ -292,7 +295,8 @@ function main() {
   if (github) {
     console.log(publishRelease({ repo, tag, notes, artifacts: artifacts ?? [] }));
   }
-  console.log(`Release complete: ${tag}${args.noPush ? ' (local only)' : ''}`);
+  if (ciRelease && !args.noPush) console.log('Tag pushed. GitHub Actions builds and publishes the release: .github/workflows/release.yml');
+  console.log(`${ciRelease ? 'Release tag ready' : 'Release complete'}: ${tag}${args.noPush ? ' (local only)' : ''}`);
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try { main(); }

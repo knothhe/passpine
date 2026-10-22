@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build or retry, for example v0.1.1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify existing release tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.verify.outputs.tag }}
+    steps:
+      - name: Check out release tag and history
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ format('refs/tags/{0}', inputs.tag || github.ref_name) }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Verify tag checkout and synchronized versions
+        id: verify
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          node scripts/ci-release.mjs verify "$RELEASE_TAG"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Check and build all release packages
+    needs: verify
+    uses: ./.github/workflows/ci.yml
+    with:
+      tag: ${{ needs.verify.outputs.tag }}
+    permissions:
+      contents: read
+
+  publish:
+    name: Publish the complete release
+    needs: [verify, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Check out release tag and history
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ format('refs/tags/{0}', needs.verify.outputs.tag) }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Download packages from this build
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: dist/ci-release
+      - name: Verify all packages and publish the draft last
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-release.mjs publish "$RELEASE_TAG" dist/ci-release

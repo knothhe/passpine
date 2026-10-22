@@ -6,7 +6,7 @@ trap 'rm -rf "$test_dir"' EXIT
 cd "$root_dir"
 node scripts/version.mjs check
 node scripts/dependencies.mjs --check
-node --test scripts/version.test.mjs scripts/release.test.mjs scripts/release-artifacts.test.mjs scripts/dependencies.test.mjs
+node --test scripts/version.test.mjs scripts/release.test.mjs scripts/release-artifacts.test.mjs scripts/ci-release.test.mjs scripts/package-client-linux.test.mjs scripts/dependencies.test.mjs
 cd "$root_dir/scripts/windows-resources"
 go test ./...
 cd "$root_dir/client"

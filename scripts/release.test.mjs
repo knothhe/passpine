@@ -56,6 +56,20 @@ test('preview is read-only, apply synchronizes both packages and creates an anno
   assert.equal(git('rev-parse', 'HEAD'), released);
 });
 
+test('CI release mode leaves packages and publication to Actions and rejects competing local publication', t => {
+  const { root, git, release } = fixture(t);
+  const config = JSON.parse(fs.readFileSync(path.join(root, '.release.json'), 'utf8'));
+  fs.writeFileSync(path.join(root, '.release.json'), JSON.stringify({ ...config, ci_release: true, build_artifacts: false }));
+  git('add', '.release.json'); git('commit', '-m', 'test: enable CI release');
+  const preview = release('patch', '--no-push');
+  assert.equal(preview.status, 0, preview.stderr);
+  assert.deepEqual(JSON.parse(preview.stdout).builds, []);
+  assert.equal(JSON.parse(preview.stdout).github_release, false);
+  assert.match(release('patch', '--github-release').stderr, /CI owns release packages/);
+  assert.equal(release('patch', '--apply', '--no-push').status, 0);
+  assert.equal(git('rev-parse', 'v0.1.1^{commit}'), git('rev-parse', 'HEAD'));
+});
+
 test('first release tags the current version without rewriting files or adding a commit, and resumes from the original commit', t => {
   const { root, git, release } = fixture(t, [[process.execPath, '-e', "require('fs').appendFileSync('.git/check-runs', 'checked\\n')"]]);
   const sources = ['package.json', 'browser/package.json', 'pnpm-lock.yaml', 'browser/pnpm-lock.yaml'];

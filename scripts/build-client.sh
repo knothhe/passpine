@@ -44,6 +44,8 @@ PLIST
   codesign --verify --deep --strict "$bundle"
   ditto -c -k --sequesterRsrc --keepParent "$bundle" "$root_dir/dist/Passpine-$version-macos-$(uname -m).zip"
   echo "Built: $bundle"
+elif [[ "$(uname -s)" == "Linux" ]]; then
+  "$root_dir/scripts/package-client-linux.sh" "$version" "$(go env GOARCH)"
 else
   echo "Built: $root_dir/dist/passpine"
   echo "Built: $root_dir/dist/passpine-host"
