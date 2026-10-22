@@ -13,7 +13,7 @@ make release-initial RELEASE_FLAGS=--apply
 # 后续升级并发布
 make release RELEASE_FLAGS=--apply
 make release VERSION_BUMP=minor RELEASE_FLAGS=--apply
-make release VERSION_BUMP=0.2.0 RELEASE_FLAGS=--apply
+make release VERSION_BUMP=0.1.4 RELEASE_FLAGS=--apply
 
 # 预览，不执行测试或远程写入
 make release-initial
@@ -72,7 +72,7 @@ make version:check
 make version:patch
 make version:minor
 make version:major
-make version:set VERSION_VALUE=0.2.0
+make version:set VERSION_VALUE=0.1.4
 
 # 只在本地创建版本提交与 tag，不推送、不触发 CI
 make release-initial RELEASE_FLAGS="--apply --no-push"
