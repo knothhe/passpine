@@ -1,0 +1,38 @@
+{
+  "name": "@passpine/website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5175",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run && node --experimental-strip-types --test scripts/test-sync-release.mjs",
+    "build": "pnpm run typecheck && vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4175",
+    "sync:releases": "node --experimental-strip-types scripts/sync-release.mjs",
+    "deploy": "pnpm run sync:releases && pnpm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "@radix-ui/react-slot": "^1.2.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.59.0",
+    "motion": "^14.4.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tailwind-merge": "^3.5.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.0.0",
+    "vitest": "5.0.5",
+    "wrangler": "^4.0.0"
+  },
+  "engines": { "node": ">=22.12.0" },
+  "packageManager": "pnpm@12.11.2"
+}

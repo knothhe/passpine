@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Passpine</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="copy.js"></script>
+  </head>
+  <body>
+    <header>
+      <a class="brand"
+        ><img src="../../website/public/icon.svg" alt="" />Passpine</a
+      >
+      <nav>
+        <a href="#features" data-copy="features"></a
+        ><a href="#privacy" data-copy="privacy"></a
+        ><a href="#download" data-copy="download"></a>
+      </nav>
+      <a data-copy="source"></a>
+    </header>
+    <main>
+      <section class="hero">
+        <div class="eyebrow" data-copy="eyebrow"></div>
+        <h1 data-copy="headline"></h1>
+        <p data-copy="description"></p>
+        <div class="actions">
+          <a class="button" href="#download" data-copy="cta"></a
+          ><a href="#features" data-copy="secondary"></a>
+        </div>
+        <small data-copy="support"></small>
+        <div class="showcase">
+          <div class="window">
+            <div class="titlebar">
+              <i></i><i></i><i></i><span>Passpine</span>
+            </div>
+            <img src="../../website/public/images/desktop.png" alt="" />
+          </div>
+          <div class="popup">
+            <img src="../../website/public/images/extension.png" alt="" />
+          </div>
+        </div>
+        <small data-copy="preview"></small>
+      </section>
+      <section id="features">
+        <h2 data-copy="label"></h2>
+        <p data-copy="body"></p>
+        <div class="features">
+          <article>
+            <b>01 / LOCAL</b>
+            <h3 data-copy="local"></h3>
+            <p data-copy="localBody"></p>
+          </article>
+          <article>
+            <b>02 / SYNC</b>
+            <h3 data-copy="git"></h3>
+            <p data-copy="gitBody"></p>
+          </article>
+          <article>
+            <b>03 / CONNECT</b>
+            <h3 data-copy="browser"></h3>
+            <p data-copy="browserBody"></p>
+          </article>
+        </div>
+      </section>
+      <section id="privacy" class="privacy-design">
+        <h2 data-copy="privacyTitle"></h2>
+        <p data-copy="privacyBody"></p>
+      </section>
+      <section id="download" class="download">
+        <h2 data-copy="downloadTitle"></h2>
+        <p data-copy="downloadBody"></p>
+        <div class="download-panel">
+          <p id="status"></p>
+          <small data-copy="savedVersion"></small>
+          <div class="valid-downloads">
+            <article>
+              <h3>macOS</h3>
+              <p>Apple Silicon</p>
+              <a
+                class="button"
+                href="https://github.com/knothhe/passpine/releases/download/v0.1.2/Passpine-0.1.2-macos-arm64.zip"
+                data-copy="downloadAction"
+              ></a>
+            </article>
+            <article>
+              <h3>Windows</h3>
+              <p>x64</p>
+              <a
+                class="button"
+                href="https://github.com/knothhe/passpine/releases/download/v0.1.2/Passpine-0.1.2-windows-amd64-setup.exe"
+                data-copy="downloadAction"
+              ></a>
+            </article>
+            <article>
+              <h3>Linux</h3>
+              <p>x64</p>
+              <a
+                class="button"
+                href="https://github.com/knothhe/passpine/releases/download/v0.1.2/Passpine-0.1.2-linux-amd64.tar.gz"
+                data-copy="downloadAction"
+              ></a>
+            </article>
+          </div>
+          <small data-copy="note"></small>
+        </div>
+      </section>
+    </main>
+    <script>
+      document
+        .querySelectorAll("[data-copy]")
+        .forEach(
+          (el) => (el.textContent = WEBSITE_DESIGN_COPY[el.dataset.copy]),
+        );
+      const state = new URLSearchParams(location.search).get("state");
+      document.querySelector("#status").textContent =
+        WEBSITE_DESIGN_COPY[
+          state === "error"
+            ? "error"
+            : state === "loading"
+              ? "loading"
+              : state === "mobile"
+                ? "mobile"
+                : "detected"
+        ];
+    </script>
+  </body>
+</html>
