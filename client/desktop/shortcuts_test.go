@@ -161,3 +161,53 @@ func TestShortcutRecordingCapturesApplicationNavigationChord(t *testing.T) {
 		t.Fatal("application shortcut navigated instead of being recorded")
 	}
 }
+
+func TestShortcutRecordingCapturesPhysicalShiftedPunctuationAfterModifierFrames(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		key  ui.Key
+		want string
+	}{
+		{"question mark", ui.KeySlash, "Ctrl+Shift+/"},
+		{"plus", ui.KeyEqual, "Ctrl+Shift+="},
+		{"exclamation mark", ui.Key1, "Ctrl+Shift+1"},
+		{"colon", ui.KeySemicolon, "Ctrl+Shift+;"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, registry := shortcutFixture(t)
+			a.page = "settings"
+			callbacks := make(chan func(), 1)
+			requests := make(chan app.Request, 1)
+			a.runOnMain = func(callback func()) { callbacks <- callback }
+			a.service = backendFunc(func(request app.Request) app.Response {
+				requests <- request
+				return app.Response{Status: "ok", Data: app.Data{Settings: *request.Settings}}
+			})
+			view := ui.NewTester(testView(a), 1120, 760)
+			if err := view.Click("录制全局搜索快捷键"); err != nil {
+				t.Fatal(err)
+			}
+			view.Frame()
+			for _, mods := range []ui.Modifiers{ui.Ctrl, ui.Ctrl | ui.Shift} {
+				view.HoldModifiers(mods)
+				view.Frame()
+				if !a.shortcut.recording || !view.Focused("录制全局搜索快捷键") {
+					t.Fatalf("recorder lost focus while holding modifiers %v", mods)
+				}
+			}
+			// Shifted punctuation has no logical US key in MyGo. KeyAt sends
+			// KeyUnknown together with the physical key, as native input does.
+			view.KeyAt(ui.Ctrl|ui.Shift, tc.key)
+			if a.shortcut.recording {
+				t.Fatal("physical punctuation key did not complete recording")
+			}
+			awaitMain(t, callbacks)
+			if request := <-requests; request.Settings.GlobalShortcut != tc.want || a.settingsSaved.GlobalShortcut != tc.want {
+				t.Fatalf("physical punctuation recorded %q, want %q", a.settingsSaved.GlobalShortcut, tc.want)
+			}
+			if registry.bindings[tc.want] == nil || len(registry.bindings) != 1 {
+				t.Fatal("physical punctuation did not replace the active binding")
+			}
+		})
+	}
+}
