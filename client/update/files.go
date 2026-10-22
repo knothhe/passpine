@@ -219,7 +219,8 @@ func copyFile(source, destination string, mode os.FileMode) error {
 	}
 	return e
 }
-func (m *Manager) downloadAndStage(ctx context.Context, d Download, delta bool) error {
+func (m *Manager) downloadAndStage(ctx context.Context) error {
+	d := m.asset.Full
 	m.publish(func(s *Snapshot) { s.State = StateDownloading; s.Progress = 0; s.Downloaded = 0; s.Total = d.Size })
 	resp, e := m.request(ctx, d.URL)
 	if e != nil {
@@ -278,7 +279,7 @@ func (m *Manager) downloadAndStage(ctx context.Context, d Download, delta bool) 
 		return coded(ErrorStorage, e)
 	}
 	defer os.RemoveAll(stage)
-	if e = m.extract(ctx, archiveName, stage, delta); e != nil {
+	if e = m.extract(ctx, archiveName, stage); e != nil {
 		return coded(ErrorVerification, e)
 	}
 	if e = verifyTree(stage, m.asset.Files); e != nil {
@@ -301,7 +302,7 @@ func (m *Manager) downloadAndStage(ctx context.Context, d Download, delta bool) 
 	m.readyDir = ready
 	return nil
 }
-func (m *Manager) extract(ctx context.Context, archive, stage string, delta bool) error {
+func (m *Manager) extract(ctx context.Context, archive, stage string) error {
 	reader, e := zip.OpenReader(archive)
 	if e != nil {
 		return e
@@ -369,23 +370,7 @@ func (m *Manager) extract(ctx context.Context, archive, stage string, delta bool
 	}
 	for i, f := range m.asset.Files {
 		if !present[f.Path] {
-			if !delta {
-				return errors.New("full package omits signed file")
-			}
-			source, e := securePath(m.cfg.InstallRoot, f.Path)
-			if e != nil {
-				return e
-			}
-			if e = verifyFile(source, f.SHA256, f.Size); e != nil {
-				return e
-			}
-			target, e := securePath(stage, f.Path)
-			if e != nil {
-				return e
-			}
-			if e = copyFile(source, target, os.FileMode(f.Mode)); e != nil {
-				return e
-			}
+			return errors.New("full package omits signed file")
 		}
 		m.publish(func(s *Snapshot) { s.Progress = float64(i+1) / float64(len(m.asset.Files)) })
 	}

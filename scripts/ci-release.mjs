@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { versionFiles } from './version.mjs';
 import { tagVersion, notesForTag } from './release-notes.mjs';
@@ -152,47 +152,6 @@ export function collectUpdates(tag, directory, root = process.cwd()) {
   return updates;
 }
 
-// Only a genuine missing release/asset means that no incremental baseline is
-// available. Authentication and network errors stop publication.
-export function previousUpdateFeed(repo, version, invoke = spawnSync) {
-  const call = args => {
-    const result = invoke('gh', args, { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
-    if (result.error) throw result.error;
-    return result;
-  };
-  const result = call(['api', '--hostname', 'github.com', '--paginate', '--slurp', `repos/${repo}/releases?per_page=100`]);
-  if (result.status !== 0) {
-    if (/HTTP 404/.test(result.stderr || '')) return null;
-    throw new Error(`Cannot read the previous release: ${result.stderr}`);
-  }
-  // Select the same older baseline on retries after the current release has
-  // become public. Using /latest would choose our own feed and break resume.
-  const compare = (a, b) => {
-    const left = a.split('.').map(Number), right = b.split('.').map(Number);
-    for (let i = 0; i < 3; i++) if (left[i] !== right[i]) return left[i] - right[i];
-    return 0;
-  };
-  const releases = JSON.parse(result.stdout).flat().filter(item => !item.draft && !item.prerelease
-    && /^v\d+\.\d+\.\d+$/.test(item.tag_name) && compare(item.tag_name.slice(1), version) < 0);
-  releases.sort((a, b) => compare(b.tag_name.slice(1), a.tag_name.slice(1)));
-  const asset = releases[0]?.assets?.find(item => item.name === 'update-feed.json');
-  if (!asset) return null;
-  if (!Number.isSafeInteger(asset.id) || asset.size > 8 * 1024 * 1024) throw new Error('Invalid previous update feed metadata.');
-  const download = call(['api', '--hostname', 'github.com', '-H', 'Accept: application/octet-stream', `repos/${repo}/releases/assets/${asset.id}`]);
-  if (download.status !== 0) throw new Error(`Cannot download the previous update feed: ${download.stderr}`);
-  return Buffer.from(download.stdout);
-}
-
-export function updateNotes(version, generatedNotes, root = process.cwd()) {
-  const filename = path.join(root, 'docs', 'releases', `${version}.json`);
-  if (fs.existsSync(filename)) {
-    const notes = JSON.parse(fs.readFileSync(filename, 'utf8'));
-    if (typeof notes.en !== 'string' || !notes.en.trim() || typeof notes['zh-CN'] !== 'string' || !notes['zh-CN'].trim()) throw new Error('Release notes require English and Simplified Chinese.');
-    return notes;
-  }
-  return { en: `Release changes\n\n${generatedNotes}`, 'zh-CN': `版本变更（提交标题保留原文）\n\n${generatedNotes}` };
-}
-
 // Publication uses the trust anchor checked into the same release sources as
 // CI builds. Development overrides cannot redirect or rotate a release.
 // Return only public configuration; never log or persist the private input.
@@ -231,9 +190,9 @@ function main() {
     const repo = process.env.GITHUB_REPOSITORY;
     const notes = notesForTag(repo, tag);
     artifacts.push(...createUpdateFeed({
-      version: metadata.version, repo, notes: updateNotes(metadata.version, notes),
+      version: metadata.version, repo,
       updates: collectUpdates(tag, path.resolve(directory)), output: path.join('dist', 'updates', metadata.version),
-      publicKey: config.key, privateKey: process.env.PASSPINE_UPDATE_PRIVATE_KEY, previousFeed: previousUpdateFeed(repo, metadata.version),
+      publicKey: config.key, privateKey: process.env.PASSPINE_UPDATE_PRIVATE_KEY,
     }));
     console.log(publishRelease({ repo, tag, notes, artifacts }));
   } else throw new Error(`Unknown CI release action: ${action}`);

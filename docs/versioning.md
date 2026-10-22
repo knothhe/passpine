@@ -26,7 +26,7 @@ make release
 2. 升版时同步两个 `package.json`，只提交版本文件，提交名为 `chore(release): v<版本>`；首次发布保留 HEAD，tag 正文带 `Release-Type: initial`。
 3. 创建 `v<版本>` annotated tag，以 atomic push 一次推送 `main` 和该 tag。本地尚未推送的分支提交也会随 `main` 一起推送。
 4. tag push 触发 `.github/workflows/release.yml`，复用 CI，在各目标系统运行检查并构建。完整检出历史与 tags，核对 tag、HEAD 及版本文件一致。
-5. 收齐五份普通安装附件，校验正式通道、包内版本、构建提交、大小与 SHA-256，再验证三个平台的更新 ZIP、生成有收益的增量 ZIP 并签署 Feed。创建 Release 草稿，上传并核对远程附件后公开 Release。任何构建失败都不会进入发布步骤。
+5. 收齐五份普通安装附件，校验正式通道、包内版本、构建提交、大小与 SHA-256，再验证三个平台的完整更新 ZIP 并签署 Feed。创建 Release 草稿，上传并核对全部九个远程附件后公开 Release。任何构建失败都不会进入发布步骤。
 
 本地命令完成表示 tag 已推送，最终发布结果以 Actions 的 Release 工作流为准。仓库需启用 GitHub Actions；发布 job 使用内置 `GITHUB_TOKEN` 的 `contents: write`，检查和构建 job 只有 `contents: read`。发布要求已固定的 Ed25519 公钥与对应 CI 签名私钥，详见 [客户端更新](updates.md)。
 
@@ -50,7 +50,9 @@ macOS 沿用 ad-hoc 签名，未接入 Developer ID 公证；Windows 未接入 A
 
 各 job 将附件暂存到 `dist/releases/<版本>/`，生成独立的 `manifest-<目标>.json`，记录 tag、HEAD、版本、文件名、大小和 SHA-256。发布步骤要求完整且匹配的目标集合，只上传确切文件。manifest 保存在 Actions artifacts 中，不上传到 Release。
 
-客户端 job 还生成专用的 `Passpine-<版本>-update-<系统>-<架构>.zip`，来源 manifest 附带所有目标文件的大小、SHA-256 和权限。publication job 使用 `PASSPINE_UPDATE_PRIVATE_KEY` Secret 生成 `update-feed.json` 及更小的文件级增量 ZIP，与普通安装包一起发布。公钥固定在 `config/update-signing.json`，Actions Variable 必须与它一致；签名缺失或不匹配会停止发布，私钥不会进入构建 job。两种语言的更新说明见 [客户端更新](updates.md)。
+客户端 job 还生成专用的 `Passpine-<版本>-update-<系统>-<架构>.zip`，来源 manifest 附带所有目标文件的大小、SHA-256 和权限。publication job 使用 `PASSPINE_UPDATE_PRIVATE_KEY` Secret 签署 `update-feed.json`，与三个完整更新 ZIP、五个普通安装附件一起发布。该步骤不查询或下载旧版 Feed，不生成差分包，也不将更新说明正文嵌入 Feed。公钥固定在 `config/update-signing.json`，Actions Variable 必须与它一致；签名缺失或不匹配会停止发布，私钥不会进入构建 job。
+
+Feed 继续使用 `schema: 1`，新负载仅包含版本和各平台的完整包与文件清单；客户端忽略旧 Feed 中的 `notes`、`deltas` 等额外字段，签名验证仍覆盖全部原始负载。设置页通过条状链接打开对应 GitHub Release：有效的稳定候选版本优先，否则使用当前稳定版本，没有稳定版本时禁用。具体格式、下载与安装保护见 [客户端更新](updates.md)。
 
 正文复用本地脚本逻辑，保留 Full Changelog 链接，列出上一可达较低 SemVer tag 之后的非 merge 提交标题与短 hash，排除版本提交。首次发布列出全部历史，需要完整历史与 tags。也可独立生成：
 

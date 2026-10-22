@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import { collectPackages, collectUpdates, packagesFor, stage, updatePublicationConfig, validatePackage, verifyTag } from './ci-release.mjs';
 import { notesForTag } from './release-notes.mjs';
-import { stageUpdate } from './update-artifacts.mjs';
+import { createUpdateFeed, stageUpdate, verifyFeed } from './update-artifacts.mjs';
 const browserIdentity = JSON.parse(fs.readFileSync(new URL('../config/browser-identities.json', import.meta.url), 'utf8')).release;
 
 // Read the repository's block-style workflow mappings without a runtime YAML dependency.
@@ -242,7 +242,20 @@ test('signed publication requires all three validated update bundles from the ex
     const filename = path.join(directory, `manifest-${target}.json`), manifest = JSON.parse(fs.readFileSync(filename, 'utf8'));
     manifest.update = stageUpdate('0.1.0', target, root, directory); fs.writeFileSync(filename, JSON.stringify(manifest));
   }
-  assert.equal(collectUpdates('v0.1.0', directory, root).length, 3);
+  const updates = collectUpdates('v0.1.0', directory, root);
+  assert.equal(updates.length, 3);
+  const signing = crypto.generateKeyPairSync('ed25519');
+  const publicKey = signing.publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('base64');
+  const generated = createUpdateFeed({ version: '0.1.0', repo: 'knothhe/passpine', updates,
+    output: path.join(root, 'published-feed'), publicKey, privateKey: signing.privateKey.export({ type: 'pkcs8', format: 'pem' }) });
+  const attachments = [...collectPackages('v0.1.0', directory, root), ...generated];
+  assert.equal(attachments.length, 9);
+  assert.equal(new Set(attachments.map(item => item.name)).size, 9);
+  assert.equal(attachments.filter(item => item.name.includes('-update-')).length, 3);
+  assert.ok(attachments.every(item => !item.name.includes('-from-')));
+  const feed = verifyFeed(fs.readFileSync(generated.at(-1).path), publicKey);
+  assert.deepEqual(Object.keys(feed).sort(), ['assets', 'schema', 'version']);
+  assert.ok(feed.assets.every(asset => Object.keys(asset).sort().join(',') === 'arch,files,full,os'));
   const filename = path.join(directory, 'manifest-client-linux-amd64.json'), manifest = fs.readFileSync(filename, 'utf8');
   const changed = JSON.parse(manifest); changed.head = 'another-commit'; fs.writeFileSync(filename, JSON.stringify(changed));
   assert.throws(() => collectUpdates('v0.1.0', directory, root), /Invalid update provenance/);

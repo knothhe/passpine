@@ -187,41 +187,19 @@ export function verifyFeed(bytes, key) {
   return feed;
 }
 
-export function createUpdateFeed({ version, repo, notes, updates, output, publicKey: key, privateKey, previousFeed }) {
+export function createUpdateFeed({ version, repo, updates, output, publicKey: key, privateKey }) {
   validateVersion(version);
   requireThat(/^[\w.-]+\/[\w.-]+$/.test(repo), 'Invalid update release repository.');
   const verificationKey = publicKey(key), signingKey = crypto.createPrivateKey(privateKey);
   requireThat(signingKey.asymmetricKeyType === 'ed25519' && crypto.createPublicKey(signingKey).export({ type: 'spki', format: 'der' }).equals(verificationKey.export({ type: 'spki', format: 'der' })), 'Update signing key does not match the embedded public key.');
-  requireThat(typeof notes?.en === 'string' && typeof notes?.['zh-CN'] === 'string', 'Update notes require English and Simplified Chinese.');
   requireThat(updates.length === Object.keys(targetPlatforms).length && new Set(updates.map(({ target }) => target)).size === updates.length, 'Update target set is incomplete.');
-  const previous = previousFeed ? verifyFeed(previousFeed, key) : null;
-  if (previous) {
-    const oldVersion = previous.version.split('.').map(Number), current = version.split('.').map(Number);
-    const firstDifference = oldVersion.findIndex((part, i) => part !== current[i]);
-    requireThat(firstDifference !== -1 && oldVersion[firstDifference] < current[firstDifference], 'A delta baseline must be an older release.');
-  }
   fs.mkdirSync(output, { recursive: true });
   const artifacts = [], baseURL = `https://github.com/${repo}/releases/download/v${version}/`;
   const assets = [...updates].sort((a, b) => a.target < b.target ? -1 : a.target > b.target ? 1 : 0).map(({ target, update, directory }) => {
     const full = validateUpdate(update, target, directory); artifacts.push(full);
-    const asset = { os: update.os, arch: update.arch, full: { url: baseURL + full.name, size: full.size, sha256: full.sha256 }, files: update.files, deltas: [] };
-    const base = previous?.assets.find(item => item.os === update.os && item.arch === update.arch);
-    if (base) {
-      const entries = decodeZip(fs.readFileSync(full.path)).filter(entry => !base.files.some(file => file.path === entry.path && file.sha256 === digest(entry.data) && file.mode === entry.mode));
-      // Empty changes and larger deltas use the full ZIP. New builds usually
-      // change the two executables but retain images and native helper files.
-      if (entries.length) {
-        const bytes = encodeZip(entries);
-        if (bytes.length < full.size) {
-          const name = `Passpine-${version}-update-${update.os}-${update.arch}-from-${previous.version}.zip`, filename = path.join(output, name);
-          fs.writeFileSync(filename, bytes); const delta = artifact(filename); artifacts.push(delta);
-          asset.deltas.push({ fromVersion: previous.version, url: baseURL + name, size: delta.size, sha256: delta.sha256 });
-        }
-      }
-    }
-    return asset;
+    return { os: update.os, arch: update.arch, full: { url: baseURL + full.name, size: full.size, sha256: full.sha256 }, files: update.files };
   });
-  const payload = Buffer.from(`${JSON.stringify({ schema: 1, version, notes, assets })}\n`), signature = crypto.sign(null, payload, signingKey);
+  const payload = Buffer.from(`${JSON.stringify({ schema: 1, version, assets })}\n`), signature = crypto.sign(null, payload, signingKey);
   const filename = path.join(output, 'update-feed.json');
   const envelope = `${JSON.stringify({ payload: payload.toString('base64'), signature: signature.toString('base64') })}\n`;
   requireThat(Buffer.byteLength(envelope) <= 4 * 1024 * 1024, 'Signed update feed exceeds the client size limit.');
