@@ -240,7 +240,7 @@ func TestSettingsSegmentsScreenshots(t *testing.T) {
 	if err := os.MkdirAll(directory, 0755); err != nil {
 		t.Fatal(err)
 	}
-	for _, category := range []string{"general", "system", "security", "vault"} {
+	for _, category := range []string{"general", "security", "vault"} {
 		for _, scale := range []int{80, 120} {
 			for _, dark := range []bool{false, true} {
 				a := fixture()

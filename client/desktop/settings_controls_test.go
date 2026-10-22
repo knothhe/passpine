@@ -12,14 +12,24 @@ import (
 func TestWindowAndStartupSettingsAreReachableAndPreviewCannotChangeLoginItem(t *testing.T) {
 	a := fixture()
 	a.page = "settings"
-	view := ui.NewTester(testView(a), 860, 620)
+	view := ui.NewTester(testView(a), 1120, 760)
 	view.SetPreferences(ui.Preferences{ReduceMotion: true})
-	if err := view.Click("切换侧栏"); err != nil {
+	if !a.shell.LeftExpanded() {
+		if err := view.Click("切换侧栏"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := view.Click("通用"); err != nil {
 		t.Fatal(err)
 	}
-	if err := view.Click("窗口与启动"); err != nil {
-		t.Fatal(err)
+	if a.settingsState.Category != "general" {
+		t.Fatal("window and startup preferences did not open within General")
 	}
+	group, ok := view.Find("窗口与启动")
+	if !ok || group.X < defaultSidebarWidth {
+		t.Fatal("window and startup preferences are missing from the General content")
+	}
+	view.Scroll(800, 400, 0, group.Y-140)
 	for _, label := range []string{"Dock 图标", "点击托盘图标", "轻量模式", "开机自启"} {
 		if _, ok := view.Find(label); !ok {
 			t.Fatalf("new setting is unreachable: %s", label)
@@ -178,6 +188,9 @@ func TestSettingsKeepRecoveryAndActivityDestinations(t *testing.T) {
 		state := a.state
 		a.service = backendFunc(func(app.Request) app.Response { return app.Response{Status: "ok", Data: state} })
 		view := ui.NewTester(testView(a), 1120, 760)
+		if test.category == "general" {
+			view.Scroll(900, 400, 0, 10000)
+		}
 		if err := view.Click(test.button); err != nil {
 			t.Fatal(err)
 		}

@@ -326,8 +326,7 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 		}},
 	}
 	return []components.SettingsCategory{
-		{ID: "general", Title: a.t("通用"), Icon: lucide.Settings(), Description: a.t("调整外观、快捷键与本机操作记录。"), Groups: []components.SettingsGroup{{ID: "appearance", Items: general}, {ID: "activity", Title: a.t("操作记录"), Items: activityItems}}},
-		{ID: "system", Title: a.t("窗口与启动"), Icon: lucide.AppWindow(), Description: a.t("管理 Dock、托盘、内存释放与开机自启。"), Groups: []components.SettingsGroup{{ID: "system", Items: systemItems}}},
+		{ID: "general", Title: a.t("通用"), Icon: lucide.Settings(), Description: a.t("调整外观、窗口、启动、快捷键与本机操作记录。"), Groups: []components.SettingsGroup{{ID: "appearance", Items: general}, {ID: "system", Title: a.t("窗口与启动"), Items: systemItems}, {ID: "activity", Title: a.t("操作记录"), Items: activityItems}}},
 		{ID: "security", Title: a.t("安全"), Icon: lucide.LockKeyhole(), Description: a.t("管理解锁方式和密码的保留时间。"), Groups: []components.SettingsGroup{{ID: "session", Items: security}}},
 		{ID: "vault", Title: a.t("密码库"), Icon: lucide.FolderKey(), Description: a.t("管理恢复备份与 Git 同步。"), Groups: []components.SettingsGroup{{ID: "backup", Items: vaultItems}, {ID: "sync", Title: a.t("Git 同步"), Items: syncItems}}},
 		{ID: "browser", Title: a.t("浏览器"), Icon: lucide.Globe(), Description: a.t("让浏览器扩展安全地访问当前密码库。"), Groups: []components.SettingsGroup{{ID: "integration", Items: browserItems}}},
