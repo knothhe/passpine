@@ -611,7 +611,11 @@ func TestGnuPGInteroperability(t *testing.T) {
 	v := newFixture(t)
 	// macOS Unix-domain socket paths have a short limit; testing.T's full name
 	// beneath /var/folders may leave too little room for GnuPG agent sockets.
-	home, e := os.MkdirTemp("/tmp", "passpine-gpg-")
+	tempBase := ""
+	if runtime.GOOS == "darwin" {
+		tempBase = "/tmp"
+	}
+	home, e := os.MkdirTemp(tempBase, "passpine-gpg-")
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +17,12 @@ func TestOpenExistingVaultAutomaticallyUsesSystemGPG(t *testing.T) {
 	if err != nil {
 		t.Skip("GnuPG is not installed")
 	}
-	home, err := os.MkdirTemp("/tmp", "passpine-app-gpg-")
+	tempBase := ""
+	if runtime.GOOS == "darwin" {
+		// Keep the GnuPG agent socket below macOS's Unix-domain path limit.
+		tempBase = "/tmp"
+	}
+	home, err := os.MkdirTemp(tempBase, "passpine-app-gpg-")
 	if err != nil {
 		t.Fatal(err)
 	}
