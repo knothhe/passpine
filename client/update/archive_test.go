@@ -7,12 +7,15 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/base64"
+	"errors"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 type installerEntry struct {
@@ -417,5 +420,115 @@ func TestLinuxInstallerProducedBySystemTar(t *testing.T) {
 	}
 	if m.Snapshot().State != StateReady {
 		t.Fatalf("ordinary Linux package was not staged: %+v", m.Snapshot())
+	}
+}
+
+func TestInstallerCandidateCheckRecordRestoresNestedReleaseWithoutNetwork(t *testing.T) {
+	for _, platform := range []string{"darwin", "linux"} {
+		t.Run(platform, func(t *testing.T) {
+			f, initial := installerFixture(t, platform)
+			auto := false
+			cfg := initial.cfg
+			cfg.AutoDownload = &auto
+			m, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			now := scheduleTestTime()
+			if err := m.check(context.Background(), func() time.Time { return now }); err != nil {
+				t.Fatal(err)
+			}
+			if s := m.Snapshot(); s.State != StateAvailable || s.Version != f.manifest.InstallerUpdate.Version {
+				t.Fatalf("installer candidate was lost behind legacy version: %+v", s)
+			}
+			restored, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if s := restored.Snapshot(); s.State != StateAvailable || s.Version != f.manifest.InstallerUpdate.Version || s.AutoDownload {
+				t.Fatalf("signed installer candidate was not restored: %+v", s)
+			}
+			if restored.manifest.Schema != 2 || !bytes.Equal(restored.envelope, f.body) || !restored.checkRecord.CheckedAt.Equal(now) {
+				t.Fatal("check record did not preserve the selected schema and complete signed envelope")
+			}
+			schedulerOnce(restored, now.Add(time.Second))
+			if f.count("/feed") != 1 || f.count("/full") != 0 {
+				t.Fatal("restart repeated a satisfied check or downloaded with automatic download disabled")
+			}
+			if err := restored.Download(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if s := restored.Snapshot(); s.State != StateReady || s.Version != f.manifest.InstallerUpdate.Version {
+				t.Fatalf("restored nested candidate could not download: %+v", s)
+			}
+			if filepath.Base(restored.readyArchive) != packageName(restored.asset) || f.count("/feed") != 1 || f.count("/full") != 1 {
+				t.Fatal("manual installer download used the wrong cache or refetched the feed")
+			}
+			if err := restored.verifyPending(); err != nil {
+				t.Fatal(err)
+			}
+			assertFile(t, restored.cfg.Executable, "old main")
+		})
+	}
+}
+
+func TestInstallerDownloadRetryRestoresBackoffWithoutRefetchingFeed(t *testing.T) {
+	for _, platform := range []string{"darwin", "linux"} {
+		t.Run(platform, func(t *testing.T) {
+			f, m := installerFixture(t, platform)
+			baseTransport := m.cfg.HTTPClient.Transport
+			attempts := 0
+			client := *m.cfg.HTTPClient
+			client.Transport = scheduleTransport(func(request *http.Request) (*http.Response, error) {
+				if request.URL.Path == "/full" {
+					attempts++
+					if attempts == 1 {
+						return nil, errors.New("installer temporarily unavailable")
+					}
+				}
+				return baseTransport.RoundTrip(request)
+			})
+			m.cfg.HTTPClient = &client
+			now := scheduleTestTime()
+			schedulerOnce(m, now)
+			if r := m.checkRecord; r.Retry != "download" || r.Failures != 1 || !r.CheckedAt.Equal(now) || !r.RetryAt.Equal(now.Add(5*time.Minute)) {
+				t.Fatalf("installer failure did not persist download backoff: %+v", r)
+			}
+			if s := m.Snapshot(); s.State != StateFailed || s.Version != f.manifest.InstallerUpdate.Version {
+				t.Fatalf("wrong failed installer state: %+v", s)
+			}
+			restored, err := New(m.cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if s := restored.Snapshot(); s.State != StateAvailable || s.Version != f.manifest.InstallerUpdate.Version {
+				t.Fatalf("installer retry restored the legacy candidate: %+v", s)
+			}
+			if restored.manifest.Schema != 2 || restored.asset.Format != m.asset.Format || !bytes.Equal(restored.envelope, f.body) {
+				t.Fatal("restored retry lost the authenticated installer format or envelope")
+			}
+			schedulerOnce(restored, now.Add(time.Minute))
+			if attempts != 1 || f.count("/feed") != 1 || f.count("/full") != 0 {
+				t.Fatal("restart bypassed persisted installer backoff")
+			}
+			schedulerOnce(restored, restored.checkRecord.RetryAt)
+			if s := restored.Snapshot(); s.State != StateReady || s.Version != f.manifest.InstallerUpdate.Version {
+				t.Fatalf("installer retry did not recover: %+v", s)
+			}
+			if r := restored.checkRecord; r.Retry != "" || r.Failures != 0 || attempts != 2 || f.count("/feed") != 1 || f.count("/full") != 1 {
+				t.Fatalf("retry refetched the feed or left backoff: %+v; attempts=%d feeds=%d packages=%d", r, attempts, f.count("/feed"), f.count("/full"))
+			}
+			if filepath.Base(restored.readyArchive) != packageName(restored.asset) {
+				t.Fatal("installer retry used the wrong archive name")
+			}
+			if err := restored.verifyPending(); err != nil {
+				t.Fatal(err)
+			}
+			restarted, err := New(m.cfg)
+			if err != nil || restarted.Snapshot().State != StateReady {
+				t.Fatalf("retried installer was not restorable: %v", err)
+			}
+			assertFile(t, m.cfg.Executable, "old main")
+		})
 	}
 }
