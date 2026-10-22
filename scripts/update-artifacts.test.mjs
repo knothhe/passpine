@@ -96,6 +96,25 @@ test('staging reuses ordinary macOS ZIP and Linux TAR content without writing an
   }
 });
 
+test('Linux TAR fixtures preserve executable payload modes when the host source files have no execute bits', t => {
+  const root = fixture(t), input = path.join(root, 'input'), directory = path.join(root, 'without-execute');
+  const dist = createInstallerFixtures(input, '0.1.6');
+  for (const name of ['passpine', 'passpine-host']) fs.chmodSync(path.join(dist, name), 0o644);
+  createOrdinaryInstaller(input, directory, '0.1.6', targets[1]);
+  // Production validation compares both executable modes and exact content;
+  // this failed with a native Windows tar archive derived from host stat bits.
+  const update = stageUpdate('0.1.6', targets[1], input, directory);
+  assert.deepEqual(update.files.map(({ path, mode }) => ({ path, mode })), [
+    { path: 'passpine', mode: 0o755 }, { path: 'passpine-host', mode: 0o755 },
+  ]);
+  const archive = validateUpdate(update, targets[1], directory).path, before = fs.readFileSync(archive);
+  assert.deepEqual(execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }).trim().split(/\r?\n/),
+    ['passpine', 'passpine-host', 'version.txt', 'install.sh', 'app-icon-monochrome.png']);
+  for (const name of ['passpine', 'passpine-host']) fs.chmodSync(path.join(dist, name), 0o755);
+  const after = createOrdinaryInstaller(input, path.join(root, 'with-execute'), '0.1.6', targets[1]);
+  assert.deepEqual(fs.readFileSync(after), before, 'Host permissions and timestamps must not alter the Linux fixture.');
+});
+
 test('Windows full update reuses and statically verifies the ordinary NSIS installer', installerTest, t => {
   const root = fixture(t), [item] = build(root, '0.1.6', false, [targets[2]]);
   assert.equal(item.update.format, 'nsis');
