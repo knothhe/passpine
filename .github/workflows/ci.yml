@@ -113,7 +113,7 @@ jobs:
           $gnupgBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           $env:PATH = "$gnupgBin;$env:PATH"
           foreach ($tool in @('gpg', 'gpgconf')) {
-            $command = Get-Command "$tool.exe" -CommandType Application
+            $command = Get-Command "$tool.exe" -CommandType Application | Select-Object -First 1
             if ((Split-Path -Path $command.Source -Parent) -ne $gnupgBin) {
               throw "Expected native Windows $tool from $gnupgBin, found $($command.Source)."
             }
