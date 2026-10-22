@@ -16,13 +16,16 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/knothhe/passpine/client/buildinfo"
 )
 
-const Name = "com.knothhe.passpine"
-const FirefoxID = "passpine@knothhe.com"
+var Name = buildinfo.HostName()
+var FirefoxID = buildinfo.FirefoxID()
 
 // ChromiumID is tied to the checked-in browser manifest public key.
-const ChromiumID = "obnlebeedcbbchadakacilopfdaifgjh"
+var ChromiumID = buildinfo.ChromiumID()
+
 const MaxFrame = 1024 * 1024
 
 // Native authentication may wait up to two minutes for a user to respond.
@@ -53,14 +56,7 @@ type Server struct {
 }
 
 func DataDir() (string, error) {
-	if d := os.Getenv("PASSPINE_HOME"); d != "" {
-		return filepath.Abs(d)
-	}
-	base, e := os.UserConfigDir()
-	if e != nil {
-		return "", e
-	}
-	return filepath.Join(base, "Passpine"), nil
+	return buildinfo.DataDir()
 }
 func ReadFrame(r io.Reader) ([]byte, error) {
 	var header [4]byte
@@ -373,6 +369,8 @@ func HelperPath() string {
 	name := "passpine-host"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
+	} else if runtime.GOOS == "linux" && !buildinfo.IsRelease() && filepath.Base(p) == "passpine-dev" {
+		name = "passpine-dev-host"
 	}
 	return filepath.Join(filepath.Dir(p), name)
 }

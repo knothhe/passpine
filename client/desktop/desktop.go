@@ -15,9 +15,11 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
+	"github.com/knothhe/passpine/client/buildinfo"
 	"github.com/knothhe/passpine/client/i18n"
 	sidebar "github.com/knothhe/passpine/client/internal/clientshell"
 	"github.com/knothhe/passpine/client/internal/secureclipboard"
+	"github.com/knothhe/passpine/client/update"
 	"github.com/knothhe/passpine/client/vault"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
@@ -31,6 +33,7 @@ const defaultSidebarWidth = 200
 
 type application struct {
 	buildVersion                                                         string
+	updates                                                              updateUI
 	aboutExpanded                                                        map[string]bool
 	service                                                              Backend
 	runOnMain                                                            func(func())
@@ -125,11 +128,16 @@ type application struct {
 
 // Run starts a native GPU-rendered window, with native menus, file panels,
 // clipboard and system lock/sleep notifications. It does not create a WebView.
-func Run(service *app.Service, version string) error {
+func Run(service *app.Service, version string, updateConfigs ...update.Config) error {
 	configureNativeRendering()
 	a := newApplication(service)
 	a.buildVersion = version
-	mygo.App.SetName("Passpine")
+	var updateConfig update.Config
+	if len(updateConfigs) > 0 {
+		updateConfig = updateConfigs[0]
+	}
+	updateConfig.CurrentVersion, updateConfig.DataDir = version, service.DataDirectory()
+	mygo.App.SetName(buildinfo.Name())
 	mygo.App.SetPath(mygo.PathUserData, service.DataDirectory())
 	if !mygo.App.RequestSingleInstanceLock() {
 		return nil
@@ -141,6 +149,9 @@ func Run(service *app.Service, version string) error {
 		a.saveQuickSearchPosition()
 		a.stopLightweightTimer()
 		a.closing = true
+		if a.updates.cancel != nil {
+			a.updates.cancel()
+		}
 		a.setShortcutRecording(false)
 		close(a.stop)
 		a.clearSecrets()
@@ -203,6 +214,8 @@ func Run(service *app.Service, version string) error {
 			a.applyLanguage()
 			a.startNativeIntegrations()
 			a.applyNativeSettings()
+			update.ConfirmStartup(service.DataDirectory())
+			a.startUpdates(updateConfig)
 		})
 		go a.clock()
 	})
@@ -293,6 +306,9 @@ func (a *application) callBackground(req app.Request, done func(app.Data)) {
 }
 
 func (a *application) startCall(req app.Request, done func(app.Data), userAction bool) {
+	if a.updates.preparing {
+		return
+	}
 	if req.Action == "git-status" || req.Action == "git-init" || req.Action == "git-sync" {
 		a.startGitCall(req, done, userAction)
 		return
@@ -1046,6 +1062,7 @@ func (a *application) contentView(c *ui.Context) {
 		})
 	})
 	a.dialogs(c)
+	a.updateDialog(c)
 	if isPreferencesPage(a.page) {
 		a.preferencesDialogs(c)
 	}
@@ -1070,7 +1087,7 @@ func (a *application) installMenu() {
 		windowMenu = &mygo.MenuItem{Label: a.t("窗口"), Disabled: true}
 	}
 	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
-		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{action(a.t("关于"), "", func() { a.navigateSettingsCategory("about") }), mygo.Separator(), action(a.t("设置…"), "CmdOrCtrl+,", func() { a.navigate("settings", "") }), mygo.Separator(), action(a.t("退出 Passpine"), "CmdOrCtrl+Q", mygo.App.Quit)}},
+		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{action(a.t("关于"), "", func() { a.navigateSettingsCategory("about") }), mygo.Separator(), action(a.t("设置…"), "CmdOrCtrl+,", func() { a.navigate("settings", "") }), mygo.Separator(), action(a.t("退出 %s", buildinfo.Name()), "CmdOrCtrl+Q", mygo.App.Quit)}},
 		{Label: a.t("文件"), Submenu: []*mygo.MenuItem{action(a.t("新建条目"), "CmdOrCtrl+N", a.newEntry), action(a.t("打开密码库…"), "", a.openSetup), mygo.Separator(), action(a.t("锁定密码库"), "CmdOrCtrl+Shift+L", a.lock)}},
 		editMenu,
 		{Label: a.t("显示"), Submenu: []*mygo.MenuItem{

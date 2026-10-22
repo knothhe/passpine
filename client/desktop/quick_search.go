@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
 	"github.com/knothhe/passpine/client/assets"
+	"github.com/knothhe/passpine/client/buildinfo"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
 )
@@ -165,7 +166,7 @@ func (a *application) placeQuickSearchWindow() {
 func quickSearchOptions(area mygo.Rectangle) mygo.WindowOptions {
 	bounds := quickSearchBounds(area)
 	return mygo.WindowOptions{
-		Title: "Passpine Quick Search", Width: bounds.Width, Height: bounds.Height,
+		Title: buildinfo.Name(), Width: bounds.Width, Height: bounds.Height,
 		X: bounds.X, Y: bounds.Y, Hidden: true, Panel: true, Frameless: true,
 		DisableResize:   true,
 		BackgroundColor: nativeThemeBackground(app.ThemeStyleMonochrome),
@@ -244,7 +245,7 @@ func (a *application) trayQuickPanel() {
 }
 
 func (a *application) openQuickSearch(mode string) {
-	if a.closing {
+	if a.closing || a.updates.confirmOpen || a.updates.preparing {
 		return
 	}
 	target := "quick"
@@ -401,7 +402,7 @@ func (a *application) quickSearchView(c *ui.Context) {
 		}
 		header.Children(func() {
 			components.Icon(c, quickSearchBrandIcon).Size(16, 16).TextColor(c.Theme().TextMuted)
-			components.Text(c, "Passpine").FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).Shrink(0)
+			components.Text(c, a.t(buildinfo.Name())).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).Shrink(0)
 			if components.Button(c, "esc", components.ButtonGhost).Label(a.t("关闭快速搜索")).Tooltip(a.t("关闭快速搜索")).Height(25).Padding(3, 5).FontSize(scaledFontSize(c, 10)).TextColor(c.Theme().TextMuted).Shrink(0).Clicked() {
 				a.hideQuickSearch()
 			}
@@ -671,7 +672,7 @@ func (a *application) unlockQuickSearch(mode string) {
 // Reuse the application's request lifecycle and the service's clipboard lease.
 // Copy never reads a decrypted document into the panel's presentation state.
 func (a *application) callQuickSearch(request app.Request) {
-	if a.busy || a.closing || a.service == nil || !a.quick.visible {
+	if a.busy || a.closing || a.updates.preparing || a.service == nil || !a.quick.visible {
 		return
 	}
 	request.VaultID = a.state.VaultID

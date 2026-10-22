@@ -1,6 +1,23 @@
 {
-  "extensionName": { "message": "Passpine" },
-  "extensionDescription": { "message": "Your native Passpine vault, securely connected to your browser." },
-  "openApp": { "message": "Open Passpine" },
-  "fillMatch": { "message": "Fill matching account" }
+  "extensionName": {
+    "message": "Passpine"
+  },
+  "extensionDescription": {
+    "message": "Your native Passpine vault, securely connected to your browser."
+  },
+  "openApp": {
+    "message": "Open Passpine"
+  },
+  "fillMatch": {
+    "message": "Fill matching account"
+  },
+  "extensionNameDev": {
+    "message": "Passpine Dev"
+  },
+  "extensionDescriptionDev": {
+    "message": "Connect your separate Passpine Dev vault to your browser."
+  },
+  "openAppDev": {
+    "message": "Open Passpine Dev"
+  }
 }

@@ -34,8 +34,7 @@ function fixture(t) {
   const home = path.join(root, 'home');
   const env = {
     ...process.env,
-    HOME: home,
-    XDG_DATA_HOME: '',
+    XDG_DATA_HOME: path.join(home, '.local/share'),
     PATH: `${tools}${path.delimiter}${process.env.PATH}`,
     PASSPINE_TEST_REGISTER_LOG: path.join(root, 'registered'),
     PASSPINE_TEST_DESKTOP_LOG: path.join(root, 'desktop-updated'),
@@ -60,7 +59,7 @@ test('Linux archives contain both executables, the full version, icon and execut
 test('the extracted release installs without Node, registers the host and creates the desktop entry and icon', { skip }, t => {
   const { home, env, packageRelease, extract } = fixture(t);
   const release = extract(packageRelease());
-  execFileSync('bash', [path.join(release, 'install.sh')], { env });
+  execFileSync('bash', [path.join(release, 'install.sh'), path.join(home, '.local/bin')], { env });
   for (const binary of ['passpine', 'passpine-host']) {
     assert.equal(fs.statSync(path.join(home, '.local/bin', binary)).mode & 0o777, 0o755);
   }
@@ -93,14 +92,38 @@ test('invalid package inputs and unsafe installation destinations fail before re
   const release = extract(packageRelease());
   const install = path.join(release, 'install.sh');
   assert.notEqual(spawnSync('bash', [install, release], { env }).status, 0);
-  assert.notEqual(spawnSync('bash', [install], { env: { ...env, XDG_DATA_HOME: 'relative' } }).status, 0);
+  assert.notEqual(spawnSync('bash', [install, path.join(home, '.local/bin')], { env: { ...env, XDG_DATA_HOME: 'relative' } }).status, 0);
   const destination = path.join(home, '.local/bin');
   fs.mkdirSync(destination, { recursive: true });
   const original = path.join(root, 'original');
   fs.writeFileSync(original, 'preserve');
   fs.symlinkSync(original, path.join(destination, 'passpine-host'));
-  assert.notEqual(spawnSync('bash', [install], { env }).status, 0);
+  assert.notEqual(spawnSync('bash', [install, destination], { env }).status, 0);
   assert.equal(fs.readFileSync(original, 'utf8'), 'preserve');
   assert.equal(fs.existsSync(path.join(destination, 'passpine')), false);
   assert.equal(fs.existsSync(env.PASSPINE_TEST_REGISTER_LOG), false);
+});
+
+test('development Linux packages install alongside existing formal executables and desktop metadata', { skip }, t => {
+  const { dist, home, env, extract } = fixture(t);
+  execFileSync('bash', [packageScript, '1.2.3-dev.abcdef', 'amd64', dist, 'dev']);
+  const release = extract(path.join(dist, 'Passpine-Dev-1.2.3-dev.abcdef-linux-amd64.tar.gz'));
+  assert.equal(fs.readFileSync(path.join(release, 'channel.txt'), 'utf8'), 'dev\n');
+  const destination = path.join(home, '.local/bin'), desktop = path.join(home, '.local/share/applications');
+  fs.mkdirSync(destination, { recursive: true }); fs.mkdirSync(desktop, { recursive: true });
+  for (const name of ['passpine', 'passpine-host']) fs.writeFileSync(path.join(destination, name), 'formal executable');
+  fs.writeFileSync(path.join(desktop, 'com.knothhe.passpine.desktop'), 'formal desktop');
+  const otherChannel = path.join(destination, 'passpine-dev');
+  fs.writeFileSync(otherChannel, '#!/bin/sh\nprintf "release\\n"\n', { mode: 0o755 });
+  const refused = spawnSync('bash', [path.join(release, 'install.sh'), destination], { env, encoding: 'utf8' });
+  assert.notEqual(refused.status, 0); assert.match(refused.stderr, /non-development/);
+  assert.equal(fs.readFileSync(otherChannel, 'utf8'), '#!/bin/sh\nprintf "release\\n"\n');
+  assert.equal(fs.existsSync(env.PASSPINE_TEST_REGISTER_LOG), false);
+  fs.rmSync(otherChannel);
+  execFileSync('bash', [path.join(release, 'install.sh'), destination], { env });
+  for (const name of ['passpine', 'passpine-host']) assert.equal(fs.readFileSync(path.join(destination, name), 'utf8'), 'formal executable');
+  assert.equal(fs.readFileSync(path.join(desktop, 'com.knothhe.passpine.desktop'), 'utf8'), 'formal desktop');
+  for (const name of ['passpine-dev', 'passpine-dev-host']) assert.equal(fs.statSync(path.join(destination, name)).mode & 0o777, 0o755);
+  assert.match(fs.readFileSync(path.join(desktop, 'com.knothhe.passpine.dev.desktop'), 'utf8'), /Name=Passpine Dev\n/);
+  assert.equal(fs.readFileSync(env.PASSPINE_TEST_REGISTER_LOG, 'utf8'), '--register\n');
 });

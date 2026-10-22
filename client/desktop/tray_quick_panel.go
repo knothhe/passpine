@@ -1,6 +1,9 @@
 package desktop
 
-import "github.com/egoist/mygo"
+import (
+	"github.com/egoist/mygo"
+	"github.com/knothhe/passpine/client/buildinfo"
+)
 
 const (
 	quickSearchGlobal = ""
@@ -9,9 +12,9 @@ const (
 
 func (a *application) quickSearchTitle() string {
 	if a.quick.mode == quickSearchTray {
-		return a.t("Passpine 快捷面板")
+		return a.t("%s 快捷面板", buildinfo.Name())
 	}
-	return a.t("Passpine 快速搜索")
+	return a.t("%s 快速搜索", buildinfo.Name())
 }
 
 // The menu-bar panel stays attached to the actual status item. Bottom taskbars

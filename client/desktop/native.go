@@ -5,6 +5,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/knothhe/passpine/client/assets"
+	"github.com/knothhe/passpine/client/buildinfo"
 	"github.com/knothhe/passpine/client/internal/traybutton"
 )
 
@@ -54,7 +55,7 @@ func (a *application) startNativeIntegrations() {
 	if runtime.GOOS == "darwin" {
 		icon, template = assets.MenuBarTemplatePNG, true
 	}
-	tray, err := newNativeTray(mygo.TrayOptions{Icon: icon, IconIsTemplate: template, ToolTip: "Passpine"})
+	tray, err := newNativeTray(mygo.TrayOptions{Icon: icon, IconIsTemplate: template, ToolTip: buildinfo.Name()})
 	if err != nil {
 		a.warn(a.t("菜单栏图标不可用：%s", err))
 		a.registerGlobalShortcut()
@@ -68,7 +69,7 @@ func (a *application) startNativeIntegrations() {
 	}
 	// MyGo has no status-button highlight API. Keep its click handler as a
 	// fallback if the native button cannot be found during installation.
-	if button, err := traybutton.Install("Passpine", a.trayClicked); err == nil {
+	if button, err := traybutton.Install(buildinfo.Name(), a.trayClicked); err == nil {
 		a.lifecycle.trayButton = button
 		a.updateTrayHighlight()
 	}
@@ -108,7 +109,7 @@ func (a *application) installTrayMenu() {
 		{Label: a.t("设置…"), Click: func(*mygo.MenuItem, *mygo.Window) { a.show(); a.navigate("settings", ""); a.invalidate() }},
 		{Label: a.t("锁定密码库"), Click: func(*mygo.MenuItem, *mygo.Window) { a.lock() }},
 		mygo.Separator(),
-		{Label: a.t("退出 Passpine"), Click: func(*mygo.MenuItem, *mygo.Window) { mygo.App.Quit() }},
+		{Label: a.t("退出 %s", buildinfo.Name()), Click: func(*mygo.MenuItem, *mygo.Window) { mygo.App.Quit() }},
 	})
 	a.lifecycle.trayMenu = menu
 	if runtime.GOOS == "linux" {

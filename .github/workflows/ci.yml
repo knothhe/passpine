@@ -35,7 +35,12 @@ jobs:
         shell: bash
     env:
       RELEASE_TAG: ${{ inputs.tag }}
+      PASSPINE_BUILD_CHANNEL: release
       CGO_ENABLED: '1'
+      # Public trust anchor is compiled into each client. The signing key is
+      # available only to the separate publication job.
+      PASSPINE_UPDATE_PUBLIC_KEY: ${{ vars.PASSPINE_UPDATE_PUBLIC_KEY }}
+      PASSPINE_UPDATE_FEED_URL: ${{ vars.PASSPINE_UPDATE_FEED_URL }}
     steps:
       - name: Check out sources and release history
         uses: actions/checkout@v7

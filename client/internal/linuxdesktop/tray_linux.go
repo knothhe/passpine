@@ -11,6 +11,7 @@ import (
 	"github.com/godbus/dbus/v5"
 	"github.com/godbus/dbus/v5/introspect"
 	"github.com/godbus/dbus/v5/prop"
+	"github.com/knothhe/passpine/client/buildinfo"
 )
 
 const itemInterface = "org.kde.StatusNotifierItem"
@@ -66,7 +67,7 @@ func NewTray(options mygo.TrayOptions) (*Tray, error) {
 	}
 	props := map[string]*prop.Prop{}
 	for key, value := range map[string]any{
-		"Category": "ApplicationStatus", "Id": "com.knothhe.passpine", "Title": options.ToolTip,
+		"Category": "ApplicationStatus", "Id": buildinfo.BundleID(), "Title": options.ToolTip,
 		"Status": "Active", "WindowId": uint32(0), "ItemIsMenu": false, "Menu": menuPath,
 		"IconName": "", "IconPixmap": []pixmap{}, "AttentionIconName": "", "AttentionIconPixmap": []pixmap{},
 		"OverlayIconName": "", "OverlayIconPixmap": []pixmap{},

@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/knothhe/passpine/client/buildinfo"
 )
 
-const DefaultGlobalShortcut = "Ctrl+Alt+Space"
+var DefaultGlobalShortcut = buildinfo.DefaultGlobalShortcut()
 
 // NormalizeGlobalShortcut accepts MyGo accelerator names and produces a stable
 // value for preferences. Require a modifier for typing keys so a global binding

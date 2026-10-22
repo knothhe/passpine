@@ -1,14 +1,18 @@
+import { BUILD_CHANNEL } from '../lib/build-channel';
+
+export const brandName = BUILD_CHANNEL === 'release' ? 'Passpine' : 'Passpine Dev';
+
 // All browser UI copy lives here. Keep complete messages together and pass
 // runtime values as arguments; never translate vault contents or protocol IDs.
 export const chineseCopy = {
-  brand: 'Passpine',
+  brand: brandName,
   about: {
-    pageTitle: "Passpine · 关于",
+    pageTitle: `${brandName} · 关于`,
     navigation: "设置页面",
     title: "关于",
     description: "浏览器扩展的版本与标识信息。",
     settings: "设置",
-    name: "Passpine 浏览器扩展",
+    name: `${brandName} 浏览器扩展`,
     projectDescription: "在浏览器中连接本地客户端，安全地访问和填充密码。",
     project: "项目主页",
     browser: "浏览器类型",
@@ -37,12 +41,12 @@ export const chineseCopy = {
   },
   connection: {
     disconnectedTitle: '未连接客户端',
-    openClient: '请打开 Passpine 客户端。',
+    openClient: `请打开 ${brandName} 客户端。`,
     reconnect: '重新连接',
     guide: '连接指引',
     connecting: '正在连接…',
     clientConnection: '客户端连接',
-    clientName: 'Passpine 客户端',
+    clientName: `${brandName} 客户端`,
     status: { connecting: '连接中', disconnected: '未连接', notSet: '未设置', locked: '已锁定', connected: '已连接' },
   },
   accounts: {
@@ -172,16 +176,16 @@ export const chineseCopy = {
   },
   options: {
     title: '浏览器设置',
-    pageTitle: 'Passpine · 浏览器设置',
+    pageTitle: `${brandName} · 浏览器设置`,
     description: '管理外观、客户端连接和浏览器快捷键。',
     connectionChecked: '连接检查完成',
     checkingConnection: '正在检查连接…',
     connectedLocked: '已连接 · 已锁定',
     openVault: '请在客户端打开密码库',
-    connectLocal: '连接本机 Passpine',
+    connectLocal: `连接本机 ${brandName}`,
     checking: '检查中',
     checkConnection: '检查连接',
-    setupSteps: ['打开客户端，创建或导入密码库。', '打开客户端设置 → 浏览器，点击“注册浏览器连接”。', '点击浏览器工具栏中的 Passpine。'],
+    setupSteps: ['打开客户端，创建或导入密码库。', '打开客户端设置 → 浏览器，点击“注册浏览器连接”。', `点击浏览器工具栏中的 ${brandName}。`],
     connectionInfo: '连接信息',
     nativeHost: 'Native Host',
     extensionID: '扩展 ID',
@@ -192,7 +196,7 @@ export const chineseCopy = {
     browserShortcuts: '浏览器快捷键',
     popupShortcuts: '弹窗快捷键',
     popupAvailability: '弹窗打开时可用',
-    openApp: '打开 Passpine',
+    openApp: `打开 ${brandName}`,
     fillMatch: '填充匹配账号',
     openSettings: '打开设置',
     copyCurrentPassword: '复制当前账号密码',
@@ -220,7 +224,7 @@ export const chineseCopy = {
   },
   preview: {
     title: '扩展预览',
-    pageTitle: 'Passpine · 交互预览',
+    pageTitle: `${brandName} · 交互预览`,
     exampleData: '示例数据',
     settings: '设置',
     ribbon: '预览 · 示例数据',
@@ -249,7 +253,7 @@ export const chineseCopy = {
     unsupported_action: '客户端不支持此操作，请同时更新两端。',
     response_too_large: '账号内容过大，无法传输到扩展，请在客户端打开。',
     operation_failed: '操作未完成，请在客户端检查详情后重试。',
-    app_unavailable: '请先打开 Passpine 客户端，再重新连接。',
+    app_unavailable: `请先打开 ${brandName} 客户端，再重新连接。`,
     native_connection_failed: '尚未连接客户端。请在客户端的「浏览器连接」中安装 Native Messaging Host。',
     background_unavailable: '扩展后台未响应，请重新打开扩展或在扩展管理页重新加载。',
     invalid_response: '客户端返回了无法识别的响应，请重新连接客户端。',

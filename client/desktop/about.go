@@ -3,6 +3,7 @@ package desktop
 import (
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/about"
+	"github.com/knothhe/passpine/client/buildinfo"
 	"github.com/knothhe/passpine/client/i18n"
 	"github.com/oneo-me/onevra/source/components"
 )
@@ -14,7 +15,7 @@ func (a *application) aboutView(c *ui.Context) {
 	}
 	ui.Column(c).FillWidth().MinWidth(0).Gap(20).Children(func() {
 		ui.Column(c).FillWidth().MinWidth(0).Padding(20).Gap(8).Background(c.Theme().Surface).Radius(10).Border(1, c.Theme().Border).Children(func() {
-			components.Text(c, a.t("Passpine")).FontSize(scaledFontSize(c, 22)).Bold()
+			components.Text(c, a.t(buildinfo.Name())).FontSize(scaledFontSize(c, 22)).Bold()
 			version := a.t("开发版本")
 			if a.buildVersion != "" && a.buildVersion != "development" {
 				version = a.t("版本 %s", a.buildVersion)

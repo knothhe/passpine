@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root_dir="$(cd "$(dirname "$0")/.." && pwd -P)"
+IFS=$'\t' read -r channel version base_version output_dir app_name bundle_id package_name client_flags host_flags < <(node "$root_dir/scripts/build-channel.mjs" shell)
+[[ "$channel" == "dev" ]] || { echo "Local installation accepts development builds only. Install formal releases from GitHub Releases." >&2; exit 1; }
 
 case "$(uname -s)" in
   Darwin)
     install_dir="${1:-$HOME/Applications}"
-    source_bundle="$root_dir/dist/Passpine.app"
+    source_bundle="$output_dir/$app_name.app"
     [[ -d "$source_bundle" ]] || { echo "Missing client build. Run make client:build first." >&2; exit 1; }
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$source_bundle/Contents/Info.plist")" == "$bundle_id" ]] || { echo "Refusing a client bundle with a different application identity." >&2; exit 1; }
+    [[ "$("$source_bundle/Contents/MacOS/passpine-host" --build-channel)" == "dev" ]] || { echo "Refusing to install a non-development native host." >&2; exit 1; }
     ;;
   Linux)
     install_dir="${1:-$HOME/.local/bin}"
@@ -24,12 +28,16 @@ case "$install_dir/" in
 esac
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  destination="$install_dir/Passpine.app"
+  destination="$install_dir/$app_name.app"
   if [[ -L "$destination" || ( -e "$destination" && ! -d "$destination" ) ]]; then
     echo "Client destination must be a real directory, not a symlink or file: $destination" >&2
     exit 1
   fi
-  staging="$(mktemp -d "$install_dir/.passpine.XXXXXX")"
+  if [[ -e "$destination" ]]; then
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$destination/Contents/Info.plist")" == "$bundle_id" ]] || { echo "Refusing to replace a bundle with a different application identity." >&2; exit 1; }
+    [[ "$("$destination/Contents/MacOS/passpine-host" --build-channel)" == "dev" ]] || { echo "Refusing to replace a non-development installation." >&2; exit 1; }
+  fi
+  staging="$(mktemp -d "$install_dir/.passpine-dev.XXXXXX")"
   backup="$staging/previous.app"
   cleanup() {
     if [[ -e "$backup" ]]; then
@@ -39,12 +47,12 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     fi
   }
   trap cleanup EXIT
-  ditto "$source_bundle" "$staging/Passpine.app"
-  codesign --verify --deep --strict "$staging/Passpine.app"
+  ditto "$source_bundle" "$staging/$app_name.app"
+  codesign --verify --deep --strict "$staging/$app_name.app"
   if [[ -e "$destination" ]]; then
     mv "$destination" "$backup"
   fi
-  if ! mv "$staging/Passpine.app" "$destination"; then
+  if ! mv "$staging/$app_name.app" "$destination"; then
     if [[ -e "$backup" ]]; then
       mv "$backup" "$destination"
     fi
@@ -53,29 +61,35 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   rm -rf "$backup"
   host="$destination/Contents/MacOS/passpine-host"
 else
-  for binary in passpine passpine-host; do
+  for binary in passpine-dev passpine-dev-host; do
     if [[ -L "$install_dir/$binary" || ( -e "$install_dir/$binary" && ! -f "$install_dir/$binary" ) ]]; then
       echo "Client destination must be a regular file: $install_dir/$binary" >&2
       exit 1
     fi
-    [[ -f "$root_dir/dist/$binary" ]] || { echo "Missing client build. Run make client:build first." >&2; exit 1; }
+    if [[ -e "$install_dir/$binary" ]]; then
+      [[ "$("$install_dir/$binary" --build-channel)" == "dev" ]] || { echo "Refusing to replace a non-development installation: $install_dir/$binary" >&2; exit 1; }
+    fi
   done
-  install -m 755 "$root_dir/dist/passpine" "$install_dir/passpine"
-  install -m 755 "$root_dir/dist/passpine-host" "$install_dir/passpine-host"
-  destination="$install_dir/passpine"
-  host="$install_dir/passpine-host"
+  for binary in passpine passpine-host; do
+    [[ -f "$output_dir/$binary" ]] || { echo "Missing client build. Run make client:build first." >&2; exit 1; }
+    [[ "$("$output_dir/$binary" --build-channel)" == "dev" ]] || { echo "Refusing to install a non-development executable." >&2; exit 1; }
+  done
+  install -m 755 "$output_dir/passpine" "$install_dir/passpine-dev"
+  install -m 755 "$output_dir/passpine-host" "$install_dir/passpine-dev-host"
+  destination="$install_dir/passpine-dev"
+  host="$install_dir/passpine-dev-host"
 
   data_dir="${XDG_DATA_HOME:-$HOME/.local/share}"
   [[ "$data_dir" == /* ]] || { echo "XDG_DATA_HOME must be an absolute path." >&2; exit 1; }
   mkdir -p "$data_dir/applications" "$data_dir/icons/hicolor/256x256/apps"
-  install -m 644 "$root_dir/client/assets/app-icon-monochrome.png" "$data_dir/icons/hicolor/256x256/apps/com.knothhe.passpine.png"
+  install -m 644 "$root_dir/client/assets/app-icon-monochrome.png" "$data_dir/icons/hicolor/256x256/apps/$bundle_id.png"
   # Desktop Entry values and Exec arguments have separate escaping rules.
-  node --input-type=module - "$destination" "$data_dir/applications/com.knothhe.passpine.desktop" <<'NODE'
+  node --input-type=module - "$destination" "$data_dir/applications/$bundle_id.desktop" "$app_name" "$bundle_id" <<'NODE'
 import fs from 'node:fs'
-const [executable, output] = process.argv.slice(2)
+const [executable, output, name, icon] = process.argv.slice(2)
 const argument = executable.replace(/[\\"`$]/g, value => '\\' + value).replace(/%/g, '%%')
 const exec = `"${argument}"`.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')
-fs.writeFileSync(output, `[Desktop Entry]\nType=Application\nName=Passpine\nExec=${exec}\nIcon=com.knothhe.passpine\nTerminal=false\nCategories=Utility;Security;\n`, {mode: 0o644})
+fs.writeFileSync(output, `[Desktop Entry]\nType=Application\nName=${name}\nExec=${exec}\nIcon=${icon}\nTerminal=false\nCategories=Utility;Security;\n`, {mode: 0o644})
 NODE
   if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$data_dir/applications"

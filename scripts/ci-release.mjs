@@ -2,14 +2,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { versionFiles } from './version.mjs';
 import { tagVersion, notesForTag } from './release-notes.mjs';
 import { publishRelease } from './release.mjs';
+import { createUpdateFeed, publicKey, readUpdateSigningConfig, stageUpdate, updateBuildConfig, validateUpdate } from './update-artifacts.mjs';
+import { assertReleaseBuild } from './build-channel.mjs';
 
 const targets = ['client-darwin-arm64', 'client-linux-amd64', 'client-win32-amd64', 'browser'];
 const command = (name, args, root) => execFileSync(name, args, { cwd: root, encoding: 'utf8' }).trim();
+const browserIdentity = JSON.parse(fs.readFileSync(new URL('../config/browser-identities.json', import.meta.url), 'utf8')).release;
 
 export function verifyTag(tag, root = process.cwd()) {
   const version = tagVersion(tag, root);
@@ -57,6 +60,14 @@ export function validatePackage(filename, version) {
     const versions = browser ? [JSON.parse(contents).version]
       : ['CFBundleShortVersionString', 'CFBundleVersion'].map(key => new RegExp(`<key>${key}</key>\\s*<string>([^<]+)</string>`).exec(contents)?.[1]);
     if (versions.some(value => value !== version)) throw new Error(`Archive version mismatch: ${filename}`);
+    if (browser) {
+      const manifest = JSON.parse(contents);
+      const firefox = path.basename(filename).endsWith('-firefox.zip');
+      if (manifest.key !== browserIdentity.key || (firefox && manifest.browser_specific_settings?.gecko?.id !== browserIdentity.firefoxID)
+        || /dev/i.test(manifest.version_name || '')) throw new Error(`Browser archive must use the release identity: ${filename}`);
+    } else if (!/<key>CFBundleIdentifier<\/key>\s*<string>com\.knothhe\.passpine<\/string>/.test(contents)) {
+      throw new Error(`macOS archive must use the release identity: ${filename}`);
+    }
   }
 }
 
@@ -69,6 +80,9 @@ export function stage(tag, target, root = process.cwd()) {
   if (target.startsWith('client-')) {
     const suffix = target.includes('win32') ? '.exe' : '';
     for (const [binary, title] of [['passpine', 'Passpine'], ['passpine-host', 'Passpine Host']]) {
+      if (command(path.join(root, 'dist', `${binary}${suffix}`), ['--build-channel'], root) !== 'release') {
+        throw new Error(`Only release-channel binaries can be staged: ${binary}`);
+      }
       if (command(path.join(root, 'dist', `${binary}${suffix}`), ['--version'], root) !== `${title} ${metadata.version}`) {
         throw new Error(`Built binary version mismatch: ${binary}`);
       }
@@ -81,13 +95,14 @@ export function stage(tag, target, root = process.cwd()) {
     fs.copyFileSync(path.join(sourceDir, name), filename);
     return { name, ...fingerprint(filename) };
   });
-  fs.writeFileSync(path.join(destination, `manifest-${target}.json`), `${JSON.stringify({ schema: 2, ...metadata, target, artifacts }, null, 2)}\n`);
+  const update = target.startsWith('client-') ? stageUpdate(metadata.version, target, root, destination) : undefined;
+  fs.writeFileSync(path.join(destination, `manifest-${target}.json`), `${JSON.stringify({ schema: 2, channel: 'release', ...metadata, target, artifacts, update }, null, 2)}\n`);
   return destination;
 }
 
 function manifestsIn(directory) {
   const files = [];
-  for (const item of fs.readdirSync(directory, { withFileTypes: true })) {
+  for (const item of fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) {
     const filename = path.join(directory, item.name);
     if (item.isSymbolicLink()) throw new Error(`Symlink in release artifacts: ${filename}`);
     if (item.isDirectory()) files.push(...manifestsIn(filename));
@@ -102,7 +117,7 @@ export function collectPackages(tag, directory, root = process.cwd()) {
   const artifacts = [];
   for (const filename of manifestsIn(directory)) {
     const data = JSON.parse(fs.readFileSync(filename, 'utf8'));
-    if (data.schema !== 2 || data.tag !== tag || data.version !== version || data.head !== head
+    if (data.schema !== 2 || data.channel !== 'release' || data.tag !== tag || data.version !== version || data.head !== head
       || !targets.includes(data.target) || seen.has(data.target)) throw new Error(`Invalid or duplicate release manifest: ${filename}`);
     seen.add(data.target);
     const expected = packagesFor(version, data.target);
@@ -120,19 +135,106 @@ export function collectPackages(tag, directory, root = process.cwd()) {
   return artifacts;
 }
 
+export function collectUpdates(tag, directory, root = process.cwd()) {
+  const { version, head } = verifyTag(tag, root), updates = [], seen = new Set();
+  for (const filename of manifestsIn(directory)) {
+    const manifest = JSON.parse(fs.readFileSync(filename, 'utf8'));
+    if (!manifest.target?.startsWith('client-')) continue;
+    if (manifest.schema !== 2 || manifest.channel !== 'release' || manifest.tag !== tag || manifest.version !== version || manifest.head !== head
+      || !targets.includes(manifest.target) || seen.has(manifest.target)) throw new Error(`Invalid update provenance: ${filename}`);
+    seen.add(manifest.target);
+    const { update } = manifest;
+    if (!update?.full || update.full.name !== `Passpine-${version}-update-${update.os}-${update.arch}.zip`) throw new Error(`Missing or mismatched update bundle: ${filename}`);
+    validateUpdate(update, manifest.target, path.dirname(filename));
+    updates.push({ target: manifest.target, update, directory: path.dirname(filename) });
+  }
+  if (seen.size !== 3) throw new Error('Update bundles are incomplete.');
+  return updates;
+}
+
+// Only a genuine missing release/asset means that no incremental baseline is
+// available. Authentication and network errors stop publication.
+export function previousUpdateFeed(repo, version, invoke = spawnSync) {
+  const call = args => {
+    const result = invoke('gh', args, { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+    if (result.error) throw result.error;
+    return result;
+  };
+  const result = call(['api', '--hostname', 'github.com', '--paginate', '--slurp', `repos/${repo}/releases?per_page=100`]);
+  if (result.status !== 0) {
+    if (/HTTP 404/.test(result.stderr || '')) return null;
+    throw new Error(`Cannot read the previous release: ${result.stderr}`);
+  }
+  // Select the same older baseline on retries after the current release has
+  // become public. Using /latest would choose our own feed and break resume.
+  const compare = (a, b) => {
+    const left = a.split('.').map(Number), right = b.split('.').map(Number);
+    for (let i = 0; i < 3; i++) if (left[i] !== right[i]) return left[i] - right[i];
+    return 0;
+  };
+  const releases = JSON.parse(result.stdout).flat().filter(item => !item.draft && !item.prerelease
+    && /^v\d+\.\d+\.\d+$/.test(item.tag_name) && compare(item.tag_name.slice(1), version) < 0);
+  releases.sort((a, b) => compare(b.tag_name.slice(1), a.tag_name.slice(1)));
+  const asset = releases[0]?.assets?.find(item => item.name === 'update-feed.json');
+  if (!asset) return null;
+  if (!Number.isSafeInteger(asset.id) || asset.size > 8 * 1024 * 1024) throw new Error('Invalid previous update feed metadata.');
+  const download = call(['api', '--hostname', 'github.com', '-H', 'Accept: application/octet-stream', `repos/${repo}/releases/assets/${asset.id}`]);
+  if (download.status !== 0) throw new Error(`Cannot download the previous update feed: ${download.stderr}`);
+  return Buffer.from(download.stdout);
+}
+
+export function updateNotes(version, generatedNotes, root = process.cwd()) {
+  const filename = path.join(root, 'docs', 'releases', `${version}.json`);
+  if (fs.existsSync(filename)) {
+    const notes = JSON.parse(fs.readFileSync(filename, 'utf8'));
+    if (typeof notes.en !== 'string' || !notes.en.trim() || typeof notes['zh-CN'] !== 'string' || !notes['zh-CN'].trim()) throw new Error('Release notes require English and Simplified Chinese.');
+    return notes;
+  }
+  return { en: `Release changes\n\n${generatedNotes}`, 'zh-CN': `版本变更（提交标题保留原文）\n\n${generatedNotes}` };
+}
+
+// Publication uses the trust anchor checked into the same release sources as
+// CI builds. Development overrides cannot redirect or rotate a release.
+// Return only public configuration; never log or persist the private input.
+export function updatePublicationConfig(env = process.env, signingConfigPath) {
+  const pinned = readUpdateSigningConfig(signingConfigPath);
+  const config = updateBuildConfig(env, signingConfigPath);
+  if (env.GITHUB_REPOSITORY !== pinned.repository || config.key !== pinned.publicKey || config.feed !== pinned.feedURL) {
+    throw new Error('Update publication must match the checked-in repository, public key and feed URL.');
+  }
+  if (!env.PASSPINE_UPDATE_PRIVATE_KEY) throw new Error('Signed update publication requires the PASSPINE_UPDATE_PRIVATE_KEY repository secret.');
+  let signingKey;
+  try { signingKey = crypto.createPrivateKey(env.PASSPINE_UPDATE_PRIVATE_KEY); }
+  catch { throw new Error('PASSPINE_UPDATE_PRIVATE_KEY must be an Ed25519 PKCS#8 PEM private key.'); }
+  if (signingKey.asymmetricKeyType !== 'ed25519' || !crypto.createPublicKey(signingKey).export({ type: 'spki', format: 'der' }).equals(publicKey(config.key).export({ type: 'spki', format: 'der' }))) {
+    throw new Error('Release signing private key does not match the checked-in public key.');
+  }
+  return config;
+}
+
 function main() {
   const [action, tag, directory, ...rest] = process.argv.slice(2);
   if (rest.length || !tag || (action === 'publish' ? !directory : directory !== undefined)) throw new Error('Usage: ci-release.mjs verify|stage-client|stage-browser TAG, or publish TAG DIRECTORY');
   const metadata = verifyTag(tag);
+  if (action !== 'verify') {
+    const context = assertReleaseBuild();
+    if (context.tag !== tag) throw new Error('Release command tag must match RELEASE_TAG.');
+  }
   if (action === 'verify') console.log(JSON.stringify(metadata));
   else if (action === 'stage-client') {
     const arch = process.arch === 'x64' ? 'amd64' : process.arch;
     console.log(stage(tag, `client-${process.platform}-${arch}`));
   } else if (action === 'stage-browser') console.log(stage(tag, 'browser'));
   else if (action === 'publish') {
+    const config = updatePublicationConfig();
     const artifacts = collectPackages(tag, path.resolve(directory));
     const repo = process.env.GITHUB_REPOSITORY;
     const notes = notesForTag(repo, tag);
+    artifacts.push(...createUpdateFeed({
+      version: metadata.version, repo, notes: updateNotes(metadata.version, notes),
+      updates: collectUpdates(tag, path.resolve(directory)), output: path.join('dist', 'updates', metadata.version),
+      publicKey: config.key, privateKey: process.env.PASSPINE_UPDATE_PRIVATE_KEY, previousFeed: previousUpdateFeed(repo, metadata.version),
+    }));
     console.log(publishRelease({ repo, tag, notes, artifacts }));
   } else throw new Error(`Unknown CI release action: ${action}`);
 }

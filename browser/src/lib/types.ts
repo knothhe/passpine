@@ -1,4 +1,6 @@
-export const HOST = 'com.knothhe.passpine';
+import { BUILD_CHANNEL } from './build-channel';
+
+export const HOST = BUILD_CHANNEL === 'release' ? 'com.knothhe.passpine' : 'com.knothhe.passpine.dev';
 export const PROTOCOL = 1;
 
 export type NativeAction = 'configure' | 'status' | 'touch' | 'list' | 'fetch' | 'save' | 'delete' | 'lock' | 'unlock' | 'generate' | 'copy' | 'copy-generated';

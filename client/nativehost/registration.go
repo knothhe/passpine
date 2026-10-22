@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/knothhe/passpine/client/buildinfo"
 )
 
 // BrowserRegistration reports native messaging registration, not whether the
@@ -57,7 +59,7 @@ func registrationTargets(home, platform string) []registrationTarget {
 			{"brave", "Brave", "brave", false},
 			{"firefox", "Firefox", "firefox", true},
 		}
-		home = filepath.Join(home, "AppData", "Local", "Passpine", "NativeMessagingHosts")
+		home = filepath.Join(home, "AppData", "Local", buildinfo.Name(), "NativeMessagingHosts")
 	case "darwin":
 		targets = []registrationTarget{
 			{"chrome", "Chrome", "Google/Chrome/NativeMessagingHosts", false},
@@ -85,7 +87,7 @@ func registrationTargets(home, platform string) []registrationTarget {
 }
 
 func manifestFor(executable string, target registrationTarget) hostManifest {
-	m := hostManifest{Name: Name, Description: "Passpine native password manager", Path: executable, Type: "stdio"}
+	m := hostManifest{Name: Name, Description: buildinfo.Name(), Path: executable, Type: "stdio"}
 	if target.firefox {
 		m.AllowedExtensions = []string{FirefoxID}
 	} else {

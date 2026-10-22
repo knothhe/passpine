@@ -13,7 +13,7 @@ const automaticGitRetryDelay = 30 * time.Second
 // Changes are coalesced until input has stopped. The optional interval also
 // checks for remote changes, but never starts a sync during active editing.
 func (s *Service) autoSyncDueLocked(now time.Time) bool {
-	if s.closed || s.active == nil || !s.gitData.GitInitialized || s.gitOperation || !s.prefs.Settings.AutoSync {
+	if s.closed || s.updatePaused.Load() || s.active == nil || !s.gitData.GitInitialized || s.gitOperation || !s.prefs.Settings.AutoSync {
 		return false
 	}
 	if now.Before(s.gitRetryAt) {
@@ -128,6 +128,11 @@ func (s *Service) ensureGitRefreshLocked(force bool) {
 // Network-bound Git work runs outside the application state mutex. A slow
 // remote never blocks browsing, decrypting an entry, copying, or locking.
 func (s *Service) executeGit(r Request, source string) Response {
+	s.updateRequests.RLock()
+	defer s.updateRequests.RUnlock()
+	if s.updatePaused.Load() {
+		return Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "operation_failed"}
+	}
 	s.mu.Lock()
 	current := s.active
 	id := s.prefs.Current

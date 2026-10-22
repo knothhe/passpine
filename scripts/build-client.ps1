@@ -11,8 +11,10 @@ function Invoke-Checked {
 
 Push-Location $root
 try {
-    $version = & node scripts/version.mjs show
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot determine application version.' }
+    $configurationJSON = & node scripts/build-channel.mjs json
+    if ($LASTEXITCODE -ne 0) { throw 'Invalid build channel configuration.' }
+    $configuration = $configurationJSON | ConvertFrom-Json
+    $version = $configuration.version
     Invoke-Checked node @('scripts/dependencies.mjs')
     Invoke-Checked node @('scripts/version.mjs', 'check')
     $arch = & go env GOARCH
@@ -23,7 +25,7 @@ try {
     if ($compiler) { $nsis = $compiler.Source }
     else { $nsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS\makensis.exe' }
     if (-not (Test-Path -LiteralPath $nsis)) { throw 'NSIS is required to build the Windows installer (choco install nsis).' }
-    $output = Join-Path $root 'dist'
+    $output = $configuration.outputDirectory
     New-Item -ItemType Directory -Force $output | Out-Null
     $resourceDir = Join-Path $output 'windows-resources'
     Push-Location (Join-Path $PSScriptRoot 'windows-resources')
@@ -35,12 +37,13 @@ try {
     Copy-Item -LiteralPath (Join-Path $resourceDir "rsrc_windows_$arch.syso") -Destination $resource
     Push-Location (Join-Path $root 'client')
     try {
-        Invoke-Checked go @('build', '-trimpath', "-ldflags=-s -w -H windowsgui -X main.version=$version", '-o', "$output\passpine.exe", './cmd/passpine')
-        Invoke-Checked go @('build', '-trimpath', "-ldflags=-s -w -X main.version=$version", '-o', "$output\passpine-host.exe", './cmd/passpine-host')
+        Invoke-Checked go @('build', '-trimpath', "-ldflags=-s -w -H windowsgui $($configuration.ldflags)", '-o', "$output\passpine.exe", './cmd/passpine')
+        Invoke-Checked go @('build', '-trimpath', "-ldflags=-s -w $($configuration.hostLdflags)", '-o', "$output\passpine-host.exe", './cmd/passpine-host')
     } finally {
         Pop-Location
         Remove-Item -LiteralPath $resource
     }
-    Invoke-Checked $nsis @('/V2', "/DAPP_VERSION=$version", "/DAPP_ARCH=$arch", "/DDIST_DIR=$output", (Join-Path $PSScriptRoot 'windows-installer.nsi'))
-    Write-Output "Built: $output\Passpine-$version-windows-$arch-setup.exe"
+    Invoke-Checked $nsis @('/V2', "/DAPP_VERSION=$version", "/DAPP_ARCH=$arch", "/DAPP_CHANNEL=$($configuration.channel)", "/DAPP_NAME=$($configuration.appName)", "/DPACKAGE_NAME=$($configuration.packageName)", "/DDIST_DIR=$output", (Join-Path $PSScriptRoot 'windows-installer.nsi'))
+    Invoke-Checked node @('scripts/build-channel.mjs', 'write')
+    Write-Output "Built: $output\$($configuration.packageName)-$version-windows-$arch-setup.exe"
 } finally { Pop-Location }

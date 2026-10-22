@@ -1,13 +1,21 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { buildChannel } from '../../scripts/build-channel.mjs';
 
-const paths = process.argv.slice(2);
+const channel = buildChannel();
+const identities = JSON.parse(await readFile(new URL('../../config/browser-identities.json', import.meta.url), 'utf8'));
+const identity = identities[channel];
+const paths = process.argv.slice(2).map(value => ['chrome', 'firefox'].includes(value) ? path.join(channel === 'release' ? '.output' : '.output-dev', `${value}-mv3`, 'manifest.json') : value);
 assert(paths.length > 0, 'Provide at least one built manifest path');
 
 for (const path of paths) {
   const manifest = JSON.parse(await readFile(path, 'utf8'));
   assert.equal(manifest.manifest_version, 3, 'Expected an MV3 extension');
-  assert.equal(manifest.action?.default_title, '__MSG_extensionName__', 'Toolbar title must use the localized extension name');
+  assert.equal(manifest.action?.default_title, channel === 'release' ? '__MSG_extensionName__' : '__MSG_extensionNameDev__', 'Toolbar title must use the localized channel name');
+  assert.equal(manifest.key, identity.key, 'Manifest must use the public key for this build channel');
+  if (manifest.browser_specific_settings?.gecko) assert.equal(manifest.browser_specific_settings.gecko.id, identity.firefoxID, 'Firefox identity must match the build channel');
+  if (channel === 'dev') assert(Object.values(manifest.commands ?? {}).every(command => !command.suggested_key), 'Development extensions must not reserve the release shortcuts');
   assert(!JSON.stringify(manifest).includes('%COPY_'), 'Manifest contains an unresolved UI copy token');
   const policy = manifest.content_security_policy?.extension_pages;
   assert.equal(typeof policy, 'string', 'Extension pages require an explicit CSP');

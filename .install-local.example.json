@@ -1,6 +1,6 @@
 {
   "browser": "chrome",
-  "name": "passpine",
+  "name": "passpine-dev",
   "directories": {
     "chrome": "~/ChromeExtensions",
     "firefox": "~/FirefoxExtensions",

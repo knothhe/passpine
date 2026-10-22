@@ -93,7 +93,7 @@ describe('extension language settings', () => {
     expect(container.textContent).toContain('1 account'); expect(container.textContent).toContain('中文密码库');
     expect(container.textContent).toContain('账号');
     expect(request.mock.calls.length).toBe(requests);
-    expect(document.documentElement.lang).toBe('en'); expect(document.title).toBe('Passpine · Browser settings');
+    expect(document.documentElement.lang).toBe('en'); expect(document.title).toBe('Passpine Dev · Browser settings');
     expect(stored).toEqual({ [languageStorageKey]: 'en', appearancePreferences: { style: 'onevra', appearance: 'dark', fontScale: 110 } });
     await act(async () => root.unmount()); root = createRoot(container); await render(createElement(App, { client }));
     expect(container.querySelector('input[aria-label="Search vault"]')).not.toBeNull();

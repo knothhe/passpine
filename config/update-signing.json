@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "algorithm": "ed25519",
+  "repository": "knothhe/passpine",
+  "publicKey": "0V47gc+qVVlC4On/zR4jROkji3RPnzxC0YavPDzYoWQ=",
+  "feedURL": "https://github.com/knothhe/passpine/releases/latest/download/update-feed.json"
+}

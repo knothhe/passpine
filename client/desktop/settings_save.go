@@ -69,6 +69,7 @@ func (a *application) saveSettingsAutomatically() {
 					a.settingsObserved = a.settings
 				}
 			} else {
+				updateDownloadChanged := a.settingsSaved.AutoDownloadUpdates != result.Data.Settings.AutoDownloadUpdates
 				a.settingsSaved = result.Data.Settings
 				a.state.Settings = result.Data.Settings
 				if a.settings == settings {
@@ -82,6 +83,9 @@ func (a *application) saveSettingsAutomatically() {
 				a.applyTheme()
 				a.applyLanguage()
 				a.applyNativeSettings()
+				if updateDownloadChanged && a.updates.manager != nil {
+					a.updates.manager.SetAutoDownload(result.Data.Settings.AutoDownloadUpdates)
+				}
 			}
 			a.saveSettingsAutomatically()
 			a.invalidate()
