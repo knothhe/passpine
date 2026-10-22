@@ -27,7 +27,8 @@ type fixture struct {
 	private     ed25519.PrivateKey
 	server      *httptest.Server
 	manifest    Manifest
-	full, delta []byte
+	full        []byte
+	legacyDelta []byte
 	body        []byte
 	mu          sync.Mutex
 	hits        map[string]int
@@ -72,7 +73,7 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(e)
 	}
 	f.full = archiveBytes(t, map[string][]byte{"passpine": []byte("new main"), "passpine-host": []byte("unchanged host")})
-	f.delta = archiveBytes(t, map[string][]byte{"passpine": []byte("new main")})
+	f.legacyDelta = archiveBytes(t, map[string][]byte{"passpine": []byte("new main")})
 	f.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.hits[r.URL.Path]++
@@ -84,13 +85,13 @@ func newFixture(t *testing.T) *fixture {
 		case "/full":
 			w.Write(f.full)
 		case "/delta":
-			w.Write(f.delta)
+			w.Write(f.legacyDelta)
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	t.Cleanup(f.server.Close)
-	f.manifest = Manifest{Schema: 1, Version: "1.1.0", Notes: map[string]string{"en": "Release notes", "zh-CN": "更新说明"}, Assets: []Asset{{OS: "linux", Arch: "amd64", Full: Download{URL: f.server.URL + "/full", SHA256: checksum(f.full), Size: int64(len(f.full))}, Files: []File{fileSpec("passpine", []byte("new main")), fileSpec("passpine-host", []byte("unchanged host"))}}}}
+	f.manifest = Manifest{Schema: 1, Version: "1.1.0", Assets: []Asset{{OS: "linux", Arch: "amd64", Full: Download{URL: f.server.URL + "/full", SHA256: checksum(f.full), Size: int64(len(f.full))}, Files: []File{fileSpec("passpine", []byte("new main")), fileSpec("passpine-host", []byte("unchanged host"))}}}}
 	f.sign()
 	return f
 }
@@ -99,14 +100,35 @@ func (f *fixture) sign() {
 	if e != nil {
 		f.t.Fatal(e)
 	}
+	f.signPayload(payload)
+}
+func (f *fixture) signPayload(payload []byte) {
+	var e error
 	f.body, e = json.Marshal(Envelope{Payload: base64.StdEncoding.EncodeToString(payload), Signature: base64.StdEncoding.EncodeToString(ed25519.Sign(f.private, payload))})
 	if e != nil {
 		f.t.Fatal(e)
 	}
 }
-func (f *fixture) addDelta() {
-	f.manifest.Assets[0].Deltas = []Delta{{FromVersion: "1.0.0", URL: f.server.URL + "/delta", SHA256: checksum(f.delta), Size: int64(len(f.delta))}}
-	f.sign()
+
+// Legacy fields are deliberately constructed outside the current protocol
+// types: an already published schema-1 feed can contain ignored metadata.
+func (f *fixture) signLegacyFields() {
+	payload, e := json.Marshal(f.manifest)
+	if e != nil {
+		f.t.Fatal(e)
+	}
+	var legacy map[string]any
+	if e = json.Unmarshal(payload, &legacy); e != nil {
+		f.t.Fatal(e)
+	}
+	legacy["notes"] = map[string]string{"en": "Legacy release notes", "zh-CN": "旧版更新说明"}
+	asset := legacy["assets"].([]any)[0].(map[string]any)
+	asset["deltas"] = []any{map[string]any{"fromVersion": "1.0.0", "url": f.server.URL + "/delta", "sha256": checksum(f.legacyDelta), "size": len(f.legacyDelta)}}
+	payload, e = json.Marshal(legacy)
+	if e != nil {
+		f.t.Fatal(e)
+	}
+	f.signPayload(payload)
 }
 func (f *fixture) manager(auto *bool) *Manager {
 	f.t.Helper()
@@ -192,19 +214,20 @@ func TestDisabledAutomaticDownloadStillChecks(t *testing.T) {
 		t.Fatal("manual download failed")
 	}
 }
-func TestDeltaPreferredAndFullFallback(t *testing.T) {
-	for _, scenario := range []string{"success", "corrupt-delta", "changed-base", "symlink-base"} {
+func TestLegacySignedDeltaIsIgnoredWithoutReadingInstalledBase(t *testing.T) {
+	for _, scenario := range []string{"unchanged-base", "changed-base", "missing-base", "symlink-base"} {
 		t.Run(scenario, func(t *testing.T) {
 			f := newFixture(t)
-			f.addDelta()
+			f.signLegacyFields()
 			switch scenario {
-			case "corrupt-delta":
-				f.delta = []byte(strings.Repeat("x", len(f.delta)))
 			case "changed-base":
 				writeTestFile(t, filepath.Join(f.root, "passpine-host"), []byte("unexpected host"))
+			case "missing-base":
+				if e := os.Remove(filepath.Join(f.root, "passpine-host")); e != nil {
+					t.Fatal(e)
+				}
 			case "symlink-base":
-				outside := filepath.Join(t.TempDir(), "user-data")
-				writeTestFile(t, outside, []byte("unchanged host"))
+				outside := filepath.Join(t.TempDir(), "unreadable-dangling-baseline")
 				if e := os.Remove(filepath.Join(f.root, "passpine-host")); e != nil {
 					t.Fatal(e)
 				}
@@ -220,18 +243,61 @@ func TestDeltaPreferredAndFullFallback(t *testing.T) {
 			if s.State != StateReady {
 				t.Fatalf("not ready: %+v", s)
 			}
-			if f.count("/delta") != 1 {
-				t.Fatal("delta was not preferred")
+			if f.count("/delta") != 0 || f.count("/full") != 1 {
+				t.Fatal("legacy feed did not download only the complete package")
 			}
-			if scenario == "success" {
-				if !s.UsedDelta || s.Fallback || f.count("/full") != 0 {
-					t.Fatalf("unexpected fallback: %+v", s)
-				}
-			} else if s.UsedDelta || !s.Fallback || f.count("/full") != 1 {
-				t.Fatalf("missing full fallback: %+v", s)
-			}
+			assertFile(t, filepath.Join(m.readyDir, "passpine-host"), "unchanged host")
+			assertFile(t, filepath.Join(f.root, "passpine"), "old main")
 		})
 	}
+}
+
+func TestFullArchiveMissingSignedFileCannotBorrowInstalledBaseline(t *testing.T) {
+	f := newFixture(t)
+	f.full = archiveBytes(t, map[string][]byte{"passpine": []byte("new main")})
+	f.manifest.Assets[0].Full.SHA256 = checksum(f.full)
+	f.manifest.Assets[0].Full.Size = int64(len(f.full))
+	f.signLegacyFields()
+	m := f.manager(nil)
+	if e := m.Check(context.Background()); e == nil || m.Snapshot().ErrorCode != ErrorVerification {
+		t.Fatalf("incomplete full package was accepted: %v, %+v", e, m.Snapshot())
+	}
+	if m.readyDir != "" || f.count("/delta") != 0 || f.count("/full") != 1 {
+		t.Fatal("incomplete full package reused a baseline or an alternate package")
+	}
+	assertFile(t, filepath.Join(f.root, "passpine-host"), "unchanged host")
+	assertFile(t, filepath.Join(f.root, "passpine"), "old main")
+}
+
+func TestLegacyDeltaCacheCannotRestoreAsInstallable(t *testing.T) {
+	f := newFixture(t)
+	f.signLegacyFields()
+	m := f.manager(nil)
+	if e := m.Check(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	// The old client cached the small archive together with an already assembled
+	// complete staging tree. A valid tree alone cannot authenticate that archive.
+	writeTestFile(t, m.readyArchive, f.legacyDelta)
+	pending, e := json.Marshal(map[string]any{"envelope": json.RawMessage(f.body), "delta": true, "fallback": false})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = writeAtomic(filepath.Join(m.cacheDir(), "pending.json"), pending, 0o600); e != nil {
+		t.Fatal(e)
+	}
+	restored := f.manager(nil)
+	if restored.Snapshot().State == StateReady || restored.readyDir != "" {
+		t.Fatal("legacy small archive was restored as a verified complete package")
+	}
+	if e = restored.Install(context.Background()); e != ErrUnavailable {
+		t.Fatalf("legacy cache became installable: %v", e)
+	}
+	if f.count("/feed") != 1 || f.count("/full") != 1 || f.count("/delta") != 0 {
+		t.Fatal("cache recovery contacted a network endpoint")
+	}
+	assertFile(t, filepath.Join(f.root, "passpine"), "old main")
+	assertFile(t, filepath.Join(f.root, "passpine-host"), "unchanged host")
 }
 func TestUntrustedManifestDoesNotDownload(t *testing.T) {
 	for _, scenario := range []string{"signature", "traversal", "unmanaged-file", "missing-host", "duplicate", "invalid-size"} {
@@ -424,18 +490,6 @@ func TestVersions(t *testing.T) {
 		}
 	}
 }
-func TestSnapshotCannotMutateReleaseNotes(t *testing.T) {
-	f := newFixture(t)
-	m := f.manager(nil)
-	if e := m.Check(context.Background()); e != nil {
-		t.Fatal(e)
-	}
-	s := m.Snapshot()
-	s.Notes["en"] = "mutated"
-	if m.Snapshot().Notes["en"] != "Release notes" {
-		t.Fatal("snapshot aliases mutable notes")
-	}
-}
 func TestHelperUsesCompiledTrustAnchors(t *testing.T) {
 	f := newFixture(t)
 	plan := installPlan{CurrentVersion: "1.0.0", PublicKey: base64.StdEncoding.EncodeToString(f.public)}
@@ -492,19 +546,19 @@ func TestStartupAcknowledgementCannotOverwriteUserFiles(t *testing.T) {
 		t.Fatal("wrote through symlinked cache")
 	}
 }
-func TestCurrentVersionFeedKeepsLocalizedReleaseNotes(t *testing.T) {
+func TestCurrentVersionLegacyFeedRemainsLatestWithoutDownloading(t *testing.T) {
 	f := newFixture(t)
 	f.manifest.Version = "1.0.0"
-	f.sign()
+	f.signLegacyFields()
 	m := f.manager(nil)
 	if e := m.Check(context.Background()); e != nil {
 		t.Fatal(e)
 	}
 	s := m.Snapshot()
-	if s.State != StateLatest || s.Version != "1.0.0" || s.Notes["en"] != "Release notes" || s.Notes["zh-CN"] != "更新说明" {
-		t.Fatalf("missing current release notes %+v", s)
+	if s.State != StateLatest || s.Version != "1.0.0" {
+		t.Fatalf("current legacy feed was not treated as latest: %+v", s)
 	}
-	if f.count("/full") != 0 {
+	if f.count("/full") != 0 || f.count("/delta") != 0 {
 		t.Fatal("downloaded current version")
 	}
 }

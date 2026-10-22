@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import https from 'node:https';
 import { spawn, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { stageUpdate, decodeZip, encodeZip } from './update-artifacts.mjs';
+import { stageUpdate } from './update-artifacts.mjs';
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Error('This opt-in verifier requires macOS arm64.');
@@ -135,8 +135,8 @@ try {
     templates[label] = { root, bundle, asset, bytes: fs.readFileSync(path.join(root, asset.full.name)), hashes: treeHashes(bundle) };
   }
   const scenarios = [
-    { name: 'incremental-install', template: 'new', delta: true, result: 'success' },
-    { name: 'incremental-fallback-full', template: 'new', delta: true, corruptDelta: true, result: 'success' },
+    { name: 'full-install', template: 'new', result: 'success' },
+    { name: 'corrupt-full-download', template: 'new', corruptFull: true, result: 'download-rejected' },
     { name: 'startup-crash-rollback', template: 'crash', result: 'rollback' },
     { name: 'startup-ack-timeout-rollback', template: 'noack', result: 'rollback' },
     { name: 'invalid-bundle-signature', template: 'bad-signature', result: 'rejected' },
@@ -151,19 +151,11 @@ try {
     await run(path.join(binaryDir, 'controller'), ['--preview', '--data-dir', data], { env, log: path.join(root, 'seed.log') });
     const beforeData = protectedHashes(data), beforeBundle = treeHashes(bundle);
     check(Object.keys(beforeData).some(name => name.endsWith('.gpg')), 'No encrypted fictional fixture was created.');
-    const target = templates[scenario.template], fullPath = `/${scenario.name}/full.zip`, deltaPath = `/${scenario.name}/delta.zip`, feedPath = `/${scenario.name}/feed.json`;
-    const fullRoute = { bytes: target.bytes, hits: 0 }; routes.set(fullPath, fullRoute);
-    const asset = { os: 'darwin', arch: 'arm64', files: target.asset.files, full: { url: origin + fullPath, sha256: sha(target.bytes), size: target.bytes.length }, deltas: [] };
-    let deltaRoute;
-    if (scenario.delta) {
-      const changed = decodeZip(target.bytes).filter(entry => !templates.old.asset.files.some(file => file.path === entry.path && file.sha256 === sha(entry.data) && file.mode === entry.mode));
-      const delta = encodeZip(changed);
-      check(delta.length < target.bytes.length, 'The fixture delta is not smaller than the full package.');
-      asset.deltas.push({ fromVersion: oldVersion, url: origin + deltaPath, sha256: sha(delta), size: delta.length });
-      const delivered = Buffer.from(delta); if (scenario.corruptDelta) delivered[0] ^= 1;
-      deltaRoute = { bytes: delivered, hits: 0 }; routes.set(deltaPath, deltaRoute);
-    }
-    const payload = Buffer.from(JSON.stringify({ schema: 1, version: newVersion, notes: { en: 'Isolated test update', 'zh-CN': '隔离验证更新' }, assets: [asset] }));
+    const target = templates[scenario.template], fullPath = `/${scenario.name}/full.zip`, feedPath = `/${scenario.name}/feed.json`;
+    const delivered = Buffer.from(target.bytes); if (scenario.corruptFull) delivered[0] ^= 1;
+    const fullRoute = { bytes: delivered, hits: 0 }; routes.set(fullPath, fullRoute);
+    const asset = { os: 'darwin', arch: 'arm64', files: target.asset.files, full: { url: origin + fullPath, sha256: sha(target.bytes), size: target.bytes.length } };
+    const payload = Buffer.from(JSON.stringify({ schema: 1, version: newVersion, assets: [asset] }));
     routes.set(feedPath, { bytes: Buffer.from(JSON.stringify({ payload: payload.toString('base64'), signature: crypto.sign(null, payload, pair.privateKey).toString('base64') })), hits: 0 });
     Object.assign(env, { PASSPINE_VERIFY_MODE: 'install', PASSPINE_VERIFY_CURRENT_VERSION: oldVersion, PASSPINE_VERIFY_PUBLIC_KEY: publicKey, PASSPINE_VERIFY_FEED_URL: origin + feedPath, PASSPINE_VERIFY_CA_FILE: certFile, PASSPINE_VERIFY_INSTALL_ROOT: bundle });
     if (scenario.template === 'crash') env.PASSPINE_VERIFY_CRASH_MARKER = path.join(root, 'injected-crash.marker');
@@ -172,16 +164,24 @@ try {
     check(controller.pid, 'Controller did not launch.'); pids.add(controller.pid);
     let controllerExit;
     controller.once('exit', (code, signal) => { controllerExit = { code, signal }; });
-    const ready = await until(() => readJSON(path.join(data, 'probe-ready.json')), 'Update did not become ready.');
-    const snapshot = ready.snapshot || ready.Snapshot || ready;
-    if (scenario.delta) check(deltaRoute.hits === 1, 'Delta was not attempted exactly once.');
-    if (scenario.corruptDelta) check(fullRoute.hits === 1 && snapshot.Fallback, 'Corrupt delta did not fall back to the full package.');
-    if (scenario.delta && !scenario.corruptDelta) check(fullRoute.hits === 0 && snapshot.UsedDelta, 'Unnecessary full download replaced a valid delta.');
+    if (scenario.result === 'download-rejected') {
+      const error = await until(() => readJSON(path.join(data, 'probe-error.json')), 'Corrupt full package was not rejected.');
+      check((error.snapshot || error).ErrorCode === 'verification', 'Corrupt full package produced the wrong error.');
+      await until(() => controllerExit, 'Failed download controller did not exit.');
+      check(!fs.existsSync(path.join(data, 'probe-ready.json')), 'Corrupt download became ready.');
+      check(!fs.existsSync(path.join(data, 'updates', 'pending.json')), 'Corrupt download left an installable pending update.');
+    } else {
+      await until(() => readJSON(path.join(data, 'probe-ready.json')), 'Update did not become ready.');
+    }
+    check(fullRoute.hits === 1, 'The full package was not requested exactly once.');
     check(JSON.stringify(beforeBundle) === JSON.stringify(treeHashes(bundle)), 'Download modified the installed test app.');
     if (scenario.result === 'preflight-rejected') fs.appendFileSync(path.join(data, 'updates', 'package.zip'), 'tampered');
-    fs.writeFileSync(path.join(data, 'install.signal'), 'install');
+    if (scenario.result !== 'download-rejected') fs.writeFileSync(path.join(data, 'install.signal'), 'install');
     let observedNewBundle = false;
-    if (scenario.result === 'preflight-rejected') {
+    if (scenario.result === 'download-rejected') {
+      check(JSON.stringify(beforeBundle) === JSON.stringify(treeHashes(bundle)), 'Rejected download altered the application.');
+      check(!fs.existsSync(path.join(data, 'probe-helper-started.json')), 'Rejected download launched an installation helper.');
+    } else if (scenario.result === 'preflight-rejected') {
       const error = await until(() => readJSON(path.join(data, 'probe-error.json')), 'Tampered package was not rejected.');
       check((error.snapshot || error).ErrorCode === 'verification', 'Tampered package produced the wrong error.');
       await until(() => controllerExit, 'Failed preflight controller did not exit.');
@@ -211,7 +211,7 @@ try {
       await until(() => isolatedProcesses().some(item => item.command.startsWith(executable + ' ')), 'Healthy target or restored old UI did not remain running.');
     }
     check(JSON.stringify(beforeData) === JSON.stringify(protectedHashes(data)), 'Fictional vault, keys, or preferences changed.');
-    const row = { scenario: scenario.name, result: 'passed', seconds: Number(((Date.now() - started) / 1000).toFixed(1)), deltaRequests: deltaRoute?.hits || 0, fullRequests: fullRoute.hits, observedNewBundle, protectedFileCount: Object.keys(beforeData).length, bundleFiles: Object.keys(beforeBundle).length };
+    const row = { scenario: scenario.name, result: 'passed', seconds: Number(((Date.now() - started) / 1000).toFixed(1)), fullRequests: fullRoute.hits, observedNewBundle, protectedFileCount: Object.keys(beforeData).length, bundleFiles: Object.keys(beforeBundle).length };
     reports.push(row); writeJSON(path.join(root, 'result.json'), row);
     for (const process of isolatedProcesses()) await stop(process.pid);
     check(isolatedProcesses().length === 0, 'An isolated child process remained after cleanup.');

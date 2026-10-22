@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import { createUpdateFeed, decodeZip, encodeZip, readUpdateSigningConfig, stageUpdate, updateBuildConfig, validateUpdate, verifyFeed } from './update-artifacts.mjs';
-import { previousUpdateFeed, updateNotes } from './ci-release.mjs';
 
 const targets = ['client-darwin-arm64', 'client-linux-amd64', 'client-win32-amd64'];
 const keys = () => {
@@ -24,7 +23,7 @@ function build(root, version, changed) {
   const write = (name, data, mode = 0o755) => {
     const file = path.join(dist, name); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, data, { mode });
   };
-  // Incompressible unchanged host makes a changed-client delta worthwhile.
+  // Include nontrivial executable and resource bytes in every platform fixture.
   const host = Buffer.concat(Array.from({ length: 256 }, (_, i) => crypto.createHash('sha256').update(`host ${i}`).digest()));
   for (const extension of ['', '.exe']) { write(`passpine${extension}`, changed ? 'new client binary' : 'old client binary'); write(`passpine-host${extension}`, host); }
   write('Passpine.app/Contents/MacOS/passpine', changed ? 'new mac client' : 'old mac client');
@@ -36,9 +35,9 @@ function build(root, version, changed) {
     return { target, directory, update: stageUpdate(version, target, path.dirname(dist), directory) };
   });
 }
-function feed(root, version, updates, signingKeys, previousFeed) {
-  return createUpdateFeed({ version, repo: 'knothhe/passpine', notes: { en: 'A useful change.', 'zh-CN': '一项实用改进。' }, updates,
-    output: path.join(root, version, 'signed'), ...signingKeys, previousFeed });
+function feed(root, version, updates, signingKeys) {
+  return createUpdateFeed({ version, repo: 'knothhe/passpine', updates,
+    output: path.join(root, version, 'signed'), ...signingKeys });
 }
 
 test('release signing flags use the pinned public key independently of cwd and empty CI variables', t => {
@@ -106,8 +105,8 @@ test('signed feeds authenticate exact payload bytes and reject unknown or mismat
   const artifacts = feed(root, '0.1.0', updates, signingKeys), filename = artifacts.find(item => item.name === 'update-feed.json').path;
   const bytes = fs.readFileSync(filename), parsed = verifyFeed(bytes, signingKeys.publicKey);
   assert.equal(artifacts.length, 4); assert.equal(parsed.version, '0.1.0'); assert.equal(parsed.assets.length, 3);
-  assert.deepEqual(parsed.notes, { en: 'A useful change.', 'zh-CN': '一项实用改进。' });
-  assert.ok(parsed.assets.every(asset => asset.deltas.length === 0 && asset.full.url.startsWith('https://github.com/knothhe/passpine/releases/download/v0.1.0/')));
+  assert.deepEqual(Object.keys(parsed).sort(), ['assets', 'schema', 'version']);
+  assert.ok(parsed.assets.every(asset => !('deltas' in asset) && asset.full.url.startsWith('https://github.com/knothhe/passpine/releases/download/v0.1.0/')));
   assert.throws(() => verifyFeed(bytes, keys().publicKey), /signature verification/);
   const modified = JSON.parse(bytes); const payload = JSON.parse(Buffer.from(modified.payload, 'base64')); payload.version = '9.0.0';
   modified.payload = Buffer.from(JSON.stringify(payload)).toString('base64');
@@ -116,29 +115,44 @@ test('signed feeds authenticate exact payload bytes and reject unknown or mismat
   assert.throws(() => feed(root, '0.1.0', updates.slice(0, 2), signingKeys), /incomplete/);
 });
 
-test('incremental ZIP contains only changed files and reconstructs the full manifest', t => {
-  const root = fixture(t), signingKeys = keys(), old = build(root, '0.1.0', false), current = build(root, '0.2.0', true);
-  const oldArtifacts = feed(root, '0.1.0', old, signingKeys), oldBytes = fs.readFileSync(oldArtifacts.at(-1).path);
-  const artifacts = feed(root, '0.2.0', current, signingKeys, oldBytes), parsed = verifyFeed(fs.readFileSync(artifacts.at(-1).path), signingKeys.publicKey);
-  assert.equal(artifacts.length, 7);
+test('publication emits only full packages and a deterministic feed without consulting previous feeds or inline notes', t => {
+  const root = fixture(t), signingKeys = keys(), current = build(root, '0.2.0', true);
+  const options = { version: '0.2.0', repo: 'knothhe/passpine', updates: current, output: path.join(root, 'signed'), ...signingKeys };
+  const artifacts = createUpdateFeed({ ...options,
+    // Old callers may still supply these properties. Publication must neither
+    // parse a baseline nor copy any of its optional presentation fields.
+    previousFeed: Buffer.from('not a valid historical feed'), notes: { en: 'Old inline notes', 'zh-CN': '旧版内联说明' },
+  });
+  const parsed = verifyFeed(fs.readFileSync(artifacts.at(-1).path), signingKeys.publicKey);
+  assert.equal(artifacts.length, 4);
+  assert.deepEqual(Object.keys(parsed).sort(), ['assets', 'schema', 'version']);
+  assert.deepEqual(fs.readdirSync(options.output), ['update-feed.json']);
   const beforeRetry = artifacts.map(item => ({ name: item.name, bytes: fs.readFileSync(item.path) }));
-  const retried = feed(root, '0.2.0', [...current].reverse(), signingKeys, oldBytes);
-  for (const artifact of retried) assert.deepEqual(fs.readFileSync(artifact.path), beforeRetry.find(item => item.name === artifact.name).bytes, 'Retry must reproduce exact signed feed and delta bytes.');
+  const retried = createUpdateFeed({ ...options, updates: [...current].reverse() });
+  for (const artifact of retried) assert.deepEqual(fs.readFileSync(artifact.path), beforeRetry.find(item => item.name === artifact.name).bytes, 'Retry must reproduce exact signed feed and full ZIP bytes.');
   for (const asset of parsed.assets) {
-    assert.equal(asset.deltas.length, 1); assert.equal(asset.deltas[0].fromVersion, '0.1.0'); assert.ok(asset.deltas[0].size < asset.full.size);
-    const previousFiles = decodeZip(fs.readFileSync(path.join(old.find(item => item.update.os === asset.os).directory, old.find(item => item.update.os === asset.os).update.full.name)));
-    const changed = decodeZip(fs.readFileSync(artifacts.find(item => asset.deltas[0].url.endsWith(item.name)).path));
-    assert.ok(changed.every(entry => !entry.path.includes('passpine-host') && !entry.path.endsWith('icon.icns')));
-    const merged = new Map(previousFiles.map(entry => [entry.path, entry]));
-    for (const entry of changed) merged.set(entry.path, entry);
+    assert.deepEqual(Object.keys(asset).sort(), ['arch', 'files', 'full', 'os']);
+    const full = artifacts.find(item => asset.full.url.endsWith(item.name));
+    assert.ok(full); assert.equal(full.size, asset.full.size);
+    const entries = new Map(decodeZip(fs.readFileSync(full.path)).map(entry => [entry.path, entry]));
+    assert.equal(entries.size, asset.files.length);
     for (const file of asset.files) {
-      const entry = merged.get(file.path); assert.equal(crypto.createHash('sha256').update(entry.data).digest('hex'), file.sha256); assert.equal(entry.data.length, file.size); assert.equal(entry.mode, file.mode);
+      const entry = entries.get(file.path); assert.equal(crypto.createHash('sha256').update(entry.data).digest('hex'), file.sha256); assert.equal(entry.data.length, file.size); assert.equal(entry.mode, file.mode);
     }
   }
-  const tampered = JSON.parse(oldBytes); tampered.signature = Buffer.alloc(64).toString('base64');
-  assert.throws(() => feed(root, '0.2.0', current, signingKeys, Buffer.from(JSON.stringify(tampered))), /signature verification/);
-  assert.throws(() => feed(root, '0.2.0', current, signingKeys, fs.readFileSync(artifacts.at(-1).path)), /older release/);
-  assert.throws(() => feed(root, '0.1.0', old, signingKeys, fs.readFileSync(artifacts.at(-1).path)), /older release/);
+});
+
+test('verification accepts previously signed schema 1 extra fields and still authenticates every payload byte', t => {
+  const root = fixture(t), signingKeys = keys(), updates = build(root, '0.1.0', false);
+  const artifacts = feed(root, '0.1.0', updates, signingKeys);
+  const parsed = verifyFeed(fs.readFileSync(artifacts.at(-1).path), signingKeys.publicKey);
+  const legacy = { ...parsed, notes: { en: 'Legacy notes', 'zh-CN': '旧版说明' }, assets: parsed.assets.map(asset => ({ ...asset, deltas: [{ fromVersion: '0.0.1', ...asset.full }] })) };
+  const payload = Buffer.from(JSON.stringify(legacy)), envelope = {
+    payload: payload.toString('base64'), signature: crypto.sign(null, payload, signingKeys.privateKey).toString('base64'),
+  };
+  assert.deepEqual(verifyFeed(Buffer.from(JSON.stringify(envelope)), signingKeys.publicKey), legacy);
+  legacy.notes.en = 'Tampered notes'; envelope.payload = Buffer.from(JSON.stringify(legacy)).toString('base64');
+  assert.throws(() => verifyFeed(Buffer.from(JSON.stringify(envelope)), signingKeys.publicKey), /signature verification/);
 });
 
 test('empty macOS resources are preserved while oversized manifests are rejected', t => {
@@ -170,28 +184,6 @@ test('ZIP parser rejects duplicates and corruption before signing', () => {
   assert.throws(() => encodeZip([entry, entry]), /Duplicate/);
   const bytes = encodeZip([entry]); bytes[40] ^= 64;
   assert.throws(() => decodeZip(bytes), /Invalid|Corrupt|incorrect|invalid/);
-});
-
-test('previous release lookup distinguishes absence from authentication and network failures', () => {
-  assert.equal(previousUpdateFeed('a/b', '0.2.0', () => ({ status: 1, stderr: 'gh: Not Found (HTTP 404)' })), null);
-  assert.equal(previousUpdateFeed('a/b', '0.2.0', () => ({ status: 0, stdout: '[[{"tag_name":"v0.1.0","assets":[]}]]' })), null);
-  for (const stderr of ['gh: Bad credentials (HTTP 401)', 'connection reset']) assert.throws(() => previousUpdateFeed('a/b', '0.2.0', () => ({ status: 1, stderr })), /Cannot read/);
-  let calls = 0;
-  const bytes = previousUpdateFeed('a/b', '0.2.0', (command, args) => {
-    assert.equal(command, 'gh'); calls++;
-    if (args.at(-1).includes('/releases?')) return { status: 0, stdout: JSON.stringify([[{ tag_name: 'v0.2.0', assets: [{ id: 99, name: 'update-feed.json', size: 32 }] }, { tag_name: 'v0.1.0', assets: [{ id: 42, name: 'update-feed.json', size: 32 }] }]]) };
-    assert.ok(args.at(-1).endsWith('/42'), 'Already-published current release must not become its own delta baseline.');
-    return { status: 0, stdout: '{"payload":"signed"}' };
-  });
-  assert.equal(calls, 2); assert.equal(bytes.toString(), '{"payload":"signed"}');
-});
-
-test('release notes support authored bilingual text and preserve generated commit titles', t => {
-  const root = fixture(t); assert.match(updateNotes('0.1.0', '- fix: something', root)['zh-CN'], /提交标题保留原文/);
-  fs.mkdirSync(path.join(root, 'docs/releases'), { recursive: true });
-  const filename = path.join(root, 'docs/releases/0.1.0.json'), notes = { en: 'Changes', 'zh-CN': '改进' }; fs.writeFileSync(filename, JSON.stringify(notes));
-  assert.deepEqual(updateNotes('0.1.0', 'ignored', root), notes);
-  fs.writeFileSync(filename, '{"en":"Changes"}'); assert.throws(() => updateNotes('0.1.0', '', root), /English and Simplified Chinese/);
 });
 
 test('CI exposes the signing private key only to the publication job', () => {

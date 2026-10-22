@@ -45,15 +45,14 @@ var ErrUnavailable = errors.New("update is not available")
 
 type Snapshot struct {
 	// Revision increases for every notification so an asynchronous UI can ignore stale callbacks.
-	Revision                                      uint64
-	State                                         State
-	CurrentVersion                                string
-	Version                                       string
-	Notes                                         map[string]string
-	ErrorCode                                     string
-	Progress                                      float64
-	Downloaded, Total                             int64
-	AutoDownload, UsedDelta, Fallback, Configured bool
+	Revision                 uint64
+	State                    State
+	CurrentVersion           string
+	Version                  string
+	ErrorCode                string
+	Progress                 float64
+	Downloaded, Total        int64
+	AutoDownload, Configured bool
 }
 
 type Config struct {
@@ -76,21 +75,14 @@ type Envelope struct {
 	Signature string `json:"signature"`
 }
 type Manifest struct {
-	Schema  int               `json:"schema"`
-	Version string            `json:"version"`
-	Notes   map[string]string `json:"notes"`
-	Assets  []Asset           `json:"assets"`
+	Schema  int     `json:"schema"`
+	Version string  `json:"version"`
+	Assets  []Asset `json:"assets"`
 }
 type Download struct {
 	URL    string `json:"url"`
 	SHA256 string `json:"sha256"`
 	Size   int64  `json:"size"`
-}
-type Delta struct {
-	FromVersion string `json:"fromVersion"`
-	URL         string `json:"url"`
-	SHA256      string `json:"sha256"`
-	Size        int64  `json:"size"`
 }
 type File struct {
 	Path   string `json:"path"`
@@ -99,11 +91,10 @@ type File struct {
 	Mode   uint32 `json:"mode"`
 }
 type Asset struct {
-	OS     string   `json:"os"`
-	Arch   string   `json:"arch"`
-	Full   Download `json:"full"`
-	Files  []File   `json:"files"`
-	Deltas []Delta  `json:"deltas,omitempty"`
+	OS    string   `json:"os"`
+	Arch  string   `json:"arch"`
+	Full  Download `json:"full"`
+	Files []File   `json:"files"`
 }
 
 type Manager struct {
@@ -117,8 +108,6 @@ type Manager struct {
 	asset                  *Asset
 	envelope               []byte
 	readyDir, readyArchive string
-	readyDownload          Download
-	readyDelta             bool
 }
 
 func New(cfg Config) (*Manager, error) {
@@ -206,21 +195,13 @@ func (m *Manager) cacheDir() string { return filepath.Join(m.cfg.DataDir, "updat
 func (m *Manager) Snapshot() Snapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return cloneSnapshot(m.snapshot)
-}
-func cloneSnapshot(s Snapshot) Snapshot {
-	notes := make(map[string]string, len(s.Notes))
-	for k, v := range s.Notes {
-		notes[k] = v
-	}
-	s.Notes = notes
-	return s
+	return m.snapshot
 }
 func (m *Manager) publish(change func(*Snapshot)) {
 	m.mu.Lock()
 	change(&m.snapshot)
 	m.snapshot.Revision++
-	s := cloneSnapshot(m.snapshot)
+	s := m.snapshot
 	callback := m.cfg.OnChange
 	m.mu.Unlock()
 	if callback != nil {

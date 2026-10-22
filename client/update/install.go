@@ -27,7 +27,6 @@ type installPlan struct {
 	ParentPID                                                            int
 	Arguments                                                            []string
 	Envelope                                                             json.RawMessage
-	Delta                                                                bool
 }
 
 // Install validates both the signed archive and every staged file again, then
@@ -52,7 +51,7 @@ func (m *Manager) Install(ctx context.Context) error {
 	if e := m.validateInstallRoot(); e != nil {
 		return m.fail(ErrorInstall, e)
 	}
-	plan := installPlan{CurrentVersion: m.cfg.CurrentVersion, FeedURL: m.cfg.FeedURL, PublicKey: m.cfg.PublicKey, DataDir: m.cfg.DataDir, Executable: m.cfg.Executable, InstallRoot: m.cfg.InstallRoot, ProtectedPaths: m.protectedPaths(), ParentPID: os.Getpid(), Arguments: append([]string(nil), os.Args[1:]...), Envelope: m.envelope, Delta: m.readyDelta}
+	plan := installPlan{CurrentVersion: m.cfg.CurrentVersion, FeedURL: m.cfg.FeedURL, PublicKey: m.cfg.PublicKey, DataDir: m.cfg.DataDir, Executable: m.cfg.Executable, InstallRoot: m.cfg.InstallRoot, ProtectedPaths: m.protectedPaths(), ParentPID: os.Getpid(), Arguments: append([]string(nil), os.Args[1:]...), Envelope: m.envelope}
 	data, e := json.Marshal(plan)
 	if e != nil {
 		return m.fail(ErrorInstall, e)
@@ -93,21 +92,7 @@ func (m *Manager) verifyPending() error {
 	if manifest.Version != m.manifest.Version {
 		return errors.New("pending release changed")
 	}
-	selected := asset.Full
-	if m.readyDelta {
-		found := false
-		for _, d := range asset.Deltas {
-			if d.FromVersion == m.cfg.CurrentVersion {
-				selected = Download{d.URL, d.SHA256, d.Size}
-				found = true
-				break
-			}
-		}
-		if !found {
-			return errors.New("pending delta is unavailable")
-		}
-	}
-	if e = verifyFile(m.readyArchive, selected.SHA256, selected.Size); e != nil {
+	if e = verifyFile(m.readyArchive, asset.Full.SHA256, asset.Full.Size); e != nil {
 		return e
 	}
 	return verifyTree(m.readyDir, asset.Files)
@@ -258,7 +243,6 @@ func runHelper(planName, currentVersion, publicKey string) error {
 	m.manifest, m.asset, m.envelope = manifest, asset, plan.Envelope
 	m.readyDir = filepath.Join(m.cacheDir(), "ready")
 	m.readyArchive = filepath.Join(m.cacheDir(), "package.zip")
-	m.readyDelta = plan.Delta
 	if e = m.validateInstallRoot(); e != nil {
 		result(ErrorInstall)
 		return e

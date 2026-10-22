@@ -3,35 +3,32 @@
   "arch": "arm64",
   "oldVersion": "99.0.0",
   "newVersion": "99.0.1",
-  "root": "/private/tmp/passpine-update-verification-qu5JEW",
+  "root": "/private/tmp/passpine-update-verification-kkJ18x",
   "productionUpdaterUnmodified": true,
   "appMode": "real production Passpine --preview; faults only in disposable Go overlays",
   "scenarios": [
     {
-      "scenario": "incremental-install",
+      "scenario": "full-install",
       "result": "passed",
-      "seconds": 3.7,
-      "deltaRequests": 1,
-      "fullRequests": 0,
-      "observedNewBundle": true,
-      "protectedFileCount": 15,
-      "bundleFiles": 5
-    },
-    {
-      "scenario": "incremental-fallback-full",
-      "result": "passed",
-      "seconds": 2.5,
-      "deltaRequests": 1,
+      "seconds": 2.9,
       "fullRequests": 1,
       "observedNewBundle": true,
       "protectedFileCount": 15,
       "bundleFiles": 5
     },
     {
+      "scenario": "corrupt-full-download",
+      "result": "passed",
+      "seconds": 0.3,
+      "fullRequests": 1,
+      "observedNewBundle": false,
+      "protectedFileCount": 15,
+      "bundleFiles": 5
+    },
+    {
       "scenario": "startup-crash-rollback",
       "result": "passed",
-      "seconds": 31.4,
-      "deltaRequests": 0,
+      "seconds": 31.3,
       "fullRequests": 1,
       "observedNewBundle": true,
       "protectedFileCount": 15,
@@ -41,7 +38,6 @@
       "scenario": "startup-ack-timeout-rollback",
       "result": "passed",
       "seconds": 31.5,
-      "deltaRequests": 0,
       "fullRequests": 1,
       "observedNewBundle": true,
       "protectedFileCount": 15,
@@ -50,8 +46,7 @@
     {
       "scenario": "invalid-bundle-signature",
       "result": "passed",
-      "seconds": 1.4,
-      "deltaRequests": 0,
+      "seconds": 1.5,
       "fullRequests": 1,
       "observedNewBundle": false,
       "protectedFileCount": 15,
@@ -61,7 +56,6 @@
       "scenario": "tampered-package-before-install",
       "result": "passed",
       "seconds": 0.4,
-      "deltaRequests": 0,
       "fullRequests": 1,
       "observedNewBundle": false,
       "protectedFileCount": 15,
@@ -72,5 +66,6 @@
   "macOS": "27.0.1",
   "temporaryProcessesCleaned": true,
   "temporaryArtifactsCleaned": true,
-  "buildChannel": "release (isolated test keys only)"
+  "buildChannel": "release (isolated test keys only)",
+  "downloadMode": "full only"
 }

@@ -2,6 +2,8 @@ package desktop
 
 import (
 	"context"
+	"regexp"
+
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/about"
@@ -129,13 +131,7 @@ func (a *application) updateStatus() (string, string) {
 	case update.StateAvailable:
 		return a.t("发现新版本 %s", s.Version), a.t("准备好后可手动下载更新。")
 	case update.StateDownloading:
-		if s.Fallback {
-			return a.t("正在下载完整更新包"), a.t("增量更新未完成，已自动改用完整包。你可以继续使用。")
-		}
-		if s.UsedDelta {
-			return a.t("正在下载更新"), a.t("正在下载增量包。完成后等待你确认安装。")
-		}
-		return a.t("正在下载更新"), a.t("正在下载完整更新包。完成后等待你确认安装。")
+		return a.t("正在下载完整更新包"), a.t("正在下载完整更新包。完成后等待你确认安装。")
 	case update.StateVerifying:
 		return a.t("正在校验更新包"), a.t("正在检查更新包的完整性与签名。校验完成后才能安装。")
 	case update.StateReady:
@@ -304,22 +300,51 @@ func (a *application) updatesView(c *ui.Context) {
 				}
 			}
 		})
-		ui.Column(c).FillWidth().MinWidth(0).Gap(10).Children(func() {
-			components.Text(c, a.t("更新说明")).Bold()
-			notes := s.Notes[a.uiLocale()]
-			if notes == "" {
-				notes = s.Notes["en"]
-			}
-			if notes == "" {
-				notes = a.t("暂无此版本的更新说明。")
-			}
-			if s.Version != "" {
-				muted(c, a.t("版本 %s", s.Version))
-			}
-			components.Text(c, notes).Wrap()
-		})
-		muted(c, a.t("优先使用增量更新，失败时自动下载完整包。安装前会再次校验更新包。"))
+		a.updateReleaseNotesRow(c)
+		muted(c, a.t("安装前会再次校验更新包。"))
 	})
+}
+
+var updateReleaseVersion = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+
+// Only stable numeric versions produce a release tag. Snapshot.Version comes
+// from the verified feed; the compiled version provides a useful fallback
+// before a check succeeds. Development versions never invent release URLs.
+func updateReleaseLink(available, current string) (version, target string) {
+	for _, candidate := range []string{available, current} {
+		if updateReleaseVersion.MatchString(candidate) {
+			return candidate, "https://github.com/knothhe/passpine/releases/tag/v" + candidate
+		}
+	}
+	return "", ""
+}
+
+func (a *application) updateReleaseNotesRow(c *ui.Context) {
+	version, target := updateReleaseLink(a.updates.snapshot.Version, a.buildVersion)
+	label, detail := a.t("更新说明"), a.t("暂无对应的更新说明")
+	if target != "" {
+		label = a.t("查看版本 %s 的更新说明", version)
+		detail = a.t("v%s · GitHub Release", version)
+	}
+	row := ui.ButtonBase(c).Key("update-release-notes").Role(ui.RoleLink).Label(label).Row().
+		FillWidth().MinWidth(0).Padding(15, 19).Gap(16).AlignItems(ui.Center).
+		Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(8).
+		TextColor(c.Theme().Text).Disabled(target == "")
+	if row.Hovered() && target != "" {
+		row.Background(c.Theme().SurfaceHover)
+	}
+	row.Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
+			components.Text(c, a.t("更新说明")).Bold()
+			muted(c, detail)
+		})
+		if target != "" {
+			components.Icon(c, lucide.ExternalLink()).Size(17, 17).Shrink(0).TextColor(c.Theme().TextMuted)
+		}
+	})
+	if row.Clicked() && target != "" {
+		c.OpenURL(target)
+	}
 }
 
 func (a *application) updateDialog(c *ui.Context) {

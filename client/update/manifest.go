@@ -69,14 +69,6 @@ func (m *Manager) parseEnvelope(data []byte) (*Manifest, *Asset, error) {
 	if json.Unmarshal(payload, &manifest) != nil || manifest.Schema != 1 || !validVersion(manifest.Version) || compareVersions(manifest.Version, m.cfg.CurrentVersion) <= 0 {
 		return nil, nil, errors.New(ErrorManifest)
 	}
-	if len(manifest.Notes) > 8 {
-		return nil, nil, errors.New(ErrorManifest)
-	}
-	for _, note := range manifest.Notes {
-		if len(note) > 128<<10 {
-			return nil, nil, errors.New(ErrorManifest)
-		}
-	}
 	var asset *Asset
 	for i := range manifest.Assets {
 		a := &manifest.Assets[i]
@@ -112,11 +104,6 @@ func (m *Manager) parseEnvelope(data []byte) (*Manifest, *Asset, error) {
 	}
 	for _, name := range required {
 		if !seen[name] {
-			return nil, nil, errors.New(ErrorManifest)
-		}
-	}
-	for _, d := range asset.Deltas {
-		if !validVersion(d.FromVersion) || compareVersions(d.FromVersion, manifest.Version) >= 0 || !validDownload(Download{d.URL, d.SHA256, d.Size}, m.cfg.AllowHTTP) {
 			return nil, nil, errors.New(ErrorManifest)
 		}
 	}
@@ -187,18 +174,8 @@ func (m *Manager) Check(ctx context.Context) error {
 					s.State = StateLatest
 					s.ErrorCode = ""
 					s.Version = ""
-					s.Notes = nil
-					if candidate.Version == m.cfg.CurrentVersion && len(candidate.Notes) <= 8 {
-						valid := true
-						for _, note := range candidate.Notes {
-							if len(note) > 128<<10 {
-								valid = false
-							}
-						}
-						if valid {
-							s.Version = candidate.Version
-							s.Notes = candidate.Notes
-						}
+					if candidate.Version == m.cfg.CurrentVersion {
+						s.Version = candidate.Version
 					}
 				})
 				return nil
@@ -217,13 +194,10 @@ func (m *Manager) Check(ctx context.Context) error {
 	m.publish(func(s *Snapshot) {
 		s.State = StateAvailable
 		s.Version = manifest.Version
-		s.Notes = manifest.Notes
 		s.ErrorCode = ""
 		s.Progress = 0
 		s.Downloaded = 0
 		s.Total = 0
-		s.UsedDelta = false
-		s.Fallback = false
 	})
 	if m.Snapshot().AutoDownload {
 		return m.download(ctx)
@@ -247,23 +221,8 @@ func (m *Manager) download(ctx context.Context) error {
 	if m.manifest == nil || m.asset == nil {
 		return ErrUnavailable
 	}
-	selected := m.asset.Full
-	delta := false
-	for _, d := range m.asset.Deltas {
-		if d.FromVersion == m.cfg.CurrentVersion && d.Size < m.asset.Full.Size {
-			selected = Download{d.URL, d.SHA256, d.Size}
-			delta = true
-			break
-		}
-	}
-	m.publish(func(s *Snapshot) { s.ErrorCode = ""; s.Fallback = false; s.UsedDelta = delta })
-	e := m.downloadAndStage(ctx, selected, delta)
-	if e != nil && delta && ctx.Err() == nil {
-		m.publish(func(s *Snapshot) { s.Fallback = true; s.UsedDelta = false })
-		selected = m.asset.Full
-		delta = false
-		e = m.downloadAndStage(ctx, selected, false)
-	}
+	m.publish(func(s *Snapshot) { s.ErrorCode = "" })
+	e := m.downloadAndStage(ctx)
 	if e != nil {
 		if ce, ok := e.(*codedError); ok {
 			return m.fail(ce.code, e)
@@ -271,9 +230,7 @@ func (m *Manager) download(ctx context.Context) error {
 		return m.fail(ErrorDownload, e)
 	}
 	m.readyArchive = pathJoin(m.cacheDir(), "package.zip")
-	m.readyDownload = selected
-	m.readyDelta = delta
-	pending := pendingState{Envelope: m.envelope, Delta: delta, Fallback: m.Snapshot().Fallback}
+	pending := pendingState{Envelope: m.envelope}
 	data, _ := json.Marshal(pending)
 	if e = writeAtomic(pathJoin(m.cacheDir(), "pending.json"), data, 0o600); e != nil {
 		return m.fail(ErrorStorage, e)
@@ -285,8 +242,6 @@ func (m *Manager) download(ctx context.Context) error {
 
 type pendingState struct {
 	Envelope json.RawMessage `json:"envelope"`
-	Delta    bool            `json:"delta"`
-	Fallback bool            `json:"fallback"`
 }
 
 func (m *Manager) restore() {
@@ -302,33 +257,16 @@ func (m *Manager) restore() {
 	if e != nil {
 		return
 	}
-	selected := asset.Full
-	if pending.Delta {
-		found := false
-		for _, d := range asset.Deltas {
-			if d.FromVersion == m.cfg.CurrentVersion {
-				selected = Download{d.URL, d.SHA256, d.Size}
-				found = true
-				break
-			}
-		}
-		if !found {
-			return
-		}
-	}
 	archive := pathJoin(m.cacheDir(), "package.zip")
 	stage := pathJoin(m.cacheDir(), "ready")
-	if verifyFile(archive, selected.SHA256, selected.Size) != nil || verifyTree(stage, asset.Files) != nil {
+	if verifyFile(archive, asset.Full.SHA256, asset.Full.Size) != nil || verifyTree(stage, asset.Files) != nil {
 		return
 	}
 	m.manifest, m.asset, m.envelope = manifest, asset, bytes.Clone(pending.Envelope)
-	m.readyArchive, m.readyDir, m.readyDownload, m.readyDelta = archive, stage, selected, pending.Delta
+	m.readyArchive, m.readyDir = archive, stage
 	m.snapshot.State = StateReady
 	m.snapshot.Version = manifest.Version
-	m.snapshot.Notes = manifest.Notes
 	m.snapshot.Progress = 1
-	m.snapshot.UsedDelta = pending.Delta
-	m.snapshot.Fallback = pending.Fallback
 	if result, e := os.ReadFile(pathJoin(m.cacheDir(), "install-result.json")); e == nil && len(result) < 1024 {
 		var failure struct {
 			ErrorCode string `json:"errorCode"`
