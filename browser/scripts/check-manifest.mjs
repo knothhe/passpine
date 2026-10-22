@@ -7,6 +7,8 @@ assert(paths.length > 0, 'Provide at least one built manifest path');
 for (const path of paths) {
   const manifest = JSON.parse(await readFile(path, 'utf8'));
   assert.equal(manifest.manifest_version, 3, 'Expected an MV3 extension');
+  assert.equal(manifest.action?.default_title, '__MSG_extensionName__', 'Toolbar title must use the localized extension name');
+  assert(!JSON.stringify(manifest).includes('%COPY_'), 'Manifest contains an unresolved UI copy token');
   const policy = manifest.content_security_policy?.extension_pages;
   assert.equal(typeof policy, 'string', 'Extension pages require an explicit CSP');
   const directives = new Map();

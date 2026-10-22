@@ -4,7 +4,7 @@
 
 桌面完全使用 Go 的 MyGo native UI，控件和 shell 来自 Onevra。系统菜单、托盘、窗口、文件选择与锁屏事件使用 MyGo API。剪贴板使用 MyGo 及平台敏感标记适配，macOS 直接通过 NSPasteboard 写入原始类型。Onevra 是 Go 原生库，不能直接运行在扩展中，因此浏览器复用 Radix Themes 控件并共享其视觉规范；账号列表、秘密字段、表单、生成器、状态组件单独封装。
 
-密码库使用 ProtonMail 的 Go OpenPGP 实现；随机密码来自 `crypto/rand`。Git 调用系统二进制，禁用仓库 hooks 和 ext 协议，不在命令参数或日志里写私钥口令。应用自身不使用 Rust / Cargo。
+密码库使用 ProtonMail 的 Go OpenPGP 实现；随机密码来自 `crypto/rand`。Git 调用系统二进制，禁用仓库 hooks 和 ext 协议，不在命令参数或日志里写私钥口令。
 
 主题风格与明暗外观分开管理。客户端通过 Shell 的 `Theme` 回调和 `Context.SetTheme` 向 MyGo / Onevra 控件提供集中式语义调色板，明暗继续使用 `mygo.Theme.SetSource`，保留系统文字缩放与高对比度设置。扩展通过 Radix `Theme` 的 `appearance`、`accentColor` 和 `grayColor`，配合集中的语义 CSS token，覆盖弹窗、设置页和弹出层。陶土橙保留 Onevra 配色；黑白采用 racomi / magpie 的冷灰基底与黑白主操作。主题及图标选择分别保存在客户端偏好与扩展本地存储中。扩展工具栏使用主题色底、白色图形，界面及客户端图标使用浅色底、主题色图形；错误、警告与成功仍使用语义提示色。
 

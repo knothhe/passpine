@@ -1,0 +1,49 @@
+# 图片与拍摄记录
+
+对应 Passpine 0.1.2，2026-10-22 生成并逐张查看。规格依据见[官方来源](sources.md)。所有账号和生成的示例密码仅用于演示；没有读取个人浏览器配置或密码库。
+
+## 可上传的文件
+
+| 文件 | 尺寸 / 格式 | 用途 |
+| --- | --- | --- |
+| [icon-128.png](assets/icon-128.png) | 128×128 PNG，保留透明度 | 必需商店图标；原样复用扩展当前黑白图标 |
+| [promo-440x280.png](assets/promo-440x280.png) | 440×280 PNG，RGB 不透明 | 必需小宣传图；复用项目标识与英文产品定位 |
+| [marquee-1400x560.png](assets/marquee-1400x560.png) | 1400×560 PNG，RGB 不透明 | 可选 Marquee 宣传图 |
+| `assets/en/01-accounts.png`、`02-details.png`、`03-generator.png` | 每张 1280×800 PNG，RGB 不透明 | English 截图，按 01–03 顺序上传 |
+| `assets/zh-CN/01-accounts.png`、`02-details.png`、`03-generator.png` | 每张 1280×800 PNG，RGB 不透明 | 简体中文截图，按 01–03 顺序上传 |
+
+每种语言三张截图：账号列表、默认隐藏密码的详情、密码生成器。可在商店相应语言条目使用；不要把六张都放进同一个最多五张的截图槽位。宣传图两种语言共用。
+
+[中文账号列表](assets/zh-CN/01-accounts.png) · [中文详情](assets/zh-CN/02-details.png) · [中文生成器](assets/zh-CN/03-generator.png)
+
+[English accounts](assets/en/01-accounts.png) · [English details](assets/en/02-details.png) · [English generator](assets/en/03-generator.png)
+
+## 实拍来源与验证范围
+
+- 使用当前 `browser/.output/chrome-mv3` 生产构建，Chrome for Testing 153.0.8010.12，独立临时 profile。通过真正的 `chrome.action.openPopup()` 工具栏弹窗入口拍摄，没有将 popup 当普通标签页打开或绕过消息来源校验。
+- 隔离 Go 客户端服务由 [store-demo/main.go](../../scripts/store-demo/main.go) 创建：使用正式 `app.Service`、真实 OpenPGP 密钥/条目加密及 Native Messaging 转发；五个虚构账号保存在临时目录。关闭设备解锁、Git 同步和操作记录，不操作个人账户。测试结束关闭服务和浏览器，并删除测试 profile、密码库和私钥。
+- 语言与浅色主题通过扩展真实设置控件切换。账号名称、目录和备注是用户数据，中文截图中保留其英文内容。
+- 原始弹窗为 380×460，保存在 `source-screenshots/<语言>/`。最终图将完整实拍等比放大到 456×552，加入品牌底图和外围说明；没有重绘或修改扩展内部 UI。等待转场结束，检查无叠影、裁字或遮挡。
+- 已实际验证真实连接、账号列表、解密详情、密码默认遮罩、本机密码生成及语言/主题设置。截图不展示网页填充，也不证明商店安装 ID、系统解锁、剪贴板到期或完整桌面窗口流程均已验收；提交前按[审核指南](reviewer-instructions.md)复跑。
+- [capture-metadata.json](capture-metadata.json) 记录版本、浏览器、时间和场景。它不是提交审核记录。
+
+## 重复生成
+
+品牌图由 [generate-store-art.mjs](../../scripts/generate-store-art.mjs) 从 `client/assets/app-icon-monochrome.svg` 生成，商店图标直接复制 `browser/public/icon128-monochrome.png`。截图及合成由 [capture-store-screenshots.mjs](../../scripts/capture-store-screenshots.mjs) 生成，需要 Go、Sharp、Playwright 和支持加载解包扩展的完整 Chrome for Testing / Chromium。当前脚本的 Native Host 临时注册方式适用于 macOS / Linux，未验证 Windows。
+
+```sh
+pnpm --dir browser run build
+# 已在本地安装 sharp / playwright 时可省略 PASSPINE_ART_NODE_MODULES。
+PASSPINE_ART_NODE_MODULES=/path/to/node_modules node scripts/generate-store-art.mjs
+PASSPINE_ART_NODE_MODULES=/path/to/node_modules \
+PASSPINE_CAPTURE_BROWSER='/path/to/Chrome for Testing executable' \
+node scripts/capture-store-screenshots.mjs
+```
+
+字体使用 Avenir Next / PingFang SC，回退至 Helvetica Neue / Arial；不同机器的外围字形可能不同。脚本只使用临时测试目录，不能传入个人浏览器 profile 或个人密码库。重新拍摄后逐张查看，并核对尺寸、语言与当前版本。
+
+## 扩展 ZIP
+
+[passpine-0.1.2-chrome.zip](package/passpine-0.1.2-chrome.zip) 是此次本地构建的 Chrome 安装包，`manifest.json` 位于 ZIP 根目录，已核对无源码、测试服务、浏览器 profile 或私钥。只有这个扩展 ZIP 用于商店 Package 上传；文案、政策和图片分别填写或上传。
+
+重新打包可执行 `pnpm --dir browser exec wxt zip`，将新版本 Chrome ZIP 复制到 `package/`，同步所有材料的版本号并重新核对。首次草稿创建后，仍需确认商店分配的 ID 与客户端允许来源一致。
