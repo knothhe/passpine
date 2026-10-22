@@ -24,50 +24,64 @@ PassPine 正式版默认在启动后于后台检查更新，之后每天按用�
 
 正式版本仅由 GitHub Actions 对已验证的发布 tag 构建，CI 显式使用 `PASSPINE_BUILD_CHANNEL=release`。本地构建默认 Dev，即使提供更新环境变量也不会启用正式更新。客户端在运行时还检查通道，避免 Dev 误用正式 Feed 或安装助手。首次启用后，旧版若没有嵌入公钥，需要手动安装一次新版正式客户端；网络不能向旧版补发信任根。公钥轮换需要规划兼容迁移。
 
-## 制品与全量下载
+## 复用普通安装包
 
-沿用现有 tag Release 流程，不新增发版入口，也不改变普通安装包。各平台构建 job 生成专用更新 ZIP：
+自动更新与手动安装共用同一份完整制品，不再生成 `*-update-*.zip`。Release 包含三个客户端安装包、Chrome / Firefox 两个扩展 ZIP 和一个 `update-feed.json`，共六个附件。
 
-| 平台 | 完整更新 ZIP | 包内路径 |
-| --- | --- | --- |
-| macOS arm64 | `Passpine-<版本>-update-darwin-arm64.zip` | 应用 bundle 的 `Contents/...`，无 `Passpine.app` 外层目录 |
-| Linux amd64 | `Passpine-<版本>-update-linux-amd64.zip` | `passpine`、`passpine-host` |
-| Windows amd64 | `Passpine-<版本>-update-windows-amd64.zip` | `passpine.exe`、`passpine-host.exe` |
+| 平台 | 自动更新下载的普通安装包 | 已签名格式 | 更新暂存内容 |
+| --- | --- | --- | --- |
+| macOS arm64 | `Passpine-<版本>-macos-arm64.zip` | `app-zip` | 从 `Passpine.app/Contents/...` 提取完整 bundle 内容 |
+| Linux amd64 | `Passpine-<版本>-linux-amd64.tar.gz` | `tar-gzip` | 仅提取 `passpine`、`passpine-host` |
+| Windows amd64 | `Passpine-<版本>-windows-amd64-setup.exe` | `nsis` | 仅在缓存空目录解出 `passpine.exe`、`passpine-host.exe` |
 
-ZIP 为标准 ZIP32 / deflate，路径为 UTF-8，无符号链接和目录条目，每个文件使用 `0755` 或 `0644` 权限。macOS 保留完整 bundle 资源及签名。Linux / Windows 更新包只替换两个受控程序文件，不调用普通安装器，也不覆盖卸载器、浏览器注册或相邻文件。
+macOS 普通 ZIP 不携带 AppleDouble、扩展属性和 quarantine 元数据；保留应用自身资源及代码签名。Linux 包内的 `install.sh`、图标和版本文件只供手动安装，自动更新不会执行安装脚本或复制这些辅助文件。Windows 在运行已验签安装包的专用静默解包模式前，还必须验证 PE 资源中的解包协议标记；没有标记的旧安装器直接拒绝，不执行。解包模式只向显式提供的空缓存目录释放两个程序，不创建卸载器、快捷方式、注册表项，不注册浏览器或启动应用。实际替换仍由事务安装助手完成。
 
-每个平台的 `manifest-client-*.json` 在现有 tag / HEAD 来源记录中增加完整更新包哈希及目标文件清单。publication job 收齐三个平台并重新校验后，只签署当前版本的完整包信息，不查询或下载旧版 Feed，不生成差分包。客户端始终下载完整更新包，下载或验证失败时提供重试。
+解包拒绝路径越界、大小超限、重复文件、符号链接和清单不匹配。包本身的版本、URL、格式、大小、SHA-256 及最终程序文件的路径、权限和 SHA-256 均由 Feed 的 Ed25519 签名认证。各平台 `manifest-client-*.json` 记录普通包的同一份哈希及目标文件清单；publication job 校验来源与包内容后只生成签名 Feed，不重新打包程序，也不查询历史版本来计算差分。
 
-三个完整更新包和 `update-feed.json` 与五个普通安装附件一起上传同一个 Release 草稿，所有九个确切附件及 SHA-256 核对后才公开，继续遵循已有不覆盖同名制品和失败续推规则。Feed 的签名负载是精确原始 JSON 字节：
+### 旧版本迁移
+
+已发布的 v0.1.5 及更早更新器只会解析专用 ZIP，用户需要**手动安装一次支持普通安装包的新正式版**；以后即可自动下载普通包并在确认重启后安装。本次源码改动不修改或安装任何现有应用。
+
+更新地址和固定公钥保持不变。为避免旧客户端误下载新格式，签名负载的外层继续提供 v0.1.5 的兼容信息，新客户端优先解析 `installerUpdate`。兼容数据来自仓库公开的 `config/update-legacy-feed.json`，该文件是已发布 v0.1.5 Feed 的原始签名封装；发布时必须重新验签、核对版本、三平台及固定旧版 URL。旧 v0.1.5 会保持在最新兼容版本；更早的已配置客户端仍可通过 v0.1.5 原有附件升级。历史 Release 的附件不会被删除或改写。
+
+Feed 外层封装仍签署精确原始 JSON 字节：
 
 ```json
 {"payload":"<base64 JSON bytes>","signature":"<base64 Ed25519 signature>"}
 ```
 
-解码后的 payload：
+解码后的负载示意（省略其他平台和文件）：
 
 ```json
 {
   "schema": 1,
-  "version": "0.1.4",
-  "assets": [{
-    "os": "darwin",
-    "arch": "arm64",
-    "full": {"url": "https://example.com/full.zip", "sha256": "<64 lowercase hex>", "size": 12345},
-    "files": [{"path": "Contents/MacOS/passpine", "sha256": "<64 lowercase hex>", "size": 1234, "mode": 493}]
-  }]
+  "version": "0.1.5",
+  "assets": ["<已验签的 v0.1.5 兼容平台清单>"],
+  "installerUpdate": {
+    "schema": 2,
+    "version": "0.1.6",
+    "assets": [{
+      "os": "darwin",
+      "arch": "arm64",
+      "format": "app-zip",
+      "full": {
+        "url": "https://github.com/knothhe/passpine/releases/download/v0.1.6/Passpine-0.1.6-macos-arm64.zip",
+        "sha256": "<64 lowercase hex>",
+        "size": 12345
+      },
+      "files": [{"path": "Contents/MacOS/passpine", "sha256": "<64 lowercase hex>", "size": 1234, "mode": 493}]
+    }]
+  }
 }
 ```
 
-`assets` 实际必须包含三个受支持平台，`files` 必须包含该平台的全部目标文件和两个主程序；示例省略其余平台和文件。`os` 使用 Go 平台名 `darwin`、`linux`、`windows`，`arch` 使用 `arm64`、`amd64`。
-
-协议继续使用 `schema: 1`。新 Feed 仅包含 `schema`、`version`、`assets`，每个平台仅包含 `os`、`arch`、`full`、`files`；不要求更换公钥。读取历史已签名 Feed 时仍验证全部原始负载字节，但忽略旧 `notes`、`deltas` 等额外字段，始终使用 `full`。既有 Release 和历史说明文件不会被源码修改追溯改写。
+`assets` 实际为完整对象清单，并非字符串；`installerUpdate.assets` 必须包含三个受支持平台，`files` 必须包含该平台全部目标程序文件。新客户端仍能读取没有 `installerUpdate` 的历史 schema 1 Feed 和旧完整 ZIP 缓存；额外的旧 `notes` / `deltas` 字段仍作为未知字段忽略，签名始终覆盖整个原始负载。新格式不要求轮换公钥，也不内嵌更新说明正文。
 
 ## 安装、恢复与数据保护
 
-下载缓存位于应用数据目录的 `updates/`，权限为 `0700`。缓存记录保存原始已签名 Feed，应用重启后仍须验证签名、完整 ZIP 和目标文件哈希才能恢复「待安装」，不能仅凭缓存状态信任文件。
+下载缓存位于应用数据目录的 `updates/`，权限为 `0700`。缓存记录保存原始已签名 Feed，应用重启后仍须验证签名、完整安装包和目标文件哈希才能恢复「待安装」，不能仅凭缓存状态信任文件。
 
-用户确认安装后，再次验证 Ed25519 签名、ZIP SHA-256、每个目标文件的大小与 SHA-256，以及安装路径和密码库路径互不覆盖。macOS 额外运行 `codesign --verify --deep --strict`，其现有 ad-hoc 签名只验证 bundle 完整性，发布者身份仍由 Feed 的 Ed25519 信任根确认。
+用户确认安装后，再次验证 Ed25519 签名、普通安装包 SHA-256、每个目标文件的大小与 SHA-256，以及安装路径和密码库路径互不覆盖。macOS 额外运行 `codesign --verify --deep --strict`，其现有 ad-hoc 签名只验证 bundle 完整性，发布者身份仍由 Feed 的 Ed25519 信任根确认。
 
 独立安装辅助进程等待原客户端退出后执行替换。macOS 在同目录预备新 bundle，通过 macOS 原子交换替换旧 bundle，并保留旧 bundle 作为备份；Linux / Windows 为两个程序分别保留备份后原子替换，并在替换失败时按逆序回滚。安装动作不迁移或改写密码库与设置文件。启动新版本后需在 30 秒内报告启动健康状态，未确认则结束新进程、回滚并重启旧版；失败时保留可恢复备份与用户数据。下载或验证失败只影响缓存，不改写当前安装。
 
@@ -75,7 +89,7 @@ ZIP 为标准 ZIP32 / deflate，路径为 UTF-8，无符号链接和目录条目
 
 ## 验证与发布边界
 
-`node --test scripts/update-artifacts.test.mjs scripts/ci-release.test.mjs` 覆盖公钥配置、精确负载签名、签名和哈希篡改、密钥不匹配、平台路径与符号链接拒绝、ZIP 互操作、全量输出与确定性、旧协议额外字段兼容、三平台制品来源和九个发布附件的完整性，以及 CI 私钥隔离。客户端的 `go test ./update` 覆盖状态机、完整包下载、失败重试、缓存与安装验证。
+`node --test scripts/update-artifacts.test.mjs scripts/ci-release.test.mjs` 覆盖公钥配置、原始负载签名、包哈希篡改、普通包与最终文件树对应关系、六附件集合、固定旧 Feed 兼容与发布来源校验。客户端 `go test ./update` 覆盖新旧 Feed、格式选择、macOS ZIP / Linux TAR 解包边界、缓存恢复、完整性验证和安装回滚。Windows 的真实 NSIS 解包与非法参数拒绝需在 Windows CI 中执行；macOS 仅做 Windows 交叉编译及安装器静态解包验证。
 
 配置和本地测试不会推送 tag、发布 GitHub Release、下载生产更新或安装当前应用。生产启用需要提交配置和实现，再依照 [版本管理与发布](versioning.md) 发布包含公钥的新安装包；已有 Release 不会被这些源码改动追溯更新。跨平台真实安装与回滚还应在对应的目标系统做发布验收。
 

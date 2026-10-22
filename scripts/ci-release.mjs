@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { versionFiles } from './version.mjs';
 import { tagVersion, notesForTag } from './release-notes.mjs';
 import { publishRelease } from './release.mjs';
-import { createUpdateFeed, publicKey, readUpdateSigningConfig, stageUpdate, updateBuildConfig, validateUpdate } from './update-artifacts.mjs';
+import { createUpdateFeed, installerPackageFor, publicKey, readUpdateSigningConfig, stageUpdate, updateBuildConfig, validateUpdate } from './update-artifacts.mjs';
 import { assertReleaseBuild } from './build-channel.mjs';
 
 const targets = ['client-darwin-arm64', 'client-linux-amd64', 'client-win32-amd64', 'browser'];
@@ -26,9 +26,9 @@ export function verifyTag(tag, root = process.cwd()) {
 
 export function packagesFor(version, target) {
   const names = {
-    'client-darwin-arm64': [`Passpine-${version}-macos-arm64.zip`],
-    'client-linux-amd64': [`Passpine-${version}-linux-amd64.tar.gz`],
-    'client-win32-amd64': [`Passpine-${version}-windows-amd64-setup.exe`],
+    'client-darwin-arm64': [installerPackageFor(version, 'client-darwin-arm64').name],
+    'client-linux-amd64': [installerPackageFor(version, 'client-linux-amd64').name],
+    'client-win32-amd64': [installerPackageFor(version, 'client-win32-amd64').name],
     browser: ['chrome', 'firefox'].map(browser => `passpine-${version}-${browser}.zip`),
   };
   if (!(target in names)) throw new Error(`Unsupported release target: ${target}`);
@@ -144,11 +144,15 @@ export function collectUpdates(tag, directory, root = process.cwd()) {
       || !targets.includes(manifest.target) || seen.has(manifest.target)) throw new Error(`Invalid update provenance: ${filename}`);
     seen.add(manifest.target);
     const { update } = manifest;
-    if (!update?.full || update.full.name !== `Passpine-${version}-update-${update.os}-${update.arch}.zip`) throw new Error(`Missing or mismatched update bundle: ${filename}`);
-    validateUpdate(update, manifest.target, path.dirname(filename));
+    const expected = installerPackageFor(version, manifest.target);
+    if (!update?.full || update.full.name !== expected.name || update.format !== expected.format
+      || !Array.isArray(manifest.artifacts) || manifest.artifacts.length !== 1
+      || manifest.artifacts[0].name !== update.full.name || manifest.artifacts[0].size !== update.full.size
+      || manifest.artifacts[0].sha256 !== update.full.sha256) throw new Error(`Missing or mismatched ordinary update installer: ${filename}`);
+    validateUpdate(update, manifest.target, path.dirname(filename), version);
     updates.push({ target: manifest.target, update, directory: path.dirname(filename) });
   }
-  if (seen.size !== 3) throw new Error('Update bundles are incomplete.');
+  if (seen.size !== 3) throw new Error('Update installers are incomplete.');
   return updates;
 }
 

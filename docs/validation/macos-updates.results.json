@@ -3,14 +3,15 @@
   "arch": "arm64",
   "oldVersion": "99.0.0",
   "newVersion": "99.0.1",
-  "root": "/private/tmp/passpine-update-verification-kkJ18x",
+  "root": "/private/tmp/passpine-update-verification-7hxQAc",
   "productionUpdaterUnmodified": true,
-  "appMode": "real production Passpine --preview; faults only in disposable Go overlays",
+  "appMode": "real production Passpine --preview; ordinary macOS installer ZIP; faults only in disposable Go overlays",
+  "packageMode": "ordinary installer only",
   "scenarios": [
     {
       "scenario": "full-install",
       "result": "passed",
-      "seconds": 2.9,
+      "seconds": 3.1,
       "fullRequests": 1,
       "observedNewBundle": true,
       "protectedFileCount": 15,
@@ -37,7 +38,7 @@
     {
       "scenario": "startup-ack-timeout-rollback",
       "result": "passed",
-      "seconds": 31.5,
+      "seconds": 32.1,
       "fullRequests": 1,
       "observedNewBundle": true,
       "protectedFileCount": 15,
@@ -46,7 +47,7 @@
     {
       "scenario": "invalid-bundle-signature",
       "result": "passed",
-      "seconds": 1.5,
+      "seconds": 1.7,
       "fullRequests": 1,
       "observedNewBundle": false,
       "protectedFileCount": 15,
@@ -55,7 +56,7 @@
     {
       "scenario": "tampered-package-before-install",
       "result": "passed",
-      "seconds": 0.4,
+      "seconds": 0.9,
       "fullRequests": 1,
       "observedNewBundle": false,
       "protectedFileCount": 15,
@@ -67,5 +68,5 @@
   "temporaryProcessesCleaned": true,
   "temporaryArtifactsCleaned": true,
   "buildChannel": "release (isolated test keys only)",
-  "downloadMode": "full only"
+  "downloadMode": "ordinary installer only"
 }

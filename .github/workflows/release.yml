@@ -81,6 +81,10 @@ jobs:
         with:
           pattern: release-*
           path: dist/ci-release
+      - name: Install static installer verification tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes 7zip
       - name: Verify all packages and publish the draft last
         shell: bash
         env:

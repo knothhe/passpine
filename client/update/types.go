@@ -80,6 +80,9 @@ type Manifest struct {
 	Schema  int     `json:"schema"`
 	Version string  `json:"version"`
 	Assets  []Asset `json:"assets"`
+	// InstallerUpdate carries the installer-based protocol while legacy clients
+	// continue to see the final schema-1 release at the top level.
+	InstallerUpdate *Manifest `json:"installerUpdate,omitempty"`
 }
 type Download struct {
 	URL    string `json:"url"`
@@ -93,10 +96,11 @@ type File struct {
 	Mode   uint32 `json:"mode"`
 }
 type Asset struct {
-	OS    string   `json:"os"`
-	Arch  string   `json:"arch"`
-	Full  Download `json:"full"`
-	Files []File   `json:"files"`
+	Format string   `json:"format,omitempty"`
+	OS     string   `json:"os"`
+	Arch   string   `json:"arch"`
+	Full   Download `json:"full"`
+	Files  []File   `json:"files"`
 }
 
 type Manager struct {

@@ -131,8 +131,13 @@ try {
     command('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', bundle]);
     command('/usr/bin/codesign', ['--verify', '--deep', '--strict', bundle]);
     if (label === 'bad-signature') fs.appendFileSync(path.join(bundle, 'Contents', 'Resources', 'Passpine.icns'), 'signed-feed-but-invalid-OS-signature');
-    const asset = stageUpdate(label === 'old' ? oldVersion : newVersion, 'client-darwin-arm64', root, root);
-    templates[label] = { root, bundle, asset, bytes: fs.readFileSync(path.join(root, asset.full.name)), hashes: treeHashes(bundle) };
+    const version = label === 'old' ? oldVersion : newVersion;
+    const ordinaryPackage = path.join(root, `Passpine-${version}-macos-arm64.zip`);
+    command('/usr/bin/ditto', ['-c', '-k', '--norsrc', '--noextattr', '--noqtn', '--keepParent', bundle, ordinaryPackage]);
+    const asset = stageUpdate(version, 'client-darwin-arm64', root, root);
+    check(asset.full.name === path.basename(ordinaryPackage), 'Verification did not reuse the ordinary application ZIP.');
+    check(!fs.readdirSync(root).some(name => /-update-.*\.zip$/.test(name)), 'A separate update package was generated.');
+    templates[label] = { root, bundle, asset, bytes: fs.readFileSync(ordinaryPackage), hashes: treeHashes(bundle) };
   }
   const scenarios = [
     { name: 'full-install', template: 'new', result: 'success' },
@@ -154,8 +159,8 @@ try {
     const target = templates[scenario.template], fullPath = `/${scenario.name}/full.zip`, feedPath = `/${scenario.name}/feed.json`;
     const delivered = Buffer.from(target.bytes); if (scenario.corruptFull) delivered[0] ^= 1;
     const fullRoute = { bytes: delivered, hits: 0 }; routes.set(fullPath, fullRoute);
-    const asset = { os: 'darwin', arch: 'arm64', files: target.asset.files, full: { url: origin + fullPath, sha256: sha(target.bytes), size: target.bytes.length } };
-    const payload = Buffer.from(JSON.stringify({ schema: 1, version: newVersion, assets: [asset] }));
+    const asset = { os: 'darwin', arch: 'arm64', format: 'app-zip', files: target.asset.files, full: { url: origin + fullPath, sha256: sha(target.bytes), size: target.bytes.length } };
+    const payload = Buffer.from(JSON.stringify({ schema: 1, version: '0.1.5', assets: [], installerUpdate: { schema: 2, version: newVersion, assets: [asset] } }));
     routes.set(feedPath, { bytes: Buffer.from(JSON.stringify({ payload: payload.toString('base64'), signature: crypto.sign(null, payload, pair.privateKey).toString('base64') })), hits: 0 });
     Object.assign(env, { PASSPINE_VERIFY_MODE: 'install', PASSPINE_VERIFY_CURRENT_VERSION: oldVersion, PASSPINE_VERIFY_PUBLIC_KEY: publicKey, PASSPINE_VERIFY_FEED_URL: origin + feedPath, PASSPINE_VERIFY_CA_FILE: certFile, PASSPINE_VERIFY_INSTALL_ROOT: bundle });
     if (scenario.template === 'crash') env.PASSPINE_VERIFY_CRASH_MARKER = path.join(root, 'injected-crash.marker');
@@ -217,7 +222,7 @@ try {
     check(isolatedProcesses().length === 0, 'An isolated child process remained after cleanup.');
     console.log(`PASS ${scenario.name} (${row.seconds}s, ${row.protectedFileCount} protected files unchanged)`);
   }
-  const summary = { platform: process.platform, arch: process.arch, oldVersion, newVersion, root: work, productionUpdaterUnmodified: true, appMode: 'real production Passpine --preview; faults only in disposable Go overlays', scenarios: reports };
+  const summary = { platform: process.platform, arch: process.arch, oldVersion, newVersion, root: work, productionUpdaterUnmodified: true, appMode: 'real production Passpine --preview; ordinary macOS installer ZIP; faults only in disposable Go overlays', packageMode: 'ordinary installer only', scenarios: reports };
   writeJSON(path.join(work, 'summary.json'), summary);
   console.log(JSON.stringify(summary, null, 2));
 } catch (error) {

@@ -242,7 +242,7 @@ func runHelper(planName, currentVersion, publicKey string) error {
 	}
 	m.manifest, m.asset, m.envelope = manifest, asset, plan.Envelope
 	m.readyDir = filepath.Join(m.cacheDir(), "ready")
-	m.readyArchive = filepath.Join(m.cacheDir(), "package.zip")
+	m.readyArchive = filepath.Join(m.cacheDir(), packageName(asset))
 	if e = m.validateInstallRoot(); e != nil {
 		result(ErrorInstall)
 		return e

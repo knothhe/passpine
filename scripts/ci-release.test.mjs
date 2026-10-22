@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { collectPackages, collectUpdates, packagesFor, stage, updatePublicationConfig, validatePackage, verifyTag } from './ci-release.mjs';
 import { notesForTag } from './release-notes.mjs';
 import { createUpdateFeed, stageUpdate, verifyFeed } from './update-artifacts.mjs';
+import { createInstallerFixtures, createOrdinaryInstaller, installerTest, legacyFeedBytes } from './test-fixtures/update-installer.mjs';
 const browserIdentity = JSON.parse(fs.readFileSync(new URL('../config/browser-identities.json', import.meta.url), 'utf8')).release;
 
 // Read the repository's block-style workflow mappings without a runtime YAML dependency.
@@ -68,37 +69,37 @@ function fixture(t) {
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: gitConfig } }).trim();
   fs.mkdirSync(path.join(root, 'browser'));
   fs.writeFileSync(path.join(root, '.release.json'), JSON.stringify({ tag_prefix: 'v' }));
-  for (const name of ['package.json', 'browser/package.json']) fs.writeFileSync(path.join(root, name), '{"version":"0.1.0"}\n');
+  for (const name of ['package.json', 'browser/package.json']) fs.writeFileSync(path.join(root, name), '{"version":"0.1.6"}\n');
   git('init', '--initial-branch=main');
   git('config', 'user.name', 'CI Fixture'); git('config', 'user.email', 'ci@example.test');
   git('config', 'commit.gpgsign', 'false'); git('config', 'tag.gpgsign', 'false');
-  git('add', '.'); git('commit', '-m', 'feat: initial release'); git('tag', '-a', 'v0.1.0', '-m', 'Release v0.1.0');
+  git('add', '.'); git('commit', '-m', 'feat: initial release'); git('tag', '-a', 'v0.1.6', '-m', 'Release v0.1.6');
   return { root, git };
 }
 
 test('CI verifies the exact tag checkout and synchronized package versions', t => {
   const { root, git } = fixture(t);
-  assert.equal(verifyTag('v0.1.0', root).head, git('rev-parse', 'HEAD'));
+  assert.equal(verifyTag('v0.1.6', root).head, git('rev-parse', 'HEAD'));
   assert.throws(() => verifyTag('v0.2.0', root), /differs from the package versions/);
   assert.throws(() => verifyTag('main', root), /release tag/);
   fs.writeFileSync(path.join(root, 'browser/package.json'), '{"version":"0.2.0"}\n');
-  assert.throws(() => verifyTag('v0.1.0', root), /differs from package.json/);
+  assert.throws(() => verifyTag('v0.1.6', root), /differs from package.json/);
   git('add', '.'); git('commit', '-m', 'feat: next version');
-  fs.writeFileSync(path.join(root, 'browser/package.json'), '{"version":"0.1.0"}\n');
-  assert.throws(() => verifyTag('v0.1.0', root), /Checkout must point/);
+  fs.writeFileSync(path.join(root, 'browser/package.json'), '{"version":"0.1.6"}\n');
+  assert.throws(() => verifyTag('v0.1.6', root), /Checkout must point/);
 });
 
 test('standalone notes use the specified tag and exclude later commits', t => {
   const { root, git } = fixture(t);
   git('commit', '--allow-empty', '-m', 'feat: after release');
-  const notes = notesForTag('fixture/passpine', 'v0.1.0', root);
+  const notes = notesForTag('fixture/passpine', 'v0.1.6', root);
   assert.match(notes, /Full Changelog/);
   assert.match(notes, /initial release/);
   assert.doesNotMatch(notes, /after release/);
 });
 
 const archiveTest = { skip: process.platform === 'win32' && 'ZIP archive fixtures require POSIX zip/unzip' };
-function createPackage(root, name, version = '0.1.0') {
+function createPackage(root, name, version = '0.1.6') {
   const destination = path.join(root, 'packages');
   const input = path.join(root, 'input');
   fs.mkdirSync(destination, { recursive: true });
@@ -122,7 +123,7 @@ function createPackage(root, name, version = '0.1.0') {
 
 function packageSet(t) {
   const { root, git } = fixture(t);
-  const metadata = verifyTag('v0.1.0', root);
+  const metadata = verifyTag('v0.1.6', root);
   for (const target of ['client-darwin-arm64', 'client-linux-amd64', 'client-win32-amd64', 'browser']) {
     const artifacts = packagesFor(metadata.version, target).map(name => createPackage(root, name));
     fs.writeFileSync(path.join(root, 'packages', `manifest-${target}.json`), JSON.stringify({ schema: 2, channel: 'release', ...metadata, target, artifacts }));
@@ -132,41 +133,41 @@ function packageSet(t) {
 
 test('publication requires exactly Mac arm64, Linux, Windows and both browser packages', archiveTest, t => {
   const { root, directory } = packageSet(t);
-  const packages = collectPackages('v0.1.0', directory, root);
+  const packages = collectPackages('v0.1.6', directory, root);
   assert.deepEqual(packages.map(({ name }) => name).sort(), [
-    'Passpine-0.1.0-macos-arm64.zip',
-    'Passpine-0.1.0-linux-amd64.tar.gz',
-    'Passpine-0.1.0-windows-amd64-setup.exe',
-    'passpine-0.1.0-chrome.zip',
-    'passpine-0.1.0-firefox.zip',
+    'Passpine-0.1.6-macos-arm64.zip',
+    'Passpine-0.1.6-linux-amd64.tar.gz',
+    'Passpine-0.1.6-windows-amd64-setup.exe',
+    'passpine-0.1.6-chrome.zip',
+    'passpine-0.1.6-firefox.zip',
   ].sort());
   for (const target of ['client-darwin-arm64', 'client-linux-amd64', 'client-win32-amd64', 'browser']) {
     const filename = path.join(directory, `manifest-${target}.json`);
     const manifest = fs.readFileSync(filename, 'utf8');
     fs.rmSync(filename);
-    assert.throws(() => collectPackages('v0.1.0', directory, root), new RegExp(`incomplete.*${target}`));
+    assert.throws(() => collectPackages('v0.1.6', directory, root), new RegExp(`incomplete.*${target}`));
     fs.writeFileSync(filename, manifest);
   }
   const filename = path.join(directory, 'manifest-browser.json');
   const manifest = JSON.parse(fs.readFileSync(filename, 'utf8'));
   manifest.artifacts.pop();
   fs.writeFileSync(filename, JSON.stringify(manifest));
-  assert.throws(() => collectPackages('v0.1.0', directory, root), /Unexpected release package/);
+  assert.throws(() => collectPackages('v0.1.6', directory, root), /Unexpected release package/);
 });
 
 test('CI release targets reject Intel Mac packages and provenance', archiveTest, t => {
   const { root, directory } = packageSet(t);
-  assert.throws(() => packagesFor('0.1.0', 'client-darwin-x86_64'), /Unsupported release target/);
+  assert.throws(() => packagesFor('0.1.6', 'client-darwin-x86_64'), /Unsupported release target/);
   const filename = path.join(directory, 'manifest-client-darwin-arm64.json');
   const manifest = JSON.parse(fs.readFileSync(filename, 'utf8'));
-  const intelArtifact = createPackage(root, 'Passpine-0.1.0-macos-x86_64.zip');
+  const intelArtifact = createPackage(root, 'Passpine-0.1.6-macos-x86_64.zip');
   fs.writeFileSync(filename, JSON.stringify({ ...manifest, artifacts: [intelArtifact] }));
-  assert.throws(() => collectPackages('v0.1.0', directory, root), /Unexpected release package/);
+  assert.throws(() => collectPackages('v0.1.6', directory, root), /Unexpected release package/);
   fs.writeFileSync(filename, JSON.stringify(manifest));
   fs.writeFileSync(path.join(directory, 'manifest-client-darwin-x86_64.json'), JSON.stringify({
     ...manifest, target: 'client-darwin-x86_64', artifacts: [intelArtifact],
   }));
-  assert.throws(() => collectPackages('v0.1.0', directory, root), /Invalid or duplicate/);
+  assert.throws(() => collectPackages('v0.1.6', directory, root), /Invalid or duplicate/);
 });
 
 test('publication rejects changed packages, another commit and duplicate or unexpected manifest entries', archiveTest, t => {
@@ -175,26 +176,26 @@ test('publication rejects changed packages, another commit and duplicate or unex
   const original = fs.readFileSync(filename, 'utf8');
   const manifest = JSON.parse(original);
   fs.writeFileSync(filename, JSON.stringify({ ...manifest, channel: 'dev' }));
-  assert.throws(() => collectPackages('v0.1.0', directory, root), /Invalid or duplicate/);
+  assert.throws(() => collectPackages('v0.1.6', directory, root), /Invalid or duplicate/);
   fs.writeFileSync(filename, JSON.stringify({ ...manifest, head: 'different-commit' }));
-  assert.throws(() => collectPackages('v0.1.0', directory, root), /Invalid or duplicate/);
+  assert.throws(() => collectPackages('v0.1.6', directory, root), /Invalid or duplicate/);
   fs.writeFileSync(filename, original);
   fs.writeFileSync(path.join(directory, 'manifest-duplicate.json'), original);
-  assert.throws(() => collectPackages('v0.1.0', directory, root), /Invalid or duplicate/);
+  assert.throws(() => collectPackages('v0.1.6', directory, root), /Invalid or duplicate/);
   fs.rmSync(path.join(directory, 'manifest-duplicate.json'));
   fs.writeFileSync(filename, JSON.stringify({ ...manifest, artifacts: [{ ...manifest.artifacts[0], name: '../unexpected.exe' }] }));
-  assert.throws(() => collectPackages('v0.1.0', directory, root), /Unexpected release package/);
+  assert.throws(() => collectPackages('v0.1.6', directory, root), /Unexpected release package/);
   fs.writeFileSync(filename, original);
   fs.appendFileSync(path.join(directory, manifest.artifacts[0].name), 'corruption');
-  assert.throws(() => collectPackages('v0.1.0', directory, root), /checksum mismatch/);
+  assert.throws(() => collectPackages('v0.1.6', directory, root), /checksum mismatch/);
 });
 
 test('release validation rejects Dev browser and macOS identities with a stable version', archiveTest, t => {
   const { root } = fixture(t);
-  for (const name of ['passpine-0.1.0-chrome.zip', 'passpine-0.1.0-firefox.zip', 'Passpine-0.1.0-macos-arm64.zip']) {
+  for (const name of ['passpine-0.1.6-chrome.zip', 'passpine-0.1.6-firefox.zip', 'Passpine-0.1.6-macos-arm64.zip']) {
     createPackage(root, name);
     const archive = path.join(root, 'packages', name);
-    validatePackage(archive, '0.1.0');
+    validatePackage(archive, '0.1.6');
     const browser = name.startsWith('passpine-');
     const entry = browser ? 'manifest.json' : 'Passpine.app/Contents/Info.plist';
     const source = path.join(root, 'input', entry);
@@ -207,7 +208,7 @@ test('release validation rejects Dev browser and macOS identities with a stable 
     } else fs.writeFileSync(source, contents.replace('com.knothhe.passpine</string>', 'com.knothhe.passpine.dev</string>'));
     fs.rmSync(archive);
     execFileSync('zip', ['-qr', archive, '.'], { cwd: path.join(root, 'input') });
-    assert.throws(() => validatePackage(archive, '0.1.0'), /release identity/);
+    assert.throws(() => validatePackage(archive, '0.1.6'), /release identity/);
   }
 });
 
@@ -215,53 +216,60 @@ test('staging refuses a Dev native binary even if its version matches the tag', 
   const { root } = fixture(t);
   fs.mkdirSync(path.join(root, 'dist'));
   const binary = path.join(root, 'dist', 'passpine');
-  fs.writeFileSync(binary, '#!/bin/sh\nif [ "$1" = "--build-channel" ]; then echo dev; else echo "Passpine 0.1.0"; fi\n', { mode: 0o755 });
-  assert.throws(() => stage('v0.1.0', 'client-darwin-arm64', root), /Only release-channel/);
-  assert.equal(fs.existsSync(path.join(root, 'dist/releases/0.1.0')), false);
+  fs.writeFileSync(binary, '#!/bin/sh\nif [ "$1" = "--build-channel" ]; then echo dev; else echo "Passpine 0.1.6"; fi\n', { mode: 0o755 });
+  assert.throws(() => stage('v0.1.6', 'client-darwin-arm64', root), /Only release-channel/);
+  assert.equal(fs.existsSync(path.join(root, 'dist/releases/0.1.6')), false);
 });
 
 test('browser staging validates archive versions before writing a release manifest', archiveTest, t => {
   const { root } = fixture(t);
   fs.mkdirSync(path.join(root, 'browser/.output'), { recursive: true });
-  for (const name of packagesFor('0.1.0', 'browser')) {
+  for (const name of packagesFor('0.1.6', 'browser')) {
     createPackage(root, name, '0.0.9');
     fs.copyFileSync(path.join(root, 'packages', name), path.join(root, 'browser/.output', name));
   }
-  assert.throws(() => stage('v0.1.0', 'browser', root), /Archive version mismatch/);
-  assert.equal(fs.existsSync(path.join(root, 'dist/releases/0.1.0/manifest-browser.json')), false);
+  assert.throws(() => stage('v0.1.6', 'browser', root), /Archive version mismatch/);
+  assert.equal(fs.existsSync(path.join(root, 'dist/releases/0.1.6/manifest-browser.json')), false);
 });
 
-test('signed publication requires all three validated update bundles from the exact tag', archiveTest, t => {
+test('signed publication reuses all ordinary packages and publishes exactly six attachments from the exact tag', { skip: archiveTest.skip || installerTest.skip }, t => {
   const { root, directory } = packageSet(t);
-  assert.throws(() => collectUpdates('v0.1.0', directory, root), /Missing or mismatched/);
-  const dist = path.join(root, 'dist');
-  for (const name of ['passpine', 'passpine-host', 'passpine.exe', 'passpine-host.exe', 'Passpine.app/Contents/MacOS/passpine', 'Passpine.app/Contents/MacOS/passpine-host']) {
-    const filename = path.join(dist, name); fs.mkdirSync(path.dirname(filename), { recursive: true }); fs.writeFileSync(filename, 'fixture executable');
-  }
+  assert.throws(() => collectUpdates('v0.1.6', directory, root), /Missing or mismatched/);
+  createInstallerFixtures(root, '0.1.6');
   for (const target of ['client-darwin-arm64', 'client-linux-amd64', 'client-win32-amd64']) {
     const filename = path.join(directory, `manifest-${target}.json`), manifest = JSON.parse(fs.readFileSync(filename, 'utf8'));
-    manifest.update = stageUpdate('0.1.0', target, root, directory); fs.writeFileSync(filename, JSON.stringify(manifest));
+    createOrdinaryInstaller(root, directory, '0.1.6', target);
+    manifest.update = stageUpdate('0.1.6', target, root, directory);
+    manifest.artifacts = [manifest.update.full]; fs.writeFileSync(filename, JSON.stringify(manifest));
   }
-  const updates = collectUpdates('v0.1.0', directory, root);
+  const updates = collectUpdates('v0.1.6', directory, root);
   assert.equal(updates.length, 3);
   const signing = crypto.generateKeyPairSync('ed25519');
   const publicKey = signing.publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('base64');
-  const generated = createUpdateFeed({ version: '0.1.0', repo: 'knothhe/passpine', updates,
-    output: path.join(root, 'published-feed'), publicKey, privateKey: signing.privateKey.export({ type: 'pkcs8', format: 'pem' }) });
-  const attachments = [...collectPackages('v0.1.0', directory, root), ...generated];
-  assert.equal(attachments.length, 9);
-  assert.equal(new Set(attachments.map(item => item.name)).size, 9);
-  assert.equal(attachments.filter(item => item.name.includes('-update-')).length, 3);
-  assert.ok(attachments.every(item => !item.name.includes('-from-')));
-  const feed = verifyFeed(fs.readFileSync(generated.at(-1).path), publicKey);
-  assert.deepEqual(Object.keys(feed).sort(), ['assets', 'schema', 'version']);
-  assert.ok(feed.assets.every(asset => Object.keys(asset).sort().join(',') === 'arch,files,full,os'));
+  const privateKey = signing.privateKey.export({ type: 'pkcs8', format: 'pem' });
+  const generated = createUpdateFeed({ version: '0.1.6', repo: 'knothhe/passpine', updates,
+    output: path.join(root, 'published-feed'), publicKey, privateKey, legacyFeedBytes: legacyFeedBytes({ privateKey }, updates) });
+  const attachments = [...collectPackages('v0.1.6', directory, root), ...generated];
+  assert.equal(attachments.length, 6); assert.equal(new Set(attachments.map(item => item.name)).size, 6);
+  assert.equal(attachments.filter(item => item.name.includes('-update-')).length, 0);
+  assert.deepEqual(attachments.map(item => item.name).sort(), ['Passpine-0.1.6-macos-arm64.zip', 'Passpine-0.1.6-linux-amd64.tar.gz',
+    'Passpine-0.1.6-windows-amd64-setup.exe', 'passpine-0.1.6-chrome.zip', 'passpine-0.1.6-firefox.zip', 'update-feed.json'].sort());
+  const feed = verifyFeed(fs.readFileSync(generated[0].path), publicKey);
+  assert.equal(feed.version, '0.1.5'); assert.equal(feed.installerUpdate.version, '0.1.6');
+  assert.deepEqual(Object.keys(feed).sort(), ['assets', 'installerUpdate', 'schema', 'version']);
+  assert.ok(feed.installerUpdate.assets.every(asset => Object.keys(asset).sort().join(',') === 'arch,files,format,full,os'));
+  for (const asset of feed.installerUpdate.assets) {
+    const ordinary = attachments.find(item => asset.full.url.endsWith(`/${item.name}`));
+    assert.ok(ordinary); assert.equal(asset.full.sha256, ordinary.sha256); assert.equal(asset.full.size, ordinary.size);
+  }
   const filename = path.join(directory, 'manifest-client-linux-amd64.json'), manifest = fs.readFileSync(filename, 'utf8');
   const changed = JSON.parse(manifest); changed.head = 'another-commit'; fs.writeFileSync(filename, JSON.stringify(changed));
-  assert.throws(() => collectUpdates('v0.1.0', directory, root), /Invalid update provenance/);
+  assert.throws(() => collectUpdates('v0.1.6', directory, root), /Invalid update provenance/);
+  changed.head = JSON.parse(manifest).head; changed.artifacts[0].sha256 = '0'.repeat(64); fs.writeFileSync(filename, JSON.stringify(changed));
+  assert.throws(() => collectUpdates('v0.1.6', directory, root), /mismatched ordinary/);
   fs.writeFileSync(filename, manifest);
   fs.appendFileSync(path.join(directory, JSON.parse(manifest).update.full.name), 'corruption');
-  assert.throws(() => collectUpdates('v0.1.0', directory, root), /ZIP checksum mismatch/);
+  assert.throws(() => collectUpdates('v0.1.6', directory, root), /Installer checksum mismatch/);
 });
 
 

@@ -78,7 +78,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libgtk-3-0 libwebkit2gtk-4.1-0 fonts-noto-cjk zip unzip
+          sudo apt-get install --yes libgtk-3-0 libwebkit2gtk-4.1-0 fonts-noto-cjk zip unzip 7zip nsis
 
       - name: Install Windows packaging and test tools
         if: runner.os == 'Windows'
@@ -161,6 +161,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/build-client.ps1
+
+      - name: Verify isolated Windows installer extraction
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/verify-windows-installer-update.ps1
 
       - name: Upload client build
         if: inputs.tag == ''
