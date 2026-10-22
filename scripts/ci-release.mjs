@@ -8,7 +8,7 @@ import { versionFiles } from './version.mjs';
 import { tagVersion, notesForTag } from './release-notes.mjs';
 import { publishRelease } from './release.mjs';
 
-const targets = ['client-darwin-arm64', 'client-darwin-x86_64', 'client-linux-amd64', 'client-win32-amd64', 'browser'];
+const targets = ['client-darwin-arm64', 'client-linux-amd64', 'client-win32-amd64', 'browser'];
 const command = (name, args, root) => execFileSync(name, args, { cwd: root, encoding: 'utf8' }).trim();
 
 export function verifyTag(tag, root = process.cwd()) {
@@ -24,7 +24,6 @@ export function verifyTag(tag, root = process.cwd()) {
 export function packagesFor(version, target) {
   const names = {
     'client-darwin-arm64': [`Passpine-${version}-macos-arm64.zip`],
-    'client-darwin-x86_64': [`Passpine-${version}-macos-x86_64.zip`],
     'client-linux-amd64': [`Passpine-${version}-linux-amd64.tar.gz`],
     'client-win32-amd64': [`Passpine-${version}-windows-amd64-setup.exe`],
     browser: ['chrome', 'firefox'].map(browser => `passpine-${version}-${browser}.zip`),
@@ -127,7 +126,7 @@ function main() {
   const metadata = verifyTag(tag);
   if (action === 'verify') console.log(JSON.stringify(metadata));
   else if (action === 'stage-client') {
-    const arch = process.arch === 'x64' ? (process.platform === 'darwin' ? 'x86_64' : 'amd64') : process.arch;
+    const arch = process.arch === 'x64' ? 'amd64' : process.arch;
     console.log(stage(tag, `client-${process.platform}-${arch}`));
   } else if (action === 'stage-browser') console.log(stage(tag, 'browser'));
   else if (action === 'publish') {

@@ -26,7 +26,7 @@ make release
 2. 升版时同步两个 `package.json`，只提交版本文件，提交名为 `chore(release): v<版本>`；首次发布保留 HEAD，tag 正文带 `Release-Type: initial`。
 3. 创建 `v<版本>` annotated tag，以 atomic push 一次推送 `main` 和该 tag。本地尚未推送的分支提交也会随 `main` 一起推送。
 4. tag push 触发 `.github/workflows/release.yml`，复用 CI，在各目标系统运行检查并构建。完整检出历史与 tags，核对 tag、HEAD 及版本文件一致。
-5. 收齐六份指定附件，校验包内版本、构建提交、大小与 SHA-256。创建 Release 草稿，上传并核对远程附件后公开 Release。任何构建失败都不会进入发布步骤。
+5. 收齐五份指定附件，校验包内版本、构建提交、大小与 SHA-256。创建 Release 草稿，上传并核对远程附件后公开 Release。任何构建失败都不会进入发布步骤。
 
 本地命令完成表示 tag 已推送，最终发布结果以 Actions 的 Release 工作流为准。仓库需启用 GitHub Actions；发布 job 使用内置 `GITHUB_TOKEN` 的 `contents: write`，检查和构建 job 只有 `contents: read`，无需额外发布密钥。
 
@@ -34,12 +34,11 @@ make release
 
 ## CI 与发布附件
 
-`.github/workflows/ci.yml` 在 `main` push 和 pull request 上执行检查及原生构建，并作为 Release 的可复用工作流。macOS 使用系统 Swift 工具链；Windows 安装 NSIS；Linux 安装 GTK 3 和 WebKitGTK 4.1。浏览器打包集中在 Linux job。
+`.github/workflows/ci.yml` 在 `main` push 和 pull request 上执行检查及原生构建，并作为 Release 的可复用工作流。构建目标为 macOS arm64、Windows amd64 和 Linux amd64。macOS 使用系统 Swift 工具链；Windows 安装 NSIS；Linux 安装 GTK 3 和 WebKitGTK 4.1。浏览器打包集中在 Linux job。
 
 | 附件 | 内容 |
 | --- | --- |
 | `Passpine-<版本>-macos-arm64.zip` | Apple Silicon 应用包，含客户端、Host 和系统解锁辅助程序 |
-| `Passpine-<版本>-macos-x86_64.zip` | Intel Mac 的同等应用包 |
 | `Passpine-<版本>-windows-amd64-setup.exe` | 当前用户安装程序，含客户端、Host、快捷方式及浏览器注册 |
 | `Passpine-<版本>-linux-amd64.tar.gz` | 客户端、Host、图标、版本文件与 `install.sh` |
 | `passpine-<版本>-chrome.zip` | Chrome / Edge 共用的 MV3 扩展 |

@@ -72,7 +72,7 @@ make release-initial RELEASE_FLAGS=--apply    # 首次发布当前版本
 make release RELEASE_FLAGS=--apply            # 后续升级 patch 并发布
 ```
 
-省略 `RELEASE_FLAGS=--apply` 可预览。脚本自动运行检查、同步版本、创建 annotated tag 并推送；tag 触发 GitHub Actions，构建 macOS arm64 / Intel、Windows amd64、Linux amd64 和 Chrome / Firefox 扩展，全部通过后公开 GitHub Release。失败重跑、附件和签名范围见[版本与发布](docs/versioning.md)。
+省略 `RELEASE_FLAGS=--apply` 可预览。脚本自动运行检查、同步版本、创建 annotated tag 并推送；tag 触发 GitHub Actions，构建 macOS arm64、Windows amd64、Linux amd64 和 Chrome / Firefox 扩展，全部通过后公开 GitHub Release。失败重跑、附件和签名范围见[版本与发布](docs/versioning.md)。
 
 ## 文档
 

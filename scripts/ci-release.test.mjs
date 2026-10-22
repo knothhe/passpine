@@ -71,19 +71,50 @@ function createPackage(root, name, version = '0.1.0') {
 function packageSet(t) {
   const { root, git } = fixture(t);
   const metadata = verifyTag('v0.1.0', root);
-  for (const target of ['client-darwin-arm64', 'client-darwin-x86_64', 'client-linux-amd64', 'client-win32-amd64', 'browser']) {
+  for (const target of ['client-darwin-arm64', 'client-linux-amd64', 'client-win32-amd64', 'browser']) {
     const artifacts = packagesFor(metadata.version, target).map(name => createPackage(root, name));
     fs.writeFileSync(path.join(root, 'packages', `manifest-${target}.json`), JSON.stringify({ schema: 2, ...metadata, target, artifacts }));
   }
   return { root, git, directory: path.join(root, 'packages') };
 }
 
-test('publication requires both Mac architectures, Linux, Windows and both browser packages', archiveTest, t => {
+test('publication requires exactly Mac arm64, Linux, Windows and both browser packages', archiveTest, t => {
   const { root, directory } = packageSet(t);
   const packages = collectPackages('v0.1.0', directory, root);
-  assert.equal(packages.length, 6);
-  fs.rmSync(path.join(directory, 'manifest-client-darwin-x86_64.json'));
-  assert.throws(() => collectPackages('v0.1.0', directory, root), /incomplete.*client-darwin-x86_64/);
+  assert.deepEqual(packages.map(({ name }) => name).sort(), [
+    'Passpine-0.1.0-macos-arm64.zip',
+    'Passpine-0.1.0-linux-amd64.tar.gz',
+    'Passpine-0.1.0-windows-amd64-setup.exe',
+    'passpine-0.1.0-chrome.zip',
+    'passpine-0.1.0-firefox.zip',
+  ].sort());
+  for (const target of ['client-darwin-arm64', 'client-linux-amd64', 'client-win32-amd64', 'browser']) {
+    const filename = path.join(directory, `manifest-${target}.json`);
+    const manifest = fs.readFileSync(filename, 'utf8');
+    fs.rmSync(filename);
+    assert.throws(() => collectPackages('v0.1.0', directory, root), new RegExp(`incomplete.*${target}`));
+    fs.writeFileSync(filename, manifest);
+  }
+  const filename = path.join(directory, 'manifest-browser.json');
+  const manifest = JSON.parse(fs.readFileSync(filename, 'utf8'));
+  manifest.artifacts.pop();
+  fs.writeFileSync(filename, JSON.stringify(manifest));
+  assert.throws(() => collectPackages('v0.1.0', directory, root), /Unexpected release package/);
+});
+
+test('CI release targets reject Intel Mac packages and provenance', archiveTest, t => {
+  const { root, directory } = packageSet(t);
+  assert.throws(() => packagesFor('0.1.0', 'client-darwin-x86_64'), /Unsupported release target/);
+  const filename = path.join(directory, 'manifest-client-darwin-arm64.json');
+  const manifest = JSON.parse(fs.readFileSync(filename, 'utf8'));
+  const intelArtifact = createPackage(root, 'Passpine-0.1.0-macos-x86_64.zip');
+  fs.writeFileSync(filename, JSON.stringify({ ...manifest, artifacts: [intelArtifact] }));
+  assert.throws(() => collectPackages('v0.1.0', directory, root), /Unexpected release package/);
+  fs.writeFileSync(filename, JSON.stringify(manifest));
+  fs.writeFileSync(path.join(directory, 'manifest-client-darwin-x86_64.json'), JSON.stringify({
+    ...manifest, target: 'client-darwin-x86_64', artifacts: [intelArtifact],
+  }));
+  assert.throws(() => collectPackages('v0.1.0', directory, root), /Invalid or duplicate/);
 });
 
 test('publication rejects changed packages, another commit and duplicate or unexpected manifest entries', archiveTest, t => {
