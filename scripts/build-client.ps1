@@ -43,7 +43,7 @@ try {
         Pop-Location
         Remove-Item -LiteralPath $resource
     }
-    Invoke-Checked $nsis @('/V2', "/DAPP_VERSION=$version", "/DAPP_ARCH=$arch", "/DAPP_CHANNEL=$($configuration.channel)", "/DAPP_NAME=$($configuration.appName)", "/DPACKAGE_NAME=$($configuration.packageName)", "/DDIST_DIR=$output", (Join-Path $PSScriptRoot 'windows-installer.nsi'))
+    Invoke-Checked $nsis @('/V2', "/DAPP_VERSION=$version", "/DAPP_BASE_VERSION=$($configuration.baseVersion)", "/DAPP_ARCH=$arch", "/DAPP_CHANNEL=$($configuration.channel)", "/DAPP_NAME=$($configuration.appName)", "/DPACKAGE_NAME=$($configuration.packageName)", "/DDIST_DIR=$output", (Join-Path $PSScriptRoot 'windows-installer.nsi'))
     Invoke-Checked node @('scripts/build-channel.mjs', 'write')
     Write-Output "Built: $output\$($configuration.packageName)-$version-windows-$arch-setup.exe"
 } finally { Pop-Location }

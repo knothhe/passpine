@@ -52,7 +52,7 @@ func validInstallPath(name, platform string) bool {
 	}
 	return false
 }
-func (m *Manager) parseEnvelope(data []byte) (*Manifest, *Asset, error) {
+func (m *Manager) parseFeed(data []byte) (*Manifest, *Asset, error) {
 	var envelope Envelope
 	if len(data) > maxManifestSize || json.Unmarshal(data, &envelope) != nil {
 		return nil, nil, errors.New(ErrorManifest)
@@ -66,12 +66,19 @@ func (m *Manager) parseEnvelope(data []byte) (*Manifest, *Asset, error) {
 		return nil, nil, errors.New(ErrorSignature)
 	}
 	var manifest Manifest
-	if json.Unmarshal(payload, &manifest) != nil || manifest.Schema != 1 || !validVersion(manifest.Version) || compareVersions(manifest.Version, m.cfg.CurrentVersion) <= 0 {
+	if json.Unmarshal(payload, &manifest) != nil || manifest.Schema != 1 || !validVersion(manifest.Version) {
 		return nil, nil, errors.New(ErrorManifest)
 	}
+	selected := &manifest
+	if manifest.InstallerUpdate != nil {
+		selected = manifest.InstallerUpdate
+		if selected.Schema != 2 || !validVersion(selected.Version) || selected.InstallerUpdate != nil {
+			return nil, nil, errors.New(ErrorManifest)
+		}
+	}
 	var asset *Asset
-	for i := range manifest.Assets {
-		a := &manifest.Assets[i]
+	for i := range selected.Assets {
+		a := &selected.Assets[i]
 		if a.OS == m.cfg.OS && a.Arch == m.cfg.Arch {
 			if asset != nil {
 				return nil, nil, errors.New(ErrorManifest)
@@ -80,6 +87,9 @@ func (m *Manager) parseEnvelope(data []byte) (*Manifest, *Asset, error) {
 		}
 	}
 	if asset == nil || !validDownload(asset.Full, m.cfg.AllowHTTP) || len(asset.Files) == 0 || len(asset.Files) > 8192 {
+		return nil, nil, errors.New(ErrorManifest)
+	}
+	if selected.Schema == 1 && asset.Format != "" || selected.Schema == 2 && !validInstallerFormat(asset.OS, asset.Format) {
 		return nil, nil, errors.New(ErrorManifest)
 	}
 	var total int64
@@ -107,7 +117,28 @@ func (m *Manager) parseEnvelope(data []byte) (*Manifest, *Asset, error) {
 			return nil, nil, errors.New(ErrorManifest)
 		}
 	}
-	return &manifest, asset, nil
+	return selected, asset, nil
+}
+
+func validInstallerFormat(platform, format string) bool {
+	switch platform {
+	case "darwin":
+		return format == "app-zip"
+	case "linux":
+		return format == "tar-gzip"
+	case "windows":
+		return format == "nsis"
+	}
+	return false
+}
+
+// Pending installations must still be newer than the running application.
+func (m *Manager) parseEnvelope(data []byte) (*Manifest, *Asset, error) {
+	manifest, asset, err := m.parseFeed(data)
+	if err == nil && compareVersions(manifest.Version, m.cfg.CurrentVersion) <= 0 {
+		err = errors.New(ErrorManifest)
+	}
+	return manifest, asset, err
 }
 func (m *Manager) request(ctx context.Context, raw string) (*http.Response, error) {
 	if !validURL(raw, m.cfg.AllowHTTP) {
@@ -117,7 +148,7 @@ func (m *Manager) request(ctx context.Context, raw string) (*http.Response, erro
 	if e != nil {
 		return nil, e
 	}
-	req.Header.Set("Accept", "application/json, application/zip")
+	req.Header.Set("Accept", "application/json, application/zip, application/gzip, application/octet-stream")
 	client := *m.cfg.HTTPClient
 	previous := client.CheckRedirect
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
@@ -162,33 +193,22 @@ func (m *Manager) Check(ctx context.Context) error {
 	if e != nil {
 		return m.fail(ErrorNetwork, e)
 	}
-	// A signed feed for the current or an older version is a normal latest state.
-	var envelope Envelope
-	if len(body) <= maxManifestSize && json.Unmarshal(body, &envelope) == nil {
-		payload, pe := base64.StdEncoding.DecodeString(envelope.Payload)
-		sig, se := base64.StdEncoding.DecodeString(envelope.Signature)
-		if pe == nil && se == nil && ed25519.Verify(m.key, payload, sig) {
-			var candidate Manifest
-			if json.Unmarshal(payload, &candidate) == nil && candidate.Schema == 1 && validVersion(candidate.Version) && compareVersions(candidate.Version, m.cfg.CurrentVersion) <= 0 {
-				m.publish(func(s *Snapshot) {
-					s.State = StateLatest
-					s.ErrorCode = ""
-					s.Version = ""
-					if candidate.Version == m.cfg.CurrentVersion {
-						s.Version = candidate.Version
-					}
-				})
-				return nil
-			}
-		}
-	}
-	manifest, asset, e := m.parseEnvelope(body)
+	manifest, asset, e := m.parseFeed(body)
 	if e != nil {
 		code := ErrorManifest
 		if e.Error() == ErrorSignature {
 			code = ErrorSignature
 		}
 		return m.fail(code, e)
+	}
+	if compareVersions(manifest.Version, m.cfg.CurrentVersion) <= 0 {
+		m.publish(func(s *Snapshot) {
+			s.State, s.ErrorCode, s.Version = StateLatest, "", ""
+			if manifest.Version == m.cfg.CurrentVersion {
+				s.Version = manifest.Version
+			}
+		})
+		return nil
 	}
 	m.manifest, m.asset, m.envelope = manifest, asset, bytes.Clone(body)
 	m.publish(func(s *Snapshot) {
@@ -229,7 +249,7 @@ func (m *Manager) download(ctx context.Context) error {
 		}
 		return m.fail(ErrorDownload, e)
 	}
-	m.readyArchive = pathJoin(m.cacheDir(), "package.zip")
+	m.readyArchive = pathJoin(m.cacheDir(), packageName(m.asset))
 	pending := pendingState{Envelope: m.envelope}
 	data, _ := json.Marshal(pending)
 	if e = writeAtomic(pathJoin(m.cacheDir(), "pending.json"), data, 0o600); e != nil {
@@ -257,7 +277,7 @@ func (m *Manager) restore() {
 	if e != nil {
 		return
 	}
-	archive := pathJoin(m.cacheDir(), "package.zip")
+	archive := pathJoin(m.cacheDir(), packageName(asset))
 	stage := pathJoin(m.cacheDir(), "ready")
 	if verifyFile(archive, asset.Full.SHA256, asset.Full.Size) != nil || verifyTree(stage, asset.Files) != nil {
 		return

@@ -34,9 +34,9 @@ printf '%s\n' "$version" > "$staging/version.txt"
 archive="$dist_dir/$package_name-$version-linux-$arch.tar.gz"
 if [[ "$channel" == "dev" ]]; then
   printf '%s\n' "$channel" > "$staging/channel.txt"
-  tar -czf "$staging/archive.tar.gz" -C "$staging" passpine passpine-host version.txt channel.txt app-icon-monochrome.png install.sh
+  COPYFILE_DISABLE=1 tar -czf "$staging/archive.tar.gz" -C "$staging" passpine passpine-host version.txt channel.txt app-icon-monochrome.png install.sh
 else
-  tar -czf "$staging/archive.tar.gz" -C "$staging" passpine passpine-host version.txt app-icon-monochrome.png install.sh
+  COPYFILE_DISABLE=1 tar -czf "$staging/archive.tar.gz" -C "$staging" passpine passpine-host version.txt app-icon-monochrome.png install.sh
 fi
 mv "$staging/archive.tar.gz" "$archive"
 echo "Built: $archive"

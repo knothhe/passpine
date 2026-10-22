@@ -43,7 +43,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
 PLIST
   codesign --force --deep --sign - "$bundle"
   codesign --verify --deep --strict "$bundle"
-  ditto -c -k --sequesterRsrc --keepParent "$bundle" "$output_dir/$package_name-$version-macos-$(uname -m).zip"
+  ditto -c -k --norsrc --noextattr --noqtn --keepParent "$bundle" "$output_dir/$package_name-$version-macos-$(uname -m).zip"
   echo "Built: $bundle"
 elif [[ "$(uname -s)" == "Linux" ]]; then
   "$root_dir/scripts/package-client-linux.sh" "$version" "$(go env GOARCH)" "$output_dir" "$channel"

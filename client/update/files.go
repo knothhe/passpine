@@ -1,12 +1,10 @@
 package update
 
 import (
-	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -230,7 +228,13 @@ func (m *Manager) downloadAndStage(ctx context.Context) error {
 	if resp.ContentLength >= 0 && resp.ContentLength != d.Size {
 		return coded(ErrorVerification, errors.New("update content length mismatch"))
 	}
-	archive, e := os.CreateTemp(m.cacheDir(), "package-*.partial")
+	partialPattern := "package-*.partial"
+	if m.asset.Format == "nsis" {
+		// Windows can only execute the verified installer's extraction mode when
+		// both its temporary download and final cache retain an .exe suffix.
+		partialPattern += ".exe"
+	}
+	archive, e := os.CreateTemp(m.cacheDir(), partialPattern)
 	if e != nil {
 		return coded(ErrorStorage, e)
 	}
@@ -292,7 +296,7 @@ func (m *Manager) downloadAndStage(ctx context.Context) error {
 	if e = os.Rename(stage, ready); e != nil {
 		return coded(ErrorStorage, e)
 	}
-	final := filepath.Join(m.cacheDir(), "package.zip")
+	final := filepath.Join(m.cacheDir(), packageName(m.asset))
 	if e = os.Remove(final); e != nil && !os.IsNotExist(e) {
 		return coded(ErrorStorage, e)
 	}
@@ -300,79 +304,5 @@ func (m *Manager) downloadAndStage(ctx context.Context) error {
 		return coded(ErrorStorage, e)
 	}
 	m.readyDir = ready
-	return nil
-}
-func (m *Manager) extract(ctx context.Context, archive, stage string) error {
-	reader, e := zip.OpenReader(archive)
-	if e != nil {
-		return e
-	}
-	defer reader.Close()
-	expected := make(map[string]File, len(m.asset.Files))
-	for _, f := range m.asset.Files {
-		expected[f.Path] = f
-	}
-	present := map[string]bool{}
-	if len(reader.File) > len(expected)+8192 {
-		return errors.New("too many archive entries")
-	}
-	for _, entry := range reader.File {
-		if e = ctx.Err(); e != nil {
-			return e
-		}
-		name := entry.Name
-		if entry.FileInfo().IsDir() {
-			if !safePath(strings.TrimSuffix(name, "/")) {
-				return errors.New("unsafe archive directory")
-			}
-			continue
-		}
-		f, ok := expected[name]
-		if !ok || present[name] || !entry.Mode().IsRegular() || entry.UncompressedSize64 != uint64(f.Size) {
-			return fmt.Errorf("invalid archive member %q", name)
-		}
-		present[name] = true
-		target, e := securePath(stage, name)
-		if e != nil {
-			return e
-		}
-		if e = os.MkdirAll(filepath.Dir(target), 0o755); e != nil {
-			return e
-		}
-		in, e := entry.Open()
-		if e != nil {
-			return e
-		}
-		out, e := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, os.FileMode(f.Mode))
-		if e != nil {
-			in.Close()
-			return e
-		}
-		e = out.Chmod(os.FileMode(f.Mode))
-		var n int64
-		if e == nil {
-			n, e = io.Copy(out, io.LimitReader(in, f.Size+1))
-		}
-		ie := in.Close()
-		oe := out.Close()
-		if e == nil {
-			e = ie
-		}
-		if e == nil {
-			e = oe
-		}
-		if e != nil {
-			return e
-		}
-		if n != f.Size {
-			return errors.New("archive member size mismatch")
-		}
-	}
-	for i, f := range m.asset.Files {
-		if !present[f.Path] {
-			return errors.New("full package omits signed file")
-		}
-		m.publish(func(s *Snapshot) { s.Progress = float64(i+1) / float64(len(m.asset.Files)) })
-	}
 	return nil
 }
