@@ -87,16 +87,28 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          choco install nsis gnupg --yes --no-progress
-          $gnupgBin = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) |
-            Where-Object { $_ } |
-            ForEach-Object { Join-Path $_ 'GnuPG\bin' } |
-            Where-Object {
-              (Test-Path -LiteralPath (Join-Path $_ 'gpg.exe') -PathType Leaf) -and
-              (Test-Path -LiteralPath (Join-Path $_ 'gpgconf.exe') -PathType Leaf)
-            } |
-            Select-Object -First 1
-          if (-not $gnupgBin) { throw 'Native Windows GnuPG installation was not found.' }
+          choco install nsis --yes --no-progress --execution-timeout=300
+          $gnupgPackage = Join-Path $env:RUNNER_TEMP 'gnupg.2.5.21.nupkg'
+          $gnupgPackageDir = Join-Path $env:RUNNER_TEMP 'gnupg-package-2.5.21'
+          $gnupgRoot = Join-Path $env:RUNNER_TEMP 'gnupg-2.5.21'
+          Invoke-WebRequest -Uri 'https://community.chocolatey.org/api/v2/package/gnupg/2.5.21' -OutFile $gnupgPackage -TimeoutSec 120
+          if ((Get-FileHash -LiteralPath $gnupgPackage -Algorithm SHA256).Hash -ne '42D65C86D0FCF4501337D45279CCE055EF172A158327AABA763D15A3C42866B6') {
+            throw 'The pinned GnuPG package checksum does not match.'
+          }
+          7z x $gnupgPackage "-o$gnupgPackageDir" -y
+          $gnupgInstaller = Join-Path $gnupgPackageDir 'tools\gnupg-w32-2.5.21_20260702.exe'
+          if ((Get-FileHash -LiteralPath $gnupgInstaller -Algorithm SHA256).Hash -ne '6246C925A73167253444AFC24A0DEB83A3F43B7D636AF84D6AAF48A98A62F024') {
+            throw 'The upstream GnuPG installer checksum does not match.'
+          }
+          # Extract the complete native runtime without invoking the NSIS installer.
+          # Keep normal GNUPGHOME handling by leaving gpgconf.ctl absent.
+          7z x $gnupgInstaller "-o$gnupgRoot" -y 'bin/*' 'share/*' 'README.txt'
+          $gnupgBin = Join-Path $gnupgRoot 'bin'
+          foreach ($file in @('gpg.exe', 'gpgconf.exe', 'gpg-agent.exe', 'keyboxd.exe')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $gnupgBin $file) -PathType Leaf)) {
+              throw "The extracted GnuPG runtime is missing $file."
+            }
+          }
           # The MSYS GnuPG bundled with Git rejects native Windows fixture paths.
           $gnupgBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           $env:PATH = "$gnupgBin;$env:PATH"
