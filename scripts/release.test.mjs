@@ -9,7 +9,12 @@ import { artifactPlan } from './release-artifacts.mjs';
 
 const scriptsDir = fileURLToPath(new URL('./', import.meta.url));
 function command(cwd, executable, args, success = true, env = {}) {
-  const result = spawnSync(executable, args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', ...env } });
+  const commandEnv = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+  // Fixture Make invocations must use their own defaults when this suite runs
+  // inside `make release`, without inheriting its flags or release arguments.
+  for (const name of ['MAKEFLAGS', 'MFLAGS', 'MAKEOVERRIDES', 'MAKELEVEL', 'VERSION_BUMP', 'RELEASE_FLAGS']) delete commandEnv[name];
+  Object.assign(commandEnv, env);
+  const result = spawnSync(executable, args, { cwd, encoding: 'utf8', env: commandEnv });
   if (result.error) throw result.error;
   if (success) assert.equal(result.status, 0, result.stderr + result.stdout);
   return result;
