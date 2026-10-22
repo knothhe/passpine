@@ -179,16 +179,16 @@ function validateNSISProtocol(bytes) {
     && resources[0].includes(Buffer.from(extractProtocol + '\0', 'utf16le')), 'Windows installer is missing the supported update extraction protocol.');
 }
 
-function nsisEntries(filename) {
+function nsisEntries(filename, expectedFiles) {
   // Static extraction only: never execute an installer to inspect release input.
-  const run = args => {
+  const run = (args, maxBuffer) => {
     for (const tool of ['7z', '7zz']) {
-      try { return execFileSync(tool, args, { maxBuffer: maxExpandedSize, windowsHide: true }); }
+      try { return execFileSync(tool, args, { maxBuffer, timeout: 120_000, windowsHide: true }); }
       catch (error) { if (error.code !== 'ENOENT') throw new Error('NSIS package static extraction failed.'); }
     }
     throw new Error('NSIS package verification requires 7z or 7zz.');
   };
-  const listing = run(['l', '-slt', '-ba', '-sccUTF-8', filename]).toString('utf8');
+  const listing = run(['l', '-slt', '-ba', '-sccUTF-8', filename], 4 * 1024 * 1024).toString('utf8');
   const records = listing.trim().split(/\r?\n\s*\r?\n/).map(record => Object.fromEntries(record.split(/\r?\n/).map(line => line.split(' = '))));
   const names = ['passpine.exe', 'passpine-host.exe'], allowed = [...names, '$PLUGINSDIR/System.dll', 'Uninstall.exe'];
   const seen = new Set();
@@ -197,11 +197,15 @@ function nsisEntries(filename) {
     requireThat(allowed.includes(record.Path) && !seen.has(record.Path.toLowerCase()), 'Unexpected or duplicate NSIS package entry.'); seen.add(record.Path.toLowerCase());
   }
   return names.map(name => {
-    const files = records.filter(record => record.Path === name);
-    requireThat(files.length === 1 && /^\d+$/.test(files[0].Size) && Number(files[0].Size) > 0 && Number(files[0].Size) <= maxExpandedSize
+    const files = records.filter(record => record.Path === name), expected = expectedFiles.find(file => file.path === name);
+    requireThat(files.length === 1 && expected && Number.isSafeInteger(expected.size) && expected.size > 0 && expected.size <= maxExpandedSize
+      && (files[0].Size === undefined || files[0].Size === '' || typeof files[0].Size === 'string' && /^\d+$/.test(files[0].Size) && Number(files[0].Size) === expected.size)
       && !/D/.test(files[0].Attributes || '') && !files[0]['Symbolic Link'] && !files[0]['Hard Link'], 'NSIS package file list mismatch.');
-    const data = run(['x', '-so', '-y', filename, name]);
-    requireThat(data.length === Number(files[0].Size), 'NSIS package file size mismatch.');
+    // NSIS compressed blocks may omit their expanded size from the 7z listing.
+    // Bound extraction using the signed file manifest, then compare exact size
+    // here and hash/mode in validateUpdate regardless of listing metadata.
+    const data = run(['x', '-so', '-y', filename, name], expected.size + 1);
+    requireThat(data.length === expected.size, 'NSIS package file size mismatch.');
     return { path: name, mode: 0o755, data };
   });
 }
@@ -213,7 +217,7 @@ function installerEntries(filename, format, version, files) {
   }).map(entry => ({ ...entry, path: entry.path.slice('Passpine.app/'.length) }));
   if (format === 'tar-gzip') return decodeTar(fs.readFileSync(filename), version);
   validateNSISProtocol(fs.readFileSync(filename));
-  return nsisEntries(filename);
+  return nsisEntries(filename, files);
 }
 
 function fileEntries(root, os) {
