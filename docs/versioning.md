@@ -34,7 +34,7 @@ make release
 
 ## CI 与发布附件
 
-`.github/workflows/ci.yml` 在 `main` push 和 pull request 上执行检查及原生构建，并作为 Release 的可复用工作流。构建目标为 macOS arm64、Windows amd64 和 Linux amd64。macOS 使用系统 Swift 工具链；Windows 安装 NSIS；Linux 安装 GTK 3 和 WebKitGTK 4.1。浏览器打包集中在 Linux job。
+`.github/workflows/ci.yml` 仅作为 Release 的可复用工作流，必须传入已有发布 tag；普通分支 push 和 pull request 不触发 GitHub CI。`.github/workflows/release.yml` 在推送 `v*` tag 时自动运行，也可手动输入已有 tag 重试。构建目标为 macOS arm64、Windows amd64 和 Linux amd64。macOS 使用系统 Swift 工具链；Windows 安装 NSIS；Linux 安装 GTK 3 和 WebKitGTK 4.1。浏览器打包集中在 Linux job。
 
 | 附件 | 内容 |
 | --- | --- |

@@ -8,6 +8,56 @@ import { test } from 'node:test';
 import { collectPackages, packagesFor, stage, verifyTag } from './ci-release.mjs';
 import { notesForTag } from './release-notes.mjs';
 
+// Read the repository's block-style workflow mappings without a runtime YAML dependency.
+function workflowBlock(source, keys) {
+  let lines = source.split(/\r?\n/);
+  for (const [depth, key] of keys.entries()) {
+    const prefix = `${'  '.repeat(depth)}${key}:`;
+    const start = lines.findIndex(line => line.startsWith(prefix));
+    assert.notEqual(start, -1, `Missing workflow mapping: ${keys.join('.')}`);
+    let end = start + 1;
+    while (end < lines.length) {
+      const line = lines[end];
+      if (line.trim() && !line.trimStart().startsWith('#') && line.search(/\S/) <= depth * 2) break;
+      end++;
+    }
+    lines = lines.slice(start + 1, end);
+  }
+  return lines.join('\n');
+}
+
+function mappingKeys(block) {
+  const entries = [...block.matchAll(/^( *)([A-Za-z_][\w-]*):/gm)];
+  const indentation = Math.min(...entries.map(entry => entry[1].length));
+  return entries.filter(entry => entry[1].length === indentation).map(entry => entry[2]);
+}
+
+test('CI runs only as a reusable release build with a required tag', () => {
+  const ci = fs.readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  assert.deepEqual(mappingKeys(workflowBlock(ci, ['on'])), ['workflow_call'], 'Ordinary pushes and pull requests must not trigger CI.');
+  const tag = workflowBlock(ci, ['on', 'workflow_call', 'inputs', 'tag']);
+  assert.match(tag, /^ +required: true\s*$/m);
+  assert.match(tag, /^ +type: string\s*$/m);
+  assert.ok(!mappingKeys(tag).includes('default'), 'Release builds must receive an explicit tag.');
+});
+
+test('Release runs automatically only for version tags and passes the verified tag to CI', () => {
+  const release = fs.readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
+  assert.deepEqual(mappingKeys(workflowBlock(release, ['on'])), ['push', 'workflow_dispatch']);
+  const push = workflowBlock(release, ['on', 'push']);
+  assert.deepEqual(mappingKeys(push), ['tags'], 'A branch push must not start a release.');
+  assert.match(push, /^ +tags: \['v\*'\]\s*$/m);
+  const retryTag = workflowBlock(release, ['on', 'workflow_dispatch', 'inputs', 'tag']);
+  assert.match(retryTag, /^ +required: true\s*$/m);
+  assert.match(retryTag, /^ +type: string\s*$/m);
+  const verify = workflowBlock(release, ['jobs', 'verify']);
+  assert.match(verify, /RELEASE_TAG: \$\{\{ inputs\.tag \|\| github\.ref_name \}\}/);
+  const build = workflowBlock(release, ['jobs', 'build']);
+  assert.match(build, /^ +needs: verify\s*$/m);
+  assert.match(build, /^ +uses: \.\/\.github\/workflows\/ci\.yml\s*$/m);
+  assert.match(workflowBlock(release, ['jobs', 'build', 'with']), /^ +tag: \$\{\{ needs\.verify\.outputs\.tag \}\}\s*$/m);
+});
+
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-ci-release-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
