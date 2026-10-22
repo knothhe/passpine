@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && !linux
 
 package deviceunlock
 
@@ -16,5 +16,5 @@ func configureProvider(p *systemProvider, executable string) {
 
 func configureCommand(_ *exec.Cmd) {}
 
-// RunHelper handles the Windows-only authentication subprocess entry point.
+// RunHelper handles the platform-specific authentication subprocess entry point.
 func RunHelper() bool { return false }

@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"math"
+	"runtime"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -207,8 +208,13 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 		}
 	}
 	general := []components.SettingsItem{
-		{ID: "theme-style", Title: a.t("主题风格"), Description: a.t("主题配色和应用图标一起切换。"), Build: func(c *ui.Context) {
-			selectValue(c, &a.settings.ThemeStyle, a.t("主题风格"), []string{app.ThemeStyleMonochrome, app.ThemeStyleOnevra}, []string{a.t("黑白"), a.t("陶土橙")})
+		{ID: "theme-style", Title: a.t("主题风格"), Description: a.themeStyleDescription(), Build: func(c *ui.Context) {
+			styles, labels := []string{app.ThemeStyleMonochrome, app.ThemeStyleOnevra}, []string{a.t("黑白"), a.t("陶土橙")}
+			if runtime.GOOS == "linux" {
+				styles = append(styles, app.ThemeStyleOmarchy)
+				labels = append(labels, a.t("Omarchy 系统配色"))
+			}
+			selectValue(c, &a.settings.ThemeStyle, a.t("主题风格"), styles, labels)
 		}},
 		{ID: "theme", Title: a.t("外观"), Build: func(c *ui.Context) {
 			selectValue(c, &a.settings.Theme, a.t("外观"), []string{"system", "light", "dark"}, []string{a.t("跟随系统"), a.t("浅色"), a.t("深色")})
@@ -433,4 +439,11 @@ func (a *application) activityView(c *ui.Context) {
 			})
 		})
 	})
+}
+
+func (a *application) themeStyleDescription() string {
+	if a.settings.ThemeStyle == app.ThemeStyleOmarchy {
+		return a.t("跟随 Omarchy 系统配色，自动更新主题颜色。")
+	}
+	return a.t("主题配色和应用图标一起切换。")
 }

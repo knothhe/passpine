@@ -167,6 +167,7 @@ func Run(service *app.Service, version string) error {
 			a.tray = nil
 		}
 	})
+	mygo.Theme.OnUpdated(a.updateNativeMenuTheme)
 	mygo.Power.OnSuspend(func() { a.lock() })
 	mygo.Power.OnLockScreen(func() { a.lock() })
 	service.SetOnOpen(func() {
@@ -258,15 +259,21 @@ func (a *application) invalidate() {
 	}
 }
 func (a *application) applyTheme() {
-	if a.window == nil {
+	if !mygo.App.IsReady() {
 		return
 	}
 	source := a.themeSettings().Theme
 	if source == "" {
 		source = "system"
 	}
+	if source == "system" && a.themeSettings().ThemeStyle == app.ThemeStyleOmarchy {
+		source = omarchyAppearance()
+	}
 	mygo.Theme.SetSource(mygo.ThemeSource(source))
-	_ = a.window.SetBackgroundColor(nativeThemeBackground(a.themeSettings().ThemeStyle))
+	a.updateNativeMenuTheme()
+	if a.window != nil {
+		_ = a.window.SetBackgroundColor(nativeThemeBackground(a.themeSettings().ThemeStyle))
+	}
 	if window, ok := a.quick.window.(*mygo.Window); ok {
 		_ = window.SetBackgroundColor(nativeThemeBackground(a.themeSettings().ThemeStyle))
 	}
@@ -557,6 +564,10 @@ func (a *application) clock() {
 		mygo.RunOnMain(func() {
 			if a.closing {
 				return
+			}
+			if a.themeSettings().ThemeStyle == app.ThemeStyleOmarchy && refreshOmarchyPalette() {
+				a.invalidate()
+				a.applyTheme()
 			}
 			if !a.gitRemoteSaveAt.IsZero() && time.Now().After(a.gitRemoteSaveAt) {
 				a.saveGitRemoteAutomatically()

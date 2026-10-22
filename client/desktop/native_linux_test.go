@@ -46,6 +46,27 @@ func runNativeLinuxInteractions(directory string) {
 		a.settingsObserved = a.settings
 		a.settingsLoaded = true
 		a.newMainWindow()
+		// Validate the native CSS provider in GTK, including repeated palette
+		// replacement, rather than only comparing generated CSS strings.
+		for _, style := range []string{app.ThemeStyleMonochrome, app.ThemeStyleOnevra, app.ThemeStyleOmarchy} {
+			for _, dark := range []bool{false, true} {
+				if err := linuxdesktop.SetMenuTheme(nativeMenuCSS(clientPalette(style, dark))); err != nil {
+					fail(err)
+				}
+			}
+		}
+		a.installMenu()
+		a.applyTheme()
+		mainWindow := a.window
+		a.window = nil
+		a.settings.Theme = "light"
+		a.applyTheme()
+		if mygo.Theme.Source() != mygo.ThemeLight {
+			fail(fmt.Errorf("theme did not update without the main window"))
+		}
+		a.window = mainWindow
+		a.settings.Theme = "system"
+		a.applyTheme()
 		a.lifecycle.nativeReady = true
 		tray, err := newNativeTray(mygo.TrayOptions{Icon: assets.MenuBarTemplatePNG, ToolTip: "Passpine"})
 		if err != nil {
