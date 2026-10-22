@@ -37,6 +37,33 @@ export function encodeZip(entries) {
   return Buffer.concat([...localParts, central, end]);
 }
 
+// TAR fixtures describe Linux permissions explicitly. Windows/NTFS does not
+// preserve POSIX execute bits, so delegating this archive to the host tar loses
+// the executable modes the signed Linux manifest correctly requires.
+export function encodeTarGzip(entries) {
+  const parts = [], seen = new Set();
+  const numeric = (value, length) => {
+    const octal = value.toString(8); requireThat(Number.isSafeInteger(value) && value >= 0 && octal.length < length, 'Invalid fixture TAR number.');
+    return Buffer.from(octal.padStart(length - 1, '0') + '\0');
+  };
+  for (const entry of entries) {
+    const name = Buffer.from(entry.path);
+    requireThat(name.length > 0 && name.length < 100 && !seen.has(entry.path), 'Invalid or duplicate fixture TAR entry.'); seen.add(entry.path);
+    const header = Buffer.alloc(512);
+    name.copy(header); numeric(entry.mode, 8).copy(header, 100);
+    numeric(0, 8).copy(header, 108); numeric(0, 8).copy(header, 116);
+    numeric(entry.data.length, 12).copy(header, 124); numeric(0, 12).copy(header, 136);
+    header.fill(32, 148, 156); header[156] = 48;
+    header.write('ustar\0', 257, 'ascii'); header.write('00', 263, 'ascii');
+    numeric(0, 8).copy(header, 329); numeric(0, 8).copy(header, 337);
+    const checksum = header.reduce((sum, byte) => sum + byte, 0).toString(8).padStart(6, '0');
+    header.write(checksum + '\0 ', 148, 'ascii');
+    parts.push(header, entry.data, Buffer.alloc((512 - entry.data.length % 512) % 512));
+  }
+  parts.push(Buffer.alloc(1024));
+  return zlib.gzipSync(Buffer.concat(parts), { level: 9 });
+}
+
 export const targets = ['client-darwin-arm64', 'client-linux-amd64', 'client-win32-amd64'];
 export const signingKeys = () => {
   const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
@@ -76,7 +103,8 @@ export function createOrdinaryInstaller(root, directory, version, target) {
     };
     walk('Passpine.app'); fs.writeFileSync(filename, encodeZip(entries));
   } else if (format === 'tar-gzip') {
-    execFileSync('tar', ['--format=ustar', '-czf', filename, '-C', dist, 'passpine', 'passpine-host', 'version.txt', 'install.sh', 'app-icon-monochrome.png'], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
+    const modes = { passpine: 0o755, 'passpine-host': 0o755, 'version.txt': 0o644, 'install.sh': 0o755, 'app-icon-monochrome.png': 0o644 };
+    fs.writeFileSync(filename, encodeTarGzip(Object.entries(modes).map(([name, mode]) => ({ path: name, mode, data: fs.readFileSync(path.join(dist, name)) }))));
   } else {
     if (!installerToolsAvailable) throw new Error('NSIS fixture tools are unavailable.');
     const quote = value => value.replaceAll('$', '$$').replaceAll('"', '$\\"');
