@@ -1,0 +1,51 @@
+{
+  "version": "0.1.2",
+  "capturedAt": "2026-10-22T13:41:06.309Z",
+  "browser": "153.0.8010.12",
+  "extensionId": "obnlebeedcbbchadakacilopfdaifgjh",
+  "fixtures": "scripts/store-demo/main.go; all generated data is disposable; no personal vault/profile used",
+  "records": [
+    {
+      "locale": "en",
+      "scene": "01-accounts",
+      "source": "Actual toolbar popup; production build; isolated real Go client with fictional credentials",
+      "viewport": "380x460",
+      "output": "1280x800"
+    },
+    {
+      "locale": "en",
+      "scene": "02-details",
+      "source": "Actual toolbar popup; production build; isolated real Go client with fictional credentials",
+      "viewport": "380x460",
+      "output": "1280x800"
+    },
+    {
+      "locale": "en",
+      "scene": "03-generator",
+      "source": "Actual toolbar popup; production build; isolated real Go client with fictional credentials",
+      "viewport": "380x460",
+      "output": "1280x800"
+    },
+    {
+      "locale": "zh-CN",
+      "scene": "01-accounts",
+      "source": "Actual toolbar popup; production build; isolated real Go client with fictional credentials",
+      "viewport": "380x460",
+      "output": "1280x800"
+    },
+    {
+      "locale": "zh-CN",
+      "scene": "02-details",
+      "source": "Actual toolbar popup; production build; isolated real Go client with fictional credentials",
+      "viewport": "380x460",
+      "output": "1280x800"
+    },
+    {
+      "locale": "zh-CN",
+      "scene": "03-generator",
+      "source": "Actual toolbar popup; production build; isolated real Go client with fictional credentials",
+      "viewport": "380x460",
+      "output": "1280x800"
+    }
+  ]
+}

@@ -8,6 +8,86 @@ import (
 	"github.com/knothhe/passpine/client/app"
 )
 
+func TestCreateKeyAndVaultValidatesNewPassphraseAndClearsSecrets(t *testing.T) {
+	a := newApplication(nil)
+	a.state.Settings.Language = "zh-CN"
+	a.setup = true
+	a.setupDirectory = filepath.Join(t.TempDir(), "new-vault")
+	a.setupName, a.setupEmail = "My vault", "new@example.invalid"
+	a.passphrase, a.confirmPassphrase = "new-private-passphrase", "different-passphrase"
+	// An earlier import selection must not be used when creating a new key.
+	a.setupKeySource = 1
+	a.setupPrivateKey, a.setupPublicKey = "/old-private.asc", "/old-public.asc"
+	callbacks := make(chan func(), 1)
+	requests := make(chan app.Request, 2)
+	a.runOnMain = func(callback func()) { callbacks <- callback }
+	a.service = backendFunc(func(req app.Request) app.Response {
+		requests <- req
+		return app.Response{Status: "ok", Data: app.Data{Configured: true, Settings: app.DefaultSettings()}}
+	})
+	view := ui.NewTester(a.setupView, 740, 1000)
+	if !view.HasText(a.t("首次使用？创建密码库时会在本机生成受口令保护的 OpenPGP（GPG）私钥，无需安装 GnuPG 或准备已有密钥。")) || view.HasText(a.t("密钥来源")) {
+		t.Fatal("new users were not shown the local key creation flow")
+	}
+	if err := view.Click(a.t("创建密钥与密码库")); err != nil {
+		t.Fatal(err)
+	}
+	if a.errorText != a.t("口令至少需要 12 个字符，且两次输入必须一致。") || len(requests) != 0 {
+		t.Fatal("mismatched new passphrase was submitted")
+	}
+	a.confirmPassphrase = a.passphrase
+	a.state.Settings.Language = "en"
+	view.Frame()
+	if !view.HasText("Set private key passphrase") || a.passphrase != "new-private-passphrase" || a.confirmPassphrase != a.passphrase {
+		t.Fatal("language switch lost the new passphrase or kept the old labels")
+	}
+	if err := view.Click("Create key and vault"); err != nil {
+		t.Fatal(err)
+	}
+	a.submitSetup()
+	awaitMain(t, callbacks)
+	req := <-requests
+	if req.Action != "create" || req.Mode != "" || req.KeyFile != "" || req.PublicKeyFile != "" || req.Directory != a.setupDirectory || req.Name != "My vault" || req.Email != "new@example.invalid" || req.Passphrase != "new-private-passphrase" {
+		t.Fatal("creating a new key reused import inputs or lost the new identity")
+	}
+	if len(requests) != 0 || a.setup || a.passphrase != "" || a.confirmPassphrase != "" || a.setupPrivateKey != "" || a.setupPublicKey != "" {
+		t.Fatal("successful creation submitted twice or retained onboarding secrets")
+	}
+	if a.notice != a.t("密码库与私钥已创建。请在设置的“密码库”中导出恢复私钥并验证备份。") {
+		t.Fatal("new vault did not explain how to back up the generated key")
+	}
+}
+
+func TestCreatedVaultBackupGuidanceSurvivesDeviceUnlockNotice(t *testing.T) {
+	for _, language := range []string{"zh-CN", "en"} {
+		for _, deviceNotice := range []string{"已启用系统解锁", "系统解锁未启用，可继续使用私钥口令"} {
+			t.Run(language+"/"+deviceNotice, func(t *testing.T) {
+				a := newApplication(nil)
+				a.state.Settings.Language = language
+				a.setup = true
+				a.setupDirectory = filepath.Join(t.TempDir(), "new-vault")
+				a.passphrase, a.confirmPassphrase = "new-private-passphrase", "new-private-passphrase"
+				callbacks := make(chan func(), 1)
+				a.runOnMain = func(callback func()) { callbacks <- callback }
+				settings := app.DefaultSettings()
+				settings.Language = language
+				a.service = backendFunc(func(req app.Request) app.Response {
+					return app.Response{Status: "ok", Data: app.Data{Configured: true, Settings: settings, DeviceUnlockNotice: deviceNotice}}
+				})
+				a.submitSetup()
+				awaitMain(t, callbacks)
+				expected := a.t("密码库与私钥已创建。%s。请在设置的“密码库”中导出恢复私钥并验证备份。", a.t(deviceNotice))
+				if a.notice != expected {
+					t.Fatalf("device unlock result replaced the new key's backup guidance: %q", a.notice)
+				}
+				view := ui.NewTester(testView(a), 860, 620)
+				view.SetPreferences(ui.Preferences{ReduceMotion: true})
+				assertTypographyBounds(t, view, 860, 620, expected)
+			})
+		}
+	}
+}
+
 func TestImportKeySourceSwitchAndLanguagePreserveInputs(t *testing.T) {
 	a := newApplication(nil)
 	a.state.Settings.Language = "zh-CN"
@@ -134,6 +214,27 @@ func TestManualImportCanScrollToSubmitInNarrowWindow(t *testing.T) {
 			}
 			if !view.HasText(a.t("请先选择密码库目录。")) {
 				t.Fatal("scrolled import submit did not run form validation")
+			}
+		}
+	}
+}
+
+func TestCreateKeyCanScrollToConfirmationAndSubmitInNarrowWindow(t *testing.T) {
+	for _, language := range []string{"zh-CN", "en"} {
+		for _, scale := range []int{100, 120} {
+			a := fixture()
+			a.state.Configured = false
+			a.state.Settings.Language, a.state.Settings.FontScale = language, scale
+			a.setupMode = 0
+			a.setupDirectory = t.TempDir()
+			view := ui.NewTester(testView(a), 860, 620)
+			view.Scroll(700, 500, 0, 1200)
+			assertTypographyBounds(t, view, 860, 620, a.t("确认口令"), a.t("创建密钥与密码库"))
+			if err := view.Click(a.t("创建密钥与密码库")); err != nil {
+				t.Fatal(err)
+			}
+			if !view.HasText(a.t("口令至少需要 12 个字符，且两次输入必须一致。")) {
+				t.Fatal("scrolled create submit did not validate the new key passphrase")
 			}
 		}
 	}

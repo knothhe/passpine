@@ -266,9 +266,32 @@ func (v *Vault) Create(name, email, passphrase string) (Identity, error) {
 	} else if !errors.Is(e, os.ErrNotExist) {
 		return Identity{}, e
 	}
+	existingStore := errors.New("existing password store: import its private key")
 	if _, e = safeRead(v.config.Directory, ".gpg-id"); e == nil {
-		return Identity{}, errors.New("existing password store: import its private key")
+		return Identity{}, existingStore
 	} else if !errors.Is(e, os.ErrNotExist) {
+		return Identity{}, e
+	}
+	// A missing root policy does not make an existing store new. Do not install
+	// an unrelated identity over its ciphertext or nested recipient policies.
+	if e = filepath.WalkDir(v.config.Directory, func(filename string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if filename == v.config.Directory {
+			return nil
+		}
+		if entry.IsDir() {
+			if strings.HasPrefix(entry.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.Name() == ".gpg-id" || strings.HasSuffix(entry.Name(), ".gpg") {
+			return existingStore
+		}
+		return nil
+	}); e != nil {
 		return Identity{}, e
 	}
 	if name == "" {

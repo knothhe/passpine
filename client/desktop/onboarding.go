@@ -45,6 +45,9 @@ func (a *application) setupView(c *ui.Context) {
 				if a.setupMode == 1 && a.setupDirectory == a.defaultVaultDirectory && a.defaultVaultDirectory != "" {
 					muted(c, a.t("已找到默认密码库 ~/.password-store。选择密钥来源后即可导入。"))
 				}
+				if a.setupMode == 0 {
+					muted(c, a.t("首次使用？创建密码库时会在本机生成受口令保护的 OpenPGP（GPG）私钥，无需安装 GnuPG 或准备已有密钥。"))
+				}
 				if previousMode != a.setupMode && a.defaultVaultDirectory != "" {
 					if a.setupMode == 1 && a.setupDirectory == "" {
 						a.setupDirectory = a.defaultVaultDirectory
@@ -104,12 +107,16 @@ func (a *application) setupView(c *ui.Context) {
 							muted(c, a.t("私钥文件通常已包含公钥。多收件人密码库可补充公钥文件，无需安装 GnuPG。"))
 						}
 					}
-					input := field(c, a.t("私钥口令"), &a.passphrase, a.t("输入你的私钥口令"), true)
+					passphraseLabel, passphrasePlaceholder := a.t("私钥口令"), a.t("输入你的私钥口令")
+					if a.setupMode == 0 {
+						passphraseLabel, passphrasePlaceholder = a.t("设置私钥口令"), a.t("设置至少 12 个字符的口令")
+					}
+					input := field(c, passphraseLabel, &a.passphrase, passphrasePlaceholder, true)
 					if a.setupMode == 0 {
 						field(c, a.t("确认口令"), &a.confirmPassphrase, a.t("再次输入口令"), true)
 						muted(c, a.t("口令至少需要 12 个字符。"))
 					}
-					label := a.t("创建并解锁")
+					label := a.t("创建密钥与密码库")
 					if a.setupMode == 1 {
 						label = a.t("打开并解锁")
 					}
@@ -197,8 +204,15 @@ func (a *application) submitSetup() {
 		a.settings = d.Settings
 		a.applyTheme()
 		a.notice = a.t("密码库已打开")
+		if req.Action == "create" {
+			a.notice = a.t("密码库与私钥已创建。请在设置的“密码库”中导出恢复私钥并验证备份。")
+		}
 		if d.DeviceUnlockNotice != "" {
-			a.warn(d.DeviceUnlockNotice)
+			if req.Action == "create" {
+				a.warn(a.t("密码库与私钥已创建。%s。请在设置的“密码库”中导出恢复私钥并验证备份。", a.t(d.DeviceUnlockNotice)))
+			} else {
+				a.warn(d.DeviceUnlockNotice)
+			}
 		}
 	})
 }

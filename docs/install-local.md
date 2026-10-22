@@ -60,7 +60,7 @@ PASSPINE_NATIVE_SMOKE=1 go test ./cmd/passpine -run TestNativePreviewStartup -co
 PASSPINE_NATIVE_SMOKE=1 go test ./internal/linuxdesktop ./desktop -run 'TestHyprlandRuntimeShortcut|TestNativeLinuxInteractions' -count=1 -v
 ```
 
-macOS 应用 ID 为 `com.knothhe.passpine`，与旧原生客户端相同；安装到同一目录会替换原有 `Passpine.app`。本机数据不会随应用包安装而迁移，已有 Go 配置的继续使用与迁移方式见 [README](../README.md#正式使用与原库迁移)。
+macOS 应用 ID 为 `com.knothhe.passpine`。密码库和应用数据保存在应用包之外，更新应用包不会删除这些数据。
 
 手动移动应用后，在客户端设置 → 浏览器中逐项**修复**，或选择**重新检测并修复**。只为已安装的浏览器注册连接；不要注册临时构建目录里的应用后删除该目录。
 
@@ -123,7 +123,7 @@ node scripts/install-local.mjs --help
 4. 支持的 Mac 和 Windows 默认启用系统解锁，首次用私钥口令打开密码库后完成系统验证：Mac 使用 Touch ID 或登录密码，Windows 使用当前账户的登录密码。扩展锁定时操作条目会自动请求系统验证，成功后继续操作；尚未启用系统解锁时会唤出客户端。客户端关闭则连接断开，可在客户端开启“关闭窗口后继续运行”。
 5. 点击账号正文直接填充，右侧详情图标用于查看。无需提前关联网站，成功填充后默认关联当前精确 hostname 并自动关闭弹窗；关联保存失败但网页已填充时同样关闭。再次打开后可在更多菜单或详情中取消关联，再次成功填充会重新关联。关联不自动继承子域，填充不会提交表单；无可填写表单时保留弹窗显示错误，且不会新增关联。独立 demo 保留弹窗和关联保存失败提示，用于检查界面状态。
 
-Chrome / Edge 固定扩展 ID 为 `obnlebeedcbbchadakacilopfdaifgjh`，Firefox ID 为 `passpine@knothhe.com`，Native Host 为 `com.knothhe.passpine`。Chromium ID 保持不变；Firefox ID 与旧插件相同，新版会替换对应扩展。更换客户端后，重新加载扩展并在客户端设置中修复浏览器连接。
+Chrome / Edge 固定扩展 ID 为 `obnlebeedcbbchadakacilopfdaifgjh`，Firefox ID 为 `passpine@knothhe.com`，Native Host 为 `com.knothhe.passpine`。更新后重新加载扩展；连接失败时，在客户端设置中修复浏览器连接。
 
 ## Agent 收尾安装
 
