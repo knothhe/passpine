@@ -87,7 +87,27 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          choco install nsis --yes --no-progress
+          choco install nsis gnupg --yes --no-progress
+          $gnupgBin = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) |
+            Where-Object { $_ } |
+            ForEach-Object { Join-Path $_ 'GnuPG\bin' } |
+            Where-Object {
+              (Test-Path -LiteralPath (Join-Path $_ 'gpg.exe') -PathType Leaf) -and
+              (Test-Path -LiteralPath (Join-Path $_ 'gpgconf.exe') -PathType Leaf)
+            } |
+            Select-Object -First 1
+          if (-not $gnupgBin) { throw 'Native Windows GnuPG installation was not found.' }
+          # The MSYS GnuPG bundled with Git rejects native Windows fixture paths.
+          $gnupgBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH = "$gnupgBin;$env:PATH"
+          foreach ($tool in @('gpg', 'gpgconf')) {
+            $command = Get-Command "$tool.exe" -CommandType Application
+            if ((Split-Path -Path $command.Source -Parent) -ne $gnupgBin) {
+              throw "Expected native Windows $tool from $gnupgBin, found $($command.Source)."
+            }
+            Write-Host "$tool executable: $($command.Source)"
+            & $command.Source --version
+          }
           gcc --version
           make --version
 
