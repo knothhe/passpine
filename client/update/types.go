@@ -109,6 +109,9 @@ type Manager struct {
 	manifest               *Manifest
 	asset                  *Asset
 	envelope               []byte
+	scheduleMu             sync.Mutex
+	checkRecord            checkRecord
+	recordDirty            bool
 	readyDir, readyArchive string
 }
 
@@ -174,6 +177,7 @@ func New(cfg Config) (*Manager, error) {
 	if err := secureDirectory(m.cacheDir()); err != nil {
 		return nil, err
 	}
+	m.restoreCheckRecord(time.Now())
 	m.restore()
 	return m, nil
 }
@@ -225,10 +229,9 @@ func (m *Manager) SetAutoDownload(enabled bool) {
 		m.mu.Lock()
 		ctx := m.lifecycle
 		m.mu.Unlock()
-		if ctx == nil {
-			ctx = context.Background()
+		if ctx != nil {
+			go m.downloadAutomatic(ctx, time.Now, false)
 		}
-		go m.Download(ctx)
 	}
 }
 
