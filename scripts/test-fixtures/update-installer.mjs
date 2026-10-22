@@ -71,7 +71,8 @@ export const signingKeys = () => {
 };
 const nsisCandidates = ['makensis', ...(process.platform === 'win32' ? [path.join(process.env['ProgramFiles(x86)'] || '', 'NSIS', 'makensis.exe')] : [])];
 export const nsisCompiler = nsisCandidates.find(tool => !spawnSync(tool, [process.platform === 'win32' ? '/VERSION' : '-VERSION'], { stdio: 'ignore' }).error);
-export const installerToolsAvailable = !!nsisCompiler && ['7z', '7zz'].some(tool => !spawnSync(tool, ['i'], { stdio: 'ignore' }).error);
+export const sevenZipTool = ['7z', '7zz'].find(tool => !spawnSync(tool, ['i'], { stdio: 'ignore' }).error);
+export const installerToolsAvailable = !!nsisCompiler && !!sevenZipTool;
 export const installerTest = { skip: !installerToolsAvailable && 'Static NSIS fixture verification requires makensis and 7z/7zz (no installer is executed).' };
 
 export function createInstallerFixtures(root, version, changed = false) {

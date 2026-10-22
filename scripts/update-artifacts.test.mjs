@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import { createUpdateFeed, decodeZip, installerPackageFor, readLegacyUpdateFeed, readUpdateSigningConfig, stageUpdate, updateBuildConfig, validateUpdate, verifyFeed } from './update-artifacts.mjs';
-import { createInstallerFixtures, createOrdinaryInstaller, encodeZip, installerTest, legacyFeedBytes, signingKeys as keys, targets } from './test-fixtures/update-installer.mjs';
+import { createInstallerFixtures, createOrdinaryInstaller, encodeZip, installerTest, legacyFeedBytes, signingKeys as keys, sevenZipTool, targets } from './test-fixtures/update-installer.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-updates-'));
@@ -121,6 +121,10 @@ test('Windows full update reuses and statically verifies the ordinary NSIS insta
   assert.equal(item.update.full.name, 'Passpine-0.1.6-windows-amd64-setup.exe');
   assert.deepEqual(item.update.files.map(file => file.path), ['passpine-host.exe', 'passpine.exe']);
   assert.deepEqual(fs.readdirSync(item.directory), [item.update.full.name]);
+  const listing = execFileSync(sevenZipTool, ['l', '-slt', '-ba', '-sccUTF-8', path.join(item.directory, item.update.full.name)], { encoding: 'utf8' });
+  assert.match(listing, /Path = passpine\.exe\r?\nSize = \d+\r?\n/);
+  const wrongSize = structuredClone(item.update); wrongSize.files[0].size++;
+  assert.throws(() => validateUpdate(wrongSize, item.target, item.directory), /file list mismatch/);
   const altered = structuredClone(item.update); altered.files[0].sha256 = '0'.repeat(64);
   assert.throws(() => validateUpdate(altered, item.target, item.directory), /file checksum mismatch/);
   const original = fs.readFileSync(path.join(item.directory, item.update.full.name)), marker = Buffer.from('passpine-update-extract-v1-a8e19eb9-3dc3-4ccf-8b58-97546f3051f0\0', 'utf16le');
@@ -130,6 +134,26 @@ test('Windows full update reuses and statically verifies the ordinary NSIS insta
   assert.throws(() => validateUpdate(item.update, item.target, item.directory), /extraction protocol/);
   rewriteArtifact(item, Buffer.from('MZ corrupt NSIS fixture'));
   assert.throws(() => validateUpdate(item.update, item.target, item.directory), /PE header|Invalid Windows/);
+});
+
+test('compressed NSIS payloads with unknown listing sizes use bounded signed sizes and exact hashes', installerTest, t => {
+  const root = fixture(t), directory = path.join(root, 'compressed'), dist = createInstallerFixtures(root, '0.1.6');
+  for (const [i, name] of ['passpine.exe', 'passpine-host.exe'].entries()) fs.writeFileSync(path.join(dist, name), Buffer.alloc(128 * 1024, 65 + i));
+  const filename = createOrdinaryInstaller(root, directory, '0.1.6', targets[2]);
+  const listing = execFileSync(sevenZipTool, ['l', '-slt', '-ba', '-sccUTF-8', filename], { encoding: 'utf8' });
+  assert.match(listing, /Path = passpine\.exe\r?\nSize = \r?\n/);
+  assert.match(listing, /Method = Deflate/);
+  const update = stageUpdate('0.1.6', targets[2], root, directory);
+  assert.ok(update.files.every(file => file.size === 128 * 1024));
+  validateUpdate(update, targets[2], directory);
+  for (const delta of [-1, 1]) {
+    const wrongSize = structuredClone(update); wrongSize.files[0].size += delta;
+    assert.throws(() => validateUpdate(wrongSize, targets[2], directory), /file size mismatch|static extraction failed/);
+  }
+  const wrongHash = structuredClone(update); wrongHash.files[0].sha256 = '0'.repeat(64);
+  assert.throws(() => validateUpdate(wrongHash, targets[2], directory), /file checksum mismatch/);
+  const tooSmall = structuredClone(update); tooSmall.files[0].size = 1;
+  assert.throws(() => validateUpdate(tooSmall, targets[2], directory), /static extraction failed/);
 });
 
 test('signed feed authenticates a schema 2 installer extension while preserving the verified v0.1.5 legacy payload', installerTest, t => {
