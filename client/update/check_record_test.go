@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -59,9 +60,14 @@ func TestSuccessfulCheckPersistsAndRestoresCandidateWithoutNetwork(t *testing.T)
 					t.Fatalf("restored candidate cannot download: %v, %+v", err, restored.Snapshot())
 				}
 			}
-			st, err := os.Stat(filepath.Join(m.cacheDir(), checkRecordName))
-			if err != nil || st.Mode().Perm() != 0o600 {
-				t.Fatalf("record permissions: %v, %v", st, err)
+			st, err := regularFile(filepath.Join(m.cacheDir(), checkRecordName))
+			if err != nil {
+				t.Fatalf("check record is not a regular file: %v", err)
+			}
+			// Windows exposes writable files as 0666 rather than POSIX owner
+			// permission bits; keep the exact private-mode assertion on Unix.
+			if runtime.GOOS != "windows" && st.Mode().Perm() != 0o600 {
+				t.Fatalf("record permissions: %v", st.Mode().Perm())
 			}
 		})
 	}
