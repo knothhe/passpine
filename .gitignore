@@ -8,3 +8,16 @@ dist/
 
 .codex/
 .pnpm-store/
+
+# Website local state and credentials (dist/ and node_modules/ are covered above).
+website/.wrangler/
+website/coverage/
+website/.env
+website/.env.*
+!website/.env.example
+!website/.env.*.example
+website/.dev.vars
+website/.dev.vars.*
+!website/.dev.vars.example
+!website/.dev.vars.*.example
+website/src/data/release.json.*.tmp

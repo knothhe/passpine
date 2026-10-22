@@ -58,6 +58,32 @@ browser\:build\:edge: FORCE
 browser\:install: FORCE
 	node scripts/install-local.mjs $(if $(BROWSER),--browser "$(BROWSER)") $(INSTALL_ARGS)
 
+website\:deps: website/node_modules/.modules.yaml FORCE
+
+website/node_modules/.modules.yaml: website/package.json website/pnpm-lock.yaml website/pnpm-workspace.yaml
+	pnpm --dir website install --frozen-lockfile
+
+website\:dev: website/node_modules/.modules.yaml FORCE
+	pnpm --dir website run dev
+
+website\:build: website/node_modules/.modules.yaml FORCE
+	pnpm --dir website run build
+
+website\:check: website/node_modules/.modules.yaml FORCE
+	pnpm --dir website run typecheck
+	pnpm --dir website run test
+	pnpm --dir website run build
+
+website\:preview: website/node_modules/.modules.yaml FORCE
+	$(MAKE) website:build
+	pnpm --dir website run preview
+
+website\:sync: website/node_modules/.modules.yaml FORCE
+	pnpm --dir website run sync:releases
+
+website\:deploy: website/node_modules/.modules.yaml FORCE
+	pnpm --dir website run deploy
+
 version\:show: FORCE
 	node scripts/version.mjs show
 

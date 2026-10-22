@@ -48,6 +48,7 @@ bash scripts/check.sh                            # 运行检查与测试
 
 - [本地安装与平台依赖](docs/install-local.md)
 - [浏览器扩展开发](browser/README.md)
+- [官网开发与部署](website/README.md)
 - [Chrome Web Store 提交材料](docs/chrome-web-store/README.md)
 - [桌面设置与生命周期](docs/desktop-settings.md)
 - [架构与安全设计](docs/ARCHITECTURE.md)

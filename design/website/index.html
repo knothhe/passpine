@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="UTF-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>Passpine 官网画板</title
+  ><style>
+    body {
+      font: 14px system-ui;
+      background: #eee;
+      margin: 24px;
+      color: #171717;
+    }
+    a {
+      color: inherit;
+    }
+    main {
+      display: flex;
+      gap: 30px;
+      align-items: start;
+    }
+    iframe {
+      border: 1px solid #ccc;
+      background: white;
+    }
+    section {
+      flex-shrink: 0;
+    }
+    p {
+      max-width: 900px;
+      line-height: 1.7;
+    }
+  </style>
+  <h1>Passpine / 官网</h1>
+  <p>
+    默认黑白灰
+    monochrome，沿用生产松鼠标识与真实演示截图。首屏以产品名称、功能简介和真实界面为主。
+    网站自动识别系统与可用的架构提示，优先排列匹配的下载，仅展示 GitHub Release
+    实际提供的附件，并标明处理器架构。页面先使用经验证的发布快照，再通过 GitHub
+    API
+    检查最新正式版；请求失败时保留快照中的下载直链及全部版本入口。移动端仍可浏览已发布的桌面安装包。
+    实际网站补充安全边界、开始步骤及常见问题。
+  </p>
+  <nav>
+    <a href="artboard.html">桌面</a> ·
+    <a href="artboard.html?state=loading#download">读取中</a> ·
+    <a href="artboard.html?state=error#download">失败与恢复</a> ·
+    <a href="artboard.html?state=mobile#download">手机</a>
+  </nav>
+  <main>
+    <section>
+      <h2>桌面 · 1440</h2>
+      <iframe
+        src="artboard.html"
+        width="1440"
+        height="2400"
+        title="桌面画板"
+      ></iframe>
+    </section>
+    <section>
+      <h2>窄屏 · 390</h2>
+      <iframe
+        src="artboard.html?state=mobile"
+        width="390"
+        height="2400"
+        title="窄屏画板"
+      ></iframe>
+    </section>
+    <section>
+      <h2>下载 · 加载失败</h2>
+      <iframe
+        src="artboard.html?state=error#download"
+        width="760"
+        height="800"
+        title="下载失败画板"
+      ></iframe>
+    </section>
+  </main>
+</html>

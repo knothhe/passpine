@@ -1,0 +1,39 @@
+{
+  "tag_name": "v0.1.2",
+  "html_url": "https://github.com/knothhe/passpine/releases/tag/v0.1.2",
+  "draft": false,
+  "prerelease": false,
+  "published_at": "2026-10-22T09:30:18Z",
+  "assets": [
+    {
+      "name": "passpine-0.1.2-chrome.zip",
+      "size": 387026,
+      "state": "uploaded",
+      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.2/passpine-0.1.2-chrome.zip"
+    },
+    {
+      "name": "passpine-0.1.2-firefox.zip",
+      "size": 387024,
+      "state": "uploaded",
+      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.2/passpine-0.1.2-firefox.zip"
+    },
+    {
+      "name": "Passpine-0.1.2-linux-amd64.tar.gz",
+      "size": 8205299,
+      "state": "uploaded",
+      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.2/Passpine-0.1.2-linux-amd64.tar.gz"
+    },
+    {
+      "name": "Passpine-0.1.2-macos-arm64.zip",
+      "size": 8069459,
+      "state": "uploaded",
+      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.2/Passpine-0.1.2-macos-arm64.zip"
+    },
+    {
+      "name": "Passpine-0.1.2-windows-amd64-setup.exe",
+      "size": 7461167,
+      "state": "uploaded",
+      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.2/Passpine-0.1.2-windows-amd64-setup.exe"
+    }
+  ]
+}
