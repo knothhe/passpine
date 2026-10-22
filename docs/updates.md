@@ -49,7 +49,7 @@ ZIP 为标准 ZIP32 / deflate，路径为 UTF-8，无符号链接和目录条目
 ```json
 {
   "schema": 1,
-  "version": "0.2.0",
+  "version": "0.1.4",
   "notes": {"en": "Changes", "zh-CN": "更新说明"},
   "assets": [{
     "os": "darwin",
