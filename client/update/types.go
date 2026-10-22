@@ -58,8 +58,10 @@ type Snapshot struct {
 type Config struct {
 	CurrentVersion, FeedURL, PublicKey, DataDir string
 	// AutoDownload defaults to true. A pointer distinguishes the default from false.
-	AutoDownload  *bool
-	OnChange      func(Snapshot)
+	AutoDownload *bool
+	OnChange     func(Snapshot)
+	// CheckInterval overrides the daily local 04:00 schedule when positive.
+	// It is intended for isolated package tests; zero uses the daily schedule.
 	CheckInterval time.Duration
 	// InstallRoot and Executable normally derive from the running executable.
 	InstallRoot, Executable string
@@ -144,9 +146,6 @@ func New(cfg Config) (*Manager, error) {
 		return nil, err
 	}
 	cfg.DataDir = canonicalPath(cfg.DataDir)
-	if cfg.CheckInterval <= 0 {
-		cfg.CheckInterval = 6 * time.Hour
-	}
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = &http.Client{Timeout: 15 * time.Minute}
 	}
@@ -241,21 +240,7 @@ func (m *Manager) Start(ctx context.Context) {
 	if !m.Snapshot().Configured {
 		return
 	}
-	go func() {
-		if s := m.Snapshot(); s.State != StateReady && !(s.State == StateFailed && s.ErrorCode == ErrorInstall && s.Version != "") {
-			_ = m.Check(ctx)
-		}
-		ticker := time.NewTicker(m.cfg.CheckInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				_ = m.Check(ctx)
-			}
-		}
-	}()
+	go m.runChecks(ctx, time.Now, waitForCheck)
 }
 func (m *Manager) begin() bool {
 	select {
