@@ -18,17 +18,15 @@ make -C .. browser:build
 pnpm run zip
 ```
 
-ZIP 使用 `passpine-<版本>-chrome.zip` 和 `passpine-<版本>-firefox.zip`，不额外生成 sources ZIP；Edge 复用 Chrome 包。完整发版在仓库根目录使用 `make release-initial RELEASE_FLAGS=--apply` 首次发布当前版本，后续通过 `make release VERSION_BUMP=patch RELEASE_FLAGS=--apply` 升版；命令自动构建、打 tag 并上传 GitHub Release，见[版本与发布](../docs/versioning.md)。扩展包仍需解包加载，Firefox 商店签名和自动上架尚未接入。
+本地 ZIP 使用 `.output-dev/passpine-dev-<版本>-chrome.zip` 和对应的 Firefox ZIP；正式 CI ZIP 沿用 `.output/passpine-<版本>-chrome.zip` 和对应 Firefox ZIP。均不额外生成 sources ZIP；Edge 复用 Chrome 包。正式版本只由 GitHub Actions CI 构建和发布，发布 tag 与签名流程见[版本与发布](../docs/versioning.md)。扩展包仍需解包加载，Firefox 商店签名和自动上架尚未接入。
 
 [本地安装、配置与浏览器加载说明](../docs/install-local.md)
 
-客户端设置 → 浏览器会检测已安装的浏览器，可逐项注册或修复本机 Native Messaging Host。扩展身份固定为：
+客户端设置 → 浏览器会检测已安装的浏览器，可逐项注册或修复本机 Native Messaging Host。不同构建通道使用独立身份：
+- 本地默认构建 Passpine Dev：Chrome ID `dcfgpoaeamdmkgoepgkdllccakegldfc`、Firefox ID `passpine-dev@knothhe.com`、Native Host `com.knothhe.passpine.dev`，输出在 `.output-dev/chrome-mv3` 和 `.output-dev/firefox-mv3`。本地安装目录名称自动带 `-dev` 后缀；Dev 不预占正式扩展的浏览器快捷键，可在设置中自行分配。
+- 正式扩展由 GitHub Actions CI 从发布 tag 构建：Chrome ID `obnlebeedcbbchadakacilopfdaifgjh`、Firefox ID `passpine@knothhe.com`、Native Host `com.knothhe.passpine`，输出沿用 `.output/`。正式扩展和 Dev 扩展仅连接各自的客户端。
 
-- Chrome：`obnlebeedcbbchadakacilopfdaifgjh`
-- Firefox：`passpine@knothhe.com`
-- Native host：`com.knothhe.passpine`
-
-Chrome manifest 的 `key` 是本仓库生成的公钥，仅用于固定开发版 ID；没有保留私钥。
+两个通道的公开身份集中在 `config/browser-identities.json`。Chrome manifest 的 `key` 用于固定扩展 ID，与客户端更新签名公钥无关；Dev 扩展身份不需要保留私钥。
 
 ## 独立交互预览
 

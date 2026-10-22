@@ -85,6 +85,7 @@ type Settings struct {
 	TrayClickAction       string `json:"trayClickAction"`
 	LightweightMode       bool   `json:"lightweightMode"`
 	LaunchAtLogin         bool   `json:"launchAtLogin"`
+	AutoDownloadUpdates   bool   `json:"autoDownloadUpdates"`
 	Theme                 string `json:"theme"`
 	ThemeStyle            string `json:"themeStyle"`
 	FontScale             int    `json:"fontScale"`

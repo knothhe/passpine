@@ -7,6 +7,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
+	"github.com/knothhe/passpine/client/buildinfo"
 	sidebar "github.com/knothhe/passpine/client/internal/clientshell"
 	"github.com/oneo-me/onevra/source/components"
 )
@@ -59,7 +60,7 @@ func (a *application) mainShellOptions() sidebar.ShellOptions {
 		width = int(a.lifecycle.leftWidth)
 	}
 	return sidebar.ShellOptions{
-		Hidden: true, Title: "Passpine", Width: 1120, Height: 760, MinWidth: 860, MinHeight: 620,
+		Hidden: true, Title: buildinfo.Name(), Width: 1120, Height: 760, MinWidth: 860, MinHeight: 620,
 		StateKey: "passpine-main", LeftWidth: width, LeftMinWidth: 180, LeftMaxWidth: 280,
 		LeftResetWidth: defaultSidebarWidth,
 		OnLeftWidthChange: func(width float32) {

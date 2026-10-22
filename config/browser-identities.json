@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "release": {
+    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA267SX2CYUamF//05ArsbaN65lyhD3UHhef1CQmPsY1XiZRn/oYJE0919Feo8Nb55oR4Eb0TBjVSWTpq7li9hMe3jNSeiesbHqFSOkG6ezoBuLWQ3QFtOU5k5rlw572Oa0i6/YQJ2TmrFkojUkIJ1FzI97cmS+XUK8+7gSdshKIlz0HD3gxDlJoEQSNpGZg5EnrUUuSdwIhUDBtwWMojpA/U0S5+lOwOg2gogmQfeKhlIPqzBkV1QAv3TDDpYeJFXPDWc1guTeeiPV/FaWxo4BFpU3md6jQegPODMorG+V37fnS8EX8VUUZCylnZzHjstYms6wZ8oTgP1NNzeCqecSwIDAQAB",
+    "chromiumID": "obnlebeedcbbchadakacilopfdaifgjh",
+    "firefoxID": "passpine@knothhe.com",
+    "host": "com.knothhe.passpine"
+  },
+  "dev": {
+    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuin66wLiN0bfqetd5bjgoKa5y9210M4D6hOtl/xAxEpA4Wbr1CZO10O8MW/qSXM1h3ctyx5gmIVsbxBflAgnVT92pmwvKWvigJFGIvqlUo7H57STrq6Ase6gDITrQFnKux52F2nhvcXU+18xMqV8AmSy5WEJzKpZhyoODeDutJy6dhChXlvqxCx2Rwh7uiTBPT2xRft1K4tRSkZQZR0MrnnUnoLWUpp0f6CD236hwRTYIZeUtauKXEcK8DRo9gUZtV9zCfqC+oBWBevYfuxx3QHE2md16Lfb5cVXBMXBf8knEnZ7HRtNrt3eWLtOvRUOR65nJtfn5vbIBq45Sg2WzwIDAQAB",
+    "chromiumID": "dcfgpoaeamdmkgoepgkdllccakegldfc",
+    "firefoxID": "passpine-dev@knothhe.com",
+    "host": "com.knothhe.passpine.dev"
+  }
+}

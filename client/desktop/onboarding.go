@@ -9,13 +9,14 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
+	"github.com/knothhe/passpine/client/buildinfo"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
 )
 
 // Discovery suggests an existing pass store; opening it still requires a passphrase.
 func (a *application) useDefaultVault(home string) {
-	if a.state.Configured || a.state.Preview || a.setupDirectory != "" || home == "" {
+	if !buildinfo.IsRelease() || a.state.Configured || a.state.Preview || a.setupDirectory != "" || home == "" {
 		return
 	}
 	directory := filepath.Join(home, ".password-store")

@@ -17,7 +17,7 @@ func (a *application) refreshGitState() {
 // requests; Git results remain valid for the same active vault.
 func (a *application) startGitCall(req app.Request, done func(app.Data), userAction bool) {
 	mutating := req.Action != "git-status"
-	if a.closing || a.service == nil || mutating && a.gitActionPending {
+	if a.closing || a.updates.preparing || a.service == nil || mutating && a.gitActionPending {
 		return
 	}
 	if userAction {

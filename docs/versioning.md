@@ -26,9 +26,9 @@ make release
 2. 升版时同步两个 `package.json`，只提交版本文件，提交名为 `chore(release): v<版本>`；首次发布保留 HEAD，tag 正文带 `Release-Type: initial`。
 3. 创建 `v<版本>` annotated tag，以 atomic push 一次推送 `main` 和该 tag。本地尚未推送的分支提交也会随 `main` 一起推送。
 4. tag push 触发 `.github/workflows/release.yml`，复用 CI，在各目标系统运行检查并构建。完整检出历史与 tags，核对 tag、HEAD 及版本文件一致。
-5. 收齐五份指定附件，校验包内版本、构建提交、大小与 SHA-256。创建 Release 草稿，上传并核对远程附件后公开 Release。任何构建失败都不会进入发布步骤。
+5. 收齐五份普通安装附件，校验正式通道、包内版本、构建提交、大小与 SHA-256，再验证三个平台的更新 ZIP、生成有收益的增量 ZIP 并签署 Feed。创建 Release 草稿，上传并核对远程附件后公开 Release。任何构建失败都不会进入发布步骤。
 
-本地命令完成表示 tag 已推送，最终发布结果以 Actions 的 Release 工作流为准。仓库需启用 GitHub Actions；发布 job 使用内置 `GITHUB_TOKEN` 的 `contents: write`，检查和构建 job 只有 `contents: read`，无需额外发布密钥。
+本地命令完成表示 tag 已推送，最终发布结果以 Actions 的 Release 工作流为准。仓库需启用 GitHub Actions；发布 job 使用内置 `GITHUB_TOKEN` 的 `contents: write`，检查和构建 job 只有 `contents: read`。发布要求已固定的 Ed25519 公钥与对应 CI 签名私钥，详见 [客户端更新](updates.md)。
 
 预览仍要求工作区干净，默认只读查询远程 refs；首次发布到标准 GitHub 目标还会查询已有 Release。预览不运行测试或验证写入权限。应先审核并提交工作流、脚本和配置，再正式发布。
 
@@ -49,6 +49,8 @@ Linux 下载包解压到单独目录，运行 `bash install.sh`，默认安装�
 macOS 沿用 ad-hoc 签名，未接入 Developer ID 公证；Windows 未接入 Authenticode 签名。扩展 ZIP 不自动提交商店或获取 Firefox 签名。WXT 关闭额外 sources ZIP 生成，GitHub 自动提供的 Source code 下载项不受影响。
 
 各 job 将附件暂存到 `dist/releases/<版本>/`，生成独立的 `manifest-<目标>.json`，记录 tag、HEAD、版本、文件名、大小和 SHA-256。发布步骤要求完整且匹配的目标集合，只上传确切文件。manifest 保存在 Actions artifacts 中，不上传到 Release。
+
+客户端 job 还生成专用的 `Passpine-<版本>-update-<系统>-<架构>.zip`，来源 manifest 附带所有目标文件的大小、SHA-256 和权限。publication job 使用 `PASSPINE_UPDATE_PRIVATE_KEY` Secret 生成 `update-feed.json` 及更小的文件级增量 ZIP，与普通安装包一起发布。公钥固定在 `config/update-signing.json`，Actions Variable 必须与它一致；签名缺失或不匹配会停止发布，私钥不会进入构建 job。两种语言的更新说明见 [客户端更新](updates.md)。
 
 正文复用本地脚本逻辑，保留 Full Changelog 链接，列出上一可达较低 SemVer tag 之后的非 merge 提交标题与短 hash，排除版本提交。首次发布列出全部历史，需要完整历史与 tags。也可独立生成：
 
@@ -77,7 +79,13 @@ make release-initial RELEASE_FLAGS="--apply --no-push"
 make release VERSION_BUMP=patch RELEASE_FLAGS="--apply --no-push"
 ```
 
-版本命令只更新两个 `package.json`，不提交、不打 tag、不构建或推送。开发时 `go run` 的 `--version` 返回 `development`，正式构建才注入版本。`--no-push` 不查询远程，不能证明版本尚未发布。
+版本命令只更新两个 `package.json`，不提交、不打 tag、不构建或推送。直接 `go run` 默认 Dev 通道，`--version` 返回 `development`；本地 Make 构建注入 `<基础版本>-dev.<提交>`，扩展保留浏览器要求的数字 manifest 版本并显示 Dev 名称。`--build-channel` 可检查客户端及 Host 的实际通道。`--no-push` 不查询远程，不能证明版本尚未发布。
+
+## Dev 与正式版
+
+`make build` / `make install` 及其客户端、扩展子命令默认服务本地 Dev 开发。Dev 使用 `Passpine Dev` 应用名、独立的应用标识、数据目录、Native Messaging Host 和扩展 ID；不迁移正式数据，不扫描 `~/.password-store`，不启用正式更新。构建产物位于 `dist/dev/` 和浏览器独立 Dev 输出目录。具体安装位置见 [本地安装](install-local.md)。
+
+正式版只由 GitHub Actions 在匹配版本的发布 tag 上设置 `PASSPINE_BUILD_CHANNEL=release` 后构建。脚本校验 Actions 环境、仓库、tag/HEAD 和源码状态，发布步骤再次检查制品身份。仅在本地设置 `PASSPINE_BUILD_CHANNEL=release` 不会生成正式版；本地安装入口也拒绝正式通道，正式版请下载 Release 安装包。
 
 ## 失败与恢复
 

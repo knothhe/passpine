@@ -8,7 +8,37 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/knothhe/passpine/client/buildinfo"
 )
+
+func TestDevelopmentRegistrationPreservesReleaseManifestAndRejectsReleaseOrigin(t *testing.T) {
+	if buildinfo.IsRelease() {
+		t.Skip("development registration boundary")
+	}
+	helper, targets := registrationFixture(t)
+	targets = targets[:1]
+	if err := os.MkdirAll(targets[0].directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	stable := filepath.Join(targets[0].directory, "com.knothhe.passpine.json")
+	const sentinel = `{"name":"com.knothhe.passpine","path":"/release/helper"}`
+	if err := os.WriteFile(stable, []byte(sentinel), 0600); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := registerTargets(helper, targets)
+	if err != nil || len(paths) != 1 || paths[0] == stable || Name != "com.knothhe.passpine.dev" {
+		t.Fatalf("development registration overlaps release: %v, %v", paths, err)
+	}
+	bytes, err := os.ReadFile(stable)
+	if err != nil || string(bytes) != sentinel {
+		t.Fatal("development registration changed the release manifest")
+	}
+	dev := manifestFor(helper, targets[0])
+	if len(dev.AllowedOrigins) != 1 || dev.AllowedOrigins[0] != "chrome-extension://"+buildinfo.DevChromiumID+"/" || Authorized([]string{"chrome-extension://" + buildinfo.ReleaseChromiumID + "/"}) {
+		t.Fatal("release browser identity can access development sessions")
+	}
+}
 
 func registrationFixture(t *testing.T) (string, []registrationTarget) {
 	t.Helper()

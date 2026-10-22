@@ -2,9 +2,14 @@
 node_modules/
 browser/.wxt/
 browser/.output/
+browser/.output-dev/
 dist/
 *.log
 /.install-local.json
+
+# Release signing private keys must never enter source control.
+*.pkcs8.pem
+/update-signing/
 
 .codex/
 .pnpm-store/

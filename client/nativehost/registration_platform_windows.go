@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/knothhe/passpine/client/buildinfo"
+
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -12,7 +14,7 @@ func platformRegistrationTargets(home string) []registrationTarget {
 	targets := registrationTargets(home, "windows")
 	if local, err := os.UserCacheDir(); err == nil {
 		for i := range targets {
-			targets[i].directory = filepath.Join(local, "Passpine", "NativeMessagingHosts", targets[i].id)
+			targets[i].directory = filepath.Join(local, buildinfo.Name(), "NativeMessagingHosts", targets[i].id)
 		}
 	}
 	return targets

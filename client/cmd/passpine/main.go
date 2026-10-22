@@ -5,16 +5,29 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/knothhe/passpine/client/app"
+	"github.com/knothhe/passpine/client/buildinfo"
 	"github.com/knothhe/passpine/client/desktop"
 	"github.com/knothhe/passpine/client/deviceunlock"
 	"github.com/knothhe/passpine/client/nativehost"
+	"github.com/knothhe/passpine/client/update"
 )
 
 var version = "development"
+var updateFeedURL string
+var updatePublicKey string
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--build-channel" {
+		fmt.Println(buildinfo.ChannelName())
+		return
+	}
+	version = buildinfo.Version(version)
+	if buildinfo.IsRelease() && update.RunHelper(version, updatePublicKey) {
+		return
+	}
 	if deviceunlock.RunHelper() {
 		return
 	}
@@ -23,7 +36,7 @@ func main() {
 	dataDir := flag.String("data-dir", "", "Override the application data directory")
 	flag.Parse()
 	if *showVersion {
-		fmt.Println("Passpine " + version)
+		fmt.Println(buildinfo.Name() + " " + version)
 		return
 	}
 	service, err := app.New(app.Options{DataDir: *dataDir, Preview: *preview})
@@ -44,7 +57,11 @@ func main() {
 		log.Fatal(err)
 	}
 	defer service.Close()
-	if err := desktop.Run(service, version); err != nil {
+	var updates update.Config
+	if buildinfo.IsRelease() {
+		updates = update.Config{FeedURL: updateFeedURL, PublicKey: updatePublicKey}
+	}
+	if err := desktop.Run(service, version, updates); err != nil {
 		log.Fatal(err)
 	}
 }

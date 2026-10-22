@@ -5,8 +5,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
-import { collectPackages, packagesFor, stage, verifyTag } from './ci-release.mjs';
+import { collectPackages, collectUpdates, packagesFor, stage, updatePublicationConfig, validatePackage, verifyTag } from './ci-release.mjs';
 import { notesForTag } from './release-notes.mjs';
+import { stageUpdate } from './update-artifacts.mjs';
+const browserIdentity = JSON.parse(fs.readFileSync(new URL('../config/browser-identities.json', import.meta.url), 'utf8')).release;
 
 // Read the repository's block-style workflow mappings without a runtime YAML dependency.
 function workflowBlock(source, keys) {
@@ -111,7 +113,7 @@ function createPackage(root, name, version = '0.1.0') {
     const browser = name.startsWith('passpine-');
     const entry = browser ? 'manifest.json' : 'Passpine.app/Contents/Info.plist';
     fs.mkdirSync(path.dirname(path.join(input, entry)), { recursive: true });
-    fs.writeFileSync(path.join(input, entry), browser ? JSON.stringify({ version }) : `<plist><key>CFBundleShortVersionString</key>\n<string>${version}</string><key>CFBundleVersion</key>\n<string>${version}</string></plist>`);
+    fs.writeFileSync(path.join(input, entry), browser ? JSON.stringify({ version, key: browserIdentity.key, browser_specific_settings: { gecko: { id: browserIdentity.firefoxID } } }) : `<plist><key>CFBundleIdentifier</key><string>com.knothhe.passpine</string><key>CFBundleShortVersionString</key>\n<string>${version}</string><key>CFBundleVersion</key>\n<string>${version}</string></plist>`);
     execFileSync('zip', ['-q', filename, entry], { cwd: input });
   }
   const bytes = fs.readFileSync(filename);
@@ -123,7 +125,7 @@ function packageSet(t) {
   const metadata = verifyTag('v0.1.0', root);
   for (const target of ['client-darwin-arm64', 'client-linux-amd64', 'client-win32-amd64', 'browser']) {
     const artifacts = packagesFor(metadata.version, target).map(name => createPackage(root, name));
-    fs.writeFileSync(path.join(root, 'packages', `manifest-${target}.json`), JSON.stringify({ schema: 2, ...metadata, target, artifacts }));
+    fs.writeFileSync(path.join(root, 'packages', `manifest-${target}.json`), JSON.stringify({ schema: 2, channel: 'release', ...metadata, target, artifacts }));
   }
   return { root, git, directory: path.join(root, 'packages') };
 }
@@ -172,6 +174,8 @@ test('publication rejects changed packages, another commit and duplicate or unex
   const filename = path.join(directory, 'manifest-client-win32-amd64.json');
   const original = fs.readFileSync(filename, 'utf8');
   const manifest = JSON.parse(original);
+  fs.writeFileSync(filename, JSON.stringify({ ...manifest, channel: 'dev' }));
+  assert.throws(() => collectPackages('v0.1.0', directory, root), /Invalid or duplicate/);
   fs.writeFileSync(filename, JSON.stringify({ ...manifest, head: 'different-commit' }));
   assert.throws(() => collectPackages('v0.1.0', directory, root), /Invalid or duplicate/);
   fs.writeFileSync(filename, original);
@@ -185,6 +189,37 @@ test('publication rejects changed packages, another commit and duplicate or unex
   assert.throws(() => collectPackages('v0.1.0', directory, root), /checksum mismatch/);
 });
 
+test('release validation rejects Dev browser and macOS identities with a stable version', archiveTest, t => {
+  const { root } = fixture(t);
+  for (const name of ['passpine-0.1.0-chrome.zip', 'passpine-0.1.0-firefox.zip', 'Passpine-0.1.0-macos-arm64.zip']) {
+    createPackage(root, name);
+    const archive = path.join(root, 'packages', name);
+    validatePackage(archive, '0.1.0');
+    const browser = name.startsWith('passpine-');
+    const entry = browser ? 'manifest.json' : 'Passpine.app/Contents/Info.plist';
+    const source = path.join(root, 'input', entry);
+    const contents = fs.readFileSync(source, 'utf8');
+    if (browser) {
+      const manifest = JSON.parse(contents);
+      if (name.endsWith('firefox.zip')) manifest.browser_specific_settings.gecko.id = 'passpine-dev@knothhe.com';
+      else manifest.key = 'dev-public-key';
+      fs.writeFileSync(source, JSON.stringify(manifest));
+    } else fs.writeFileSync(source, contents.replace('com.knothhe.passpine</string>', 'com.knothhe.passpine.dev</string>'));
+    fs.rmSync(archive);
+    execFileSync('zip', ['-qr', archive, '.'], { cwd: path.join(root, 'input') });
+    assert.throws(() => validatePackage(archive, '0.1.0'), /release identity/);
+  }
+});
+
+test('staging refuses a Dev native binary even if its version matches the tag', archiveTest, t => {
+  const { root } = fixture(t);
+  fs.mkdirSync(path.join(root, 'dist'));
+  const binary = path.join(root, 'dist', 'passpine');
+  fs.writeFileSync(binary, '#!/bin/sh\nif [ "$1" = "--build-channel" ]; then echo dev; else echo "Passpine 0.1.0"; fi\n', { mode: 0o755 });
+  assert.throws(() => stage('v0.1.0', 'client-darwin-arm64', root), /Only release-channel/);
+  assert.equal(fs.existsSync(path.join(root, 'dist/releases/0.1.0')), false);
+});
+
 test('browser staging validates archive versions before writing a release manifest', archiveTest, t => {
   const { root } = fixture(t);
   fs.mkdirSync(path.join(root, 'browser/.output'), { recursive: true });
@@ -194,4 +229,47 @@ test('browser staging validates archive versions before writing a release manife
   }
   assert.throws(() => stage('v0.1.0', 'browser', root), /Archive version mismatch/);
   assert.equal(fs.existsSync(path.join(root, 'dist/releases/0.1.0/manifest-browser.json')), false);
+});
+
+test('signed publication requires all three validated update bundles from the exact tag', archiveTest, t => {
+  const { root, directory } = packageSet(t);
+  assert.throws(() => collectUpdates('v0.1.0', directory, root), /Missing or mismatched/);
+  const dist = path.join(root, 'dist');
+  for (const name of ['passpine', 'passpine-host', 'passpine.exe', 'passpine-host.exe', 'Passpine.app/Contents/MacOS/passpine', 'Passpine.app/Contents/MacOS/passpine-host']) {
+    const filename = path.join(dist, name); fs.mkdirSync(path.dirname(filename), { recursive: true }); fs.writeFileSync(filename, 'fixture executable');
+  }
+  for (const target of ['client-darwin-arm64', 'client-linux-amd64', 'client-win32-amd64']) {
+    const filename = path.join(directory, `manifest-${target}.json`), manifest = JSON.parse(fs.readFileSync(filename, 'utf8'));
+    manifest.update = stageUpdate('0.1.0', target, root, directory); fs.writeFileSync(filename, JSON.stringify(manifest));
+  }
+  assert.equal(collectUpdates('v0.1.0', directory, root).length, 3);
+  const filename = path.join(directory, 'manifest-client-linux-amd64.json'), manifest = fs.readFileSync(filename, 'utf8');
+  const changed = JSON.parse(manifest); changed.head = 'another-commit'; fs.writeFileSync(filename, JSON.stringify(changed));
+  assert.throws(() => collectUpdates('v0.1.0', directory, root), /Invalid update provenance/);
+  fs.writeFileSync(filename, manifest);
+  fs.appendFileSync(path.join(directory, JSON.parse(manifest).update.full.name), 'corruption');
+  assert.throws(() => collectUpdates('v0.1.0', directory, root), /ZIP checksum mismatch/);
+});
+
+
+test('production publication requires the pinned trust root and a matching private key', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-signing-config-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const signing = crypto.generateKeyPairSync('ed25519');
+  const publicKey = signing.publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('base64');
+  const privateKey = signing.privateKey.export({ type: 'pkcs8', format: 'pem' });
+  const pinned = { schema: 1, algorithm: 'ed25519', repository: 'knothhe/passpine', publicKey, feedURL: 'https://github.com/knothhe/passpine/releases/latest/download/update-feed.json' };
+  const filename = path.join(directory, 'update-signing.json'); fs.writeFileSync(filename, JSON.stringify(pinned));
+  const env = { GITHUB_REPOSITORY: pinned.repository, PASSPINE_UPDATE_PRIVATE_KEY: privateKey };
+  assert.deepEqual(updatePublicationConfig(env, filename), { key: publicKey, feed: pinned.feedURL });
+  assert.deepEqual(updatePublicationConfig({ ...env, PASSPINE_UPDATE_PUBLIC_KEY: '', PASSPINE_UPDATE_FEED_URL: '' }, filename), { key: publicKey, feed: pinned.feedURL });
+  assert.throws(() => updatePublicationConfig({ GITHUB_REPOSITORY: pinned.repository }, filename), /repository secret/);
+  assert.throws(() => updatePublicationConfig({ ...env, GITHUB_REPOSITORY: 'another/project' }, filename), /checked-in repository/);
+  assert.throws(() => updatePublicationConfig({ ...env, PASSPINE_UPDATE_FEED_URL: 'https://example.com/feed.json' }, filename), /checked-in repository/);
+  const other = crypto.generateKeyPairSync('ed25519');
+  const otherPublic = other.publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('base64');
+  assert.throws(() => updatePublicationConfig({ ...env, PASSPINE_UPDATE_PUBLIC_KEY: otherPublic }, filename), /checked-in repository/);
+  assert.throws(() => updatePublicationConfig({ ...env, PASSPINE_UPDATE_PRIVATE_KEY: other.privateKey.export({ type: 'pkcs8', format: 'pem' }) }, filename), /does not match/);
+  assert.throws(() => updatePublicationConfig({ ...env, PASSPINE_UPDATE_PRIVATE_KEY: 'invalid sensitive diagnostic' }, filename), error => !error.message.includes('invalid sensitive diagnostic') && /PKCS#8/.test(error.message));
+  assert.deepEqual(Object.keys(updatePublicationConfig(env, filename)).sort(), ['feed', 'key']);
 });

@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "wxt --no-open",
-    "build": "wxt build && node scripts/check-manifest.mjs .output/chrome-mv3/manifest.json",
-    "build:firefox": "wxt build -b firefox --mv3 && node scripts/check-manifest.mjs .output/firefox-mv3/manifest.json",
-    "zip": "wxt zip && node scripts/check-manifest.mjs .output/chrome-mv3/manifest.json && wxt zip -b firefox --mv3 && node scripts/check-manifest.mjs .output/firefox-mv3/manifest.json",
+    "build": "wxt build && node scripts/check-manifest.mjs chrome",
+    "build:firefox": "wxt build -b firefox --mv3 && node scripts/check-manifest.mjs firefox",
+    "zip": "wxt zip && node scripts/check-manifest.mjs chrome && wxt zip -b firefox --mv3 && node scripts/check-manifest.mjs firefox",
     "typecheck": "wxt prepare && tsc --noEmit",
     "test": "vitest run",
     "preview": "vite --config vite.preview.config.ts",

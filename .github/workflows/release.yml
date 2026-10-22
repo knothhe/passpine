@@ -13,6 +13,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PASSPINE_BUILD_CHANNEL: release
+
 concurrency:
   group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
@@ -83,4 +86,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.verify.outputs.tag }}
           GH_TOKEN: ${{ github.token }}
+          PASSPINE_UPDATE_PUBLIC_KEY: ${{ vars.PASSPINE_UPDATE_PUBLIC_KEY }}
+          PASSPINE_UPDATE_FEED_URL: ${{ vars.PASSPINE_UPDATE_FEED_URL }}
+          PASSPINE_UPDATE_PRIVATE_KEY: ${{ secrets.PASSPINE_UPDATE_PRIVATE_KEY }}
         run: node scripts/ci-release.mjs publish "$RELEASE_TAG" dist/ci-release

@@ -394,23 +394,41 @@ test('one-command release builds before tagging, resumes a partial draft upload 
   assert.equal(git('status', '--porcelain'), '');
 });
 
-test('Linux installer writes a desktop entry with escaped executable paths', { skip: process.platform !== 'linux' }, t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-install-'));
+test('Linux development installer writes a desktop entry with escaped executable paths', { skip: process.platform !== 'linux' }, t => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-install-')));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  for (const dir of ['scripts', 'dist', 'client/assets']) fs.mkdirSync(path.join(root, dir), { recursive: true });
-  fs.copyFileSync(path.join(scriptsDir, 'install-client.sh'), path.join(root, 'scripts/install-client.sh'));
-  for (const binary of ['passpine', 'passpine-host']) fs.writeFileSync(path.join(root, 'dist', binary), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  for (const dir of ['scripts', 'dist/dev', 'client/assets', 'browser', 'tools']) fs.mkdirSync(path.join(root, dir), { recursive: true });
+  for (const script of ['install-client.sh', 'build-channel.mjs', 'version.mjs', 'release-notes.mjs', 'release.mjs', 'release-artifacts.mjs', 'update-artifacts.mjs']) {
+    fs.copyFileSync(path.join(scriptsDir, script), path.join(root, 'scripts', script));
+  }
+  for (const name of ['package.json', 'browser/package.json']) fs.writeFileSync(path.join(root, name), '{"version":"0.1.0"}\n');
+  for (const binary of ['passpine', 'passpine-host']) fs.writeFileSync(path.join(root, 'dist/dev', binary), '#!/bin/sh\ncase "$1" in\n  --build-channel) printf "dev\\n" ;;\n  --register) printf "%s\\n" "$1" > "$PASSPINE_TEST_REGISTER_LOG" ;;\n  *) exit 99 ;;\nesac\n', { mode: 0o755 });
+  // Every executable used by installation is a fixture; no user host or
+  // desktop database is registered, including during a simulated Linux run.
+  fs.writeFileSync(path.join(root, 'tools/uname'), '#!/bin/sh\nprintf "Linux\\n"\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(root, 'tools/update-desktop-database'), '#!/bin/sh\nprintf "%s\\n" "$1" > "$PASSPINE_TEST_DESKTOP_LOG"\n', { mode: 0o755 });
   fs.writeFileSync(path.join(root, 'client/assets/app-icon-monochrome.png'), 'fixture');
   const installDir = path.join(root, '..', path.basename(root) + '-bin\t "\\$`%');
   t.after(() => fs.rmSync(installDir, { recursive: true, force: true }));
   const dataDir = path.join(root, 'data');
-  command(root, 'bash', ['scripts/install-client.sh', installDir], true, { XDG_DATA_HOME: dataDir });
-  const entry = fs.readFileSync(path.join(dataDir, 'applications/com.knothhe.passpine.desktop'), 'utf8');
+  const registrationLog = path.join(root, 'registered'), desktopLog = path.join(root, 'desktop-updated');
+  command(root, 'bash', ['scripts/install-client.sh', installDir], true, {
+    PASSPINE_BUILD_CHANNEL: 'dev', XDG_DATA_HOME: dataDir,
+    PATH: `${path.join(root, 'tools')}${path.delimiter}${process.env.PATH}`,
+    PASSPINE_TEST_REGISTER_LOG: registrationLog, PASSPINE_TEST_DESKTOP_LOG: desktopLog,
+  });
+  const entry = fs.readFileSync(path.join(dataDir, 'applications/com.knothhe.passpine.dev.desktop'), 'utf8');
   assert.equal(entry.split('\n')[0], '[Desktop Entry]');
+  assert.match(entry, /\nName=Passpine Dev\n/);
+  assert.match(entry, /\nIcon=com\.knothhe\.passpine\.dev\n/);
+  assert.equal(fs.readFileSync(registrationLog, 'utf8'), '--register\n');
+  assert.equal(fs.readFileSync(desktopLog, 'utf8'), path.join(dataDir, 'applications') + '\n');
+  for (const binary of ['passpine-dev', 'passpine-dev-host']) assert.equal(fs.statSync(path.join(installDir, binary)).mode & 0o777, 0o755);
+  for (const binary of ['passpine', 'passpine-host']) assert.equal(fs.existsSync(path.join(installDir, binary)), false);
   const exec = entry.split('\n').find(line => line.startsWith('Exec=')).slice(5);
   // Decode Desktop Entry string escapes, then the quoted Exec argument.
   const decoded = exec.replace(/\\([snrt\\])/g, (_, c) => ({ s: ' ', n: '\n', r: '\r', t: '\t', '\\': '\\' })[c]);
   assert.equal(decoded[0], '"');
   assert.equal(decoded.at(-1), '"');
-  assert.equal(decoded.slice(1, -1).replace(/\\(["`$\\])/g, '$1').replace(/%%/g, '%'), path.join(installDir, 'passpine'));
+  assert.equal(decoded.slice(1, -1).replace(/\\(["`$\\])/g, '$1').replace(/%%/g, '%'), path.join(installDir, 'passpine-dev'));
 });

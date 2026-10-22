@@ -43,7 +43,7 @@ func (a *application) rememberNavigation() {
 }
 
 func (a *application) historyControls(c *ui.Context) {
-	blocked := a.discardOpen || a.generator.open || a.deleteOpen || a.backupOpen || a.purgeOpen
+	blocked := a.discardOpen || a.generator.open || a.deleteOpen || a.backupOpen || a.purgeOpen || a.updates.confirmOpen
 	if iconButton(c, lucide.ArrowLeft(), a.t("后退"), components.ButtonGhost).Disabled(blocked || len(a.history.back) == 0).Tooltip(a.t("后退")).Clicked() {
 		a.moveHistory(-1)
 	}
@@ -53,7 +53,7 @@ func (a *application) historyControls(c *ui.Context) {
 }
 
 func (a *application) moveHistory(delta int) {
-	if a.closing || a.discardOpen || a.generator.open || a.deleteOpen || a.backupOpen || a.purgeOpen {
+	if a.closing || a.discardOpen || a.generator.open || a.deleteOpen || a.backupOpen || a.purgeOpen || a.updates.confirmOpen {
 		return
 	}
 	h := &a.history

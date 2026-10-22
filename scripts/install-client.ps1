@@ -3,11 +3,14 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Push-Location $root
 try {
-    $version = & node scripts/version.mjs show
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot determine application version.' }
+    $configurationJSON = & node scripts/build-channel.mjs json
+    if ($LASTEXITCODE -ne 0) { throw 'Invalid build channel configuration.' }
+    $configuration = $configurationJSON | ConvertFrom-Json
+    if ($configuration.channel -ne 'dev') { throw 'Local installation accepts development builds only. Install formal releases from GitHub Releases.' }
+    $version = $configuration.version
     $arch = & go env GOARCH
     if ($LASTEXITCODE -ne 0) { throw 'Go is required.' }
-    $installer = Join-Path $root "dist\Passpine-$version-windows-$arch-setup.exe"
+    $installer = Join-Path $configuration.outputDirectory "$($configuration.packageName)-$version-windows-$arch-setup.exe"
     if (-not (Test-Path -LiteralPath $installer)) { throw 'Missing Windows installer. Run make client:build first.' }
     $arguments = @('/S')
     if ($InstallDirectory) {
@@ -21,6 +24,6 @@ try {
     }
     $process = Start-Process -FilePath $installer -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
     if ($process.ExitCode -ne 0) { throw "Installation failed (exit $($process.ExitCode))." }
-    $installedDirectory = Get-ItemPropertyValue -LiteralPath 'HKCU:\Software\Passpine' -Name 'InstallDir'
+    $installedDirectory = Get-ItemPropertyValue -LiteralPath 'HKCU:\Software\Passpine Dev' -Name 'InstallDir'
     Write-Output "Installed client directory: $installedDirectory"
 } finally { Pop-Location }

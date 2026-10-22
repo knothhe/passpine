@@ -35,7 +35,7 @@ func (a *application) applyLanguage() {
 		a.shell.SetLabels(sidebar.Labels{LeftToggle: a.t("切换侧栏"), LeftResize: a.t("调整侧栏宽度"), LeftOverlayClose: a.t("关闭左栏"), Minimize: a.t("最小化"), Maximize: a.t("最大化"), Restore: a.t("还原窗口"), Close: a.t("关闭窗口")})
 	}
 	if window, ok := a.quick.window.(*mygo.Window); ok {
-		window.SetTitle(a.t("Passpine 快速搜索"))
+		window.SetTitle(a.quickSearchTitle())
 	}
 	if a.window != nil && !a.closing {
 		a.installMenu()

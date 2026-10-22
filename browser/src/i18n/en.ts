@@ -1,14 +1,14 @@
-import type { Copy } from '../constants/copy';
+import { brandName, type Copy } from '../constants/copy';
 
 export const englishCopy = {
-  brand: 'Passpine',
+  brand: brandName,
   about: {
-    pageTitle: "Passpine · About",
+    pageTitle: `${brandName} · About`,
     navigation: "Settings pages",
     title: "About",
     description: "Browser extension version and identity.",
     settings: "Settings",
-    name: "Passpine Browser Extension",
+    name: `${brandName} Browser Extension`,
     projectDescription: "Connect to the local client to access and fill passwords securely.",
     project: "Project homepage",
     browser: "Browser family",
@@ -25,8 +25,8 @@ export const englishCopy = {
     percent: (value: number) => `${value}%`,
   },
   connection: {
-    disconnectedTitle: 'Client not connected', openClient: 'Open the Passpine client.', reconnect: 'Reconnect', guide: 'Connection guide',
-    connecting: 'Connecting…', clientConnection: 'Client connection', clientName: 'Passpine client',
+    disconnectedTitle: 'Client not connected', openClient: `Open the ${brandName} client.`, reconnect: 'Reconnect', guide: 'Connection guide',
+    connecting: 'Connecting…', clientConnection: 'Client connection', clientName: `${brandName} client`,
     status: { connecting: 'Connecting', disconnected: 'Disconnected', notSet: 'Not set', locked: 'Locked', connected: 'Connected' },
   },
   accounts: {
@@ -94,15 +94,15 @@ export const englishCopy = {
     help: 'Settings save automatically and sync across open extension pages. Change the client’s appearance in client settings.',
   },
   options: {
-    title: 'Browser settings', pageTitle: 'Passpine · Browser settings', description: 'Manage appearance, the client connection and browser shortcuts.',
+    title: 'Browser settings', pageTitle: `${brandName} · Browser settings`, description: 'Manage appearance, the client connection and browser shortcuts.',
     connectionChecked: 'Connection check complete', checkingConnection: 'Checking connection…', connectedLocked: 'Connected · Locked',
-    openVault: 'Open a vault in the client', connectLocal: 'Connect to Passpine on this device', checking: 'Checking', checkConnection: 'Check connection',
-    setupSteps: ['Open the client and create or import a vault.', 'In client settings → Browsers, click “Register browser connection”.', 'Click Passpine in the browser toolbar.'],
+    openVault: 'Open a vault in the client', connectLocal: `Connect to ${brandName} on this device`, checking: 'Checking', checkConnection: 'Check connection',
+    setupSteps: ['Open the client and create or import a vault.', 'In client settings → Browsers, click “Register browser connection”.', `Click ${brandName} in the browser toolbar.`],
     connectionInfo: 'Connection information', nativeHost: 'Native Host', extensionID: 'Extension ID', copyExtensionID: 'Copy extension ID',
   },
   shortcuts: {
     title: 'Shortcuts', browserShortcuts: 'Browser shortcuts', popupShortcuts: 'Popup shortcuts', popupAvailability: 'Available while the popup is open',
-    openApp: 'Open Passpine', fillMatch: 'Fill matching account', openSettings: 'Open settings', copyCurrentPassword: 'Copy current account password',
+    openApp: `Open ${brandName}`, fillMatch: 'Fill matching account', openSettings: 'Open settings', copyCurrentPassword: 'Copy current account password',
     fillCurrent: 'Fill current account', editCurrent: 'Edit current account', readFailed: 'Some shortcuts could not be loaded. Reopen settings.',
     saved: 'Shortcuts saved', saveFailed: 'Shortcuts were not saved. Try again.', openSettingsFailed: 'Could not open browser shortcut settings. Open them from the extension management page.',
     conflict: 'This shortcut is already assigned to another action. Choose a different combination.', popupConflict: 'This shortcut is already assigned to another popup action.',
@@ -114,7 +114,7 @@ export const englishCopy = {
     modifierNames: (mac: boolean) => ({ Alt: mac ? '⌥' : 'Alt', Shift: mac ? '⇧' : 'Shift' }),
   },
   preview: {
-    title: 'Extension preview', pageTitle: 'Passpine · Interactive preview', exampleData: 'Sample data', settings: 'Settings', ribbon: 'Preview · Sample data',
+    title: 'Extension preview', pageTitle: `${brandName} · Interactive preview`, exampleData: 'Sample data', settings: 'Settings', ribbon: 'Preview · Sample data',
     credentialsNotCopied: 'Sample data: credentials were not copied', notice: (text: string) => `Demo: ${text}`, nameExists: 'This name already exists.',
   },
   language: {
@@ -128,7 +128,7 @@ export const englishCopy = {
     invalid_passphrase: 'The private key passphrase is incorrect or the key is unavailable. Unlock in the client.',
     entry_not_found: 'This account no longer exists. Refresh the vault.', unsupported_action: 'The client does not support this operation. Update both the client and extension.',
     response_too_large: 'This account is too large to transfer to the extension. Open it in the client.', operation_failed: 'The operation did not complete. Check the client for details and try again.',
-    app_unavailable: 'Open the Passpine client, then reconnect.',
+    app_unavailable: `Open the ${brandName} client, then reconnect.`,
     native_connection_failed: 'Client not connected. Install the Native Messaging Host from the client’s browser connection settings.',
     background_unavailable: 'The extension background is not responding. Reopen the extension or reload it on the extension management page.',
     invalid_response: 'The client returned an unrecognized response. Reconnect to the client.', locked: 'The vault is locked. Unlock it in the client and try again.',

@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/knothhe/passpine/client/buildinfo"
 	"github.com/knothhe/passpine/client/deviceunlock"
 	"github.com/knothhe/passpine/client/nativehost"
 	"github.com/knothhe/passpine/client/vault"
@@ -27,6 +28,8 @@ type preferences struct {
 	Settings Settings    `json:"settings"`
 }
 type Service struct {
+	updateRequests   sync.RWMutex
+	updatePaused     atomic.Bool
 	device           deviceunlock.Provider
 	deviceMu         sync.Mutex
 	deviceCancel     context.CancelFunc
@@ -67,7 +70,7 @@ type Service struct {
 }
 
 func DefaultSettings() Settings {
-	return Settings{Theme: "system", ThemeStyle: ThemeStyleMonochrome, FontScale: DefaultFontScale, Language: "system", IdleMinutes: 1, MaxSessionMinutes: 60, ClipboardSeconds: 30, CloseToTray: true, DockIcon: DockIconShow, TrayClickAction: TrayClickQuickPanel, BrowseWhileLocked: true, DeviceUnlock: true, AutoSync: false, SyncMinutes: 0, RecordActivity: true, ActivityMaxEntries: 1000, ActivityRetentionDays: 7, GlobalShortcut: DefaultGlobalShortcut}
+	return Settings{Theme: "system", ThemeStyle: ThemeStyleMonochrome, FontScale: DefaultFontScale, Language: "system", IdleMinutes: 1, MaxSessionMinutes: 60, ClipboardSeconds: 30, CloseToTray: true, DockIcon: DockIconShow, TrayClickAction: TrayClickQuickPanel, BrowseWhileLocked: true, DeviceUnlock: true, AutoDownloadUpdates: true, AutoSync: false, SyncMinutes: 0, RecordActivity: true, ActivityMaxEntries: 1000, ActivityRetentionDays: 7, GlobalShortcut: DefaultGlobalShortcut}
 }
 func New(o Options) (*Service, error) {
 	var err error
@@ -85,6 +88,9 @@ func New(o Options) (*Service, error) {
 	}
 	dir, err := filepath.Abs(o.DataDir)
 	if err != nil {
+		return nil, err
+	}
+	if err := buildinfo.ValidateDataDir(dir); err != nil {
 		return nil, err
 	}
 	if err = os.MkdirAll(dir, 0700); err != nil {
@@ -237,6 +243,9 @@ func (s *Service) watch() {
 		case <-s.done:
 			return
 		case <-ticker.C:
+			if s.updatePaused.Load() {
+				continue
+			}
 			s.mu.Lock()
 			if s.closed {
 				s.mu.Unlock()
@@ -356,6 +365,14 @@ type browserResponseLease struct {
 }
 
 func (s *Service) executeWithBrowserLease(r Request, source string, browserLease *browserResponseLease) Response {
+	if r.Action == "git-status" || r.Action == "git-init" || r.Action == "git-sync" || r.Action == "git-remote" {
+		return s.executeGit(r, source)
+	}
+	s.updateRequests.RLock()
+	defer s.updateRequests.RUnlock()
+	if s.updatePaused.Load() {
+		return Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "operation_failed"}
+	}
 	if r.Action == "touch" {
 		s.lastActivity.Store(time.Now().UnixNano())
 		return Response{RequestID: r.RequestID, Protocol: 1, Status: "ok"}
@@ -368,9 +385,6 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 	}
 	if r.Action == "clone" {
 		return s.executeClone(r)
-	}
-	if r.Action == "git-status" || r.Action == "git-init" || r.Action == "git-sync" || r.Action == "git-remote" {
-		return s.executeGit(r, source)
 	}
 
 	if r.Action == "lock" || r.Action == "switch" || r.Action == "create" || r.Action == "open" {

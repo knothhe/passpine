@@ -13,6 +13,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
+	"github.com/knothhe/passpine/client/buildinfo"
 	sidebar "github.com/knothhe/passpine/client/internal/clientshell"
 	"github.com/knothhe/passpine/client/nativehost"
 	"github.com/knothhe/passpine/client/vault"
@@ -500,7 +501,7 @@ func TestDefaultVaultDiscovery(t *testing.T) {
 			}
 			before := a.setupDirectory
 			a.useDefaultVault(home)
-			if scenario == "existing" {
+			if scenario == "existing" && buildinfo.IsRelease() {
 				if a.setupMode != 1 || a.setupDirectory != directory {
 					t.Fatalf("default store was not selected for import: mode=%d directory=%q", a.setupMode, a.setupDirectory)
 				}

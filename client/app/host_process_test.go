@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"github.com/knothhe/passpine/client/buildinfo"
 	"github.com/knothhe/passpine/client/nativehost"
 	"os"
 	"os/exec"
@@ -19,7 +20,7 @@ func TestNativeHelperProcess(t *testing.T) {
 	state := must(t, s, Request{Action: "status"})
 	saved := must(t, s, Request{Action: "save", Entry: "example.com/login", Contents: "fixture-password\nusername: test-user\n", Mode: "create"})
 	cmd := exec.Command(binary, "chrome-extension://"+nativehost.ChromiumID+"/")
-	cmd.Env = append(os.Environ(), "PASSPINE_HOME="+s.directory)
+	cmd.Env = append(os.Environ(), buildinfo.HomeEnvironment()+"="+s.directory)
 	stdin, e := cmd.StdinPipe()
 	if e != nil {
 		t.Fatal(e)
