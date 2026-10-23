@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Theme } from '@radix-ui/themes';
 import { App } from './App';
 import type { Client, EntryDocument, FillResult, Snapshot, UIRequest } from '../lib/types';
+import { saveClientTarget } from '../lib/client-target';
 
 const extension = vi.hoisted(() => ({ storage: { local: { get: vi.fn() }, onChanged: { addListener: vi.fn(), removeListener: vi.fn() } } }));
 vi.mock('wxt/browser', () => ({ browser: extension }));
@@ -450,6 +451,29 @@ async function clickAction(label: string) {
 }
 
 describe('responsive detail navigation and session safety', () => {
+  it('clears details and unsaved edits when switching clients even with identical vault metadata', async () => {
+    const fixture = detailFixture();
+    await render(fixture.client); await clickAction('查看 Alex');
+    await act(async () => fixture.fetch.resolve(credentials));
+    await clickAction('编辑账号');
+    expect(Array.from(container.querySelectorAll('input')).some(input => input.value === 'sensitive-password')).toBe(true);
+    await act(async () => saveClientTarget('dev', true));
+    expect(currentPage().dataset.popupPage).toBe('list');
+    expect(Array.from(container.querySelectorAll('input')).some(input => input.value === 'sensitive-password' || input.value === 'private-user')).toBe(false);
+    expect(container.textContent).not.toContain('sensitive-note');
+    expect(fixture.actions.filter(action => action === 'snapshot')).toHaveLength(2);
+  });
+
+  it('ignores a late credential response from the previous client', async () => {
+    const fixture = detailFixture();
+    await render(fixture.client); await clickAction('查看 Alex');
+    await act(async () => saveClientTarget('dev', true));
+    await act(async () => fixture.fetch.resolve(credentials));
+    expect(currentPage().dataset.popupPage).toBe('list');
+    expect(container.textContent).not.toContain('private-user');
+    expect(container.textContent).not.toContain('sensitive-note');
+  });
+
   it.each(['lock', 'session expiry', 'visibility loss'])('scrubs dirty editor and its leave dialog immediately on %s', async trigger => {
     const fixture = detailFixture();
     await render(fixture.client); await clickAction('查看 Alex');

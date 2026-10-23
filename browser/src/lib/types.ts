@@ -1,11 +1,9 @@
-import { BUILD_CHANNEL } from './build-channel';
-
-export const HOST = BUILD_CHANNEL === 'release' ? 'com.knothhe.passpine' : 'com.knothhe.passpine.dev';
+// Protocol compatibility is independent of extension and desktop product versions.
 export const PROTOCOL = 1;
 
 export type NativeAction = 'configure' | 'status' | 'touch' | 'list' | 'fetch' | 'save' | 'delete' | 'lock' | 'unlock' | 'generate' | 'copy' | 'copy-generated';
 export interface NativeRequest {
-  protocol: 1;
+  protocol: typeof PROTOCOL;
   requestId?: string;
   action: NativeAction;
   vaultId?: string;
@@ -53,6 +51,7 @@ export type UIRequest =
   | { action: 'copy'; vaultId: string; entry: string; field: 'password' | 'username' | 'otp' };
 
 export interface Client {
+  scope?(): Client;
   request<T>(request: UIRequest): Promise<T>;
   openOptions(): Promise<void>;
   copy(text: string): Promise<void>;

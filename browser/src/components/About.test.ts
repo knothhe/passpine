@@ -10,6 +10,8 @@ import { version } from '../../package.json';
 import type { Client } from '../lib/types';
 
 let copy: Copy, container: HTMLDivElement, root: Root;
+const extension = vi.hoisted(() => ({ management: { getSelf: vi.fn() }, storage: { local: { get: vi.fn(), set: vi.fn() }, onChanged: { addListener: vi.fn(), removeListener: vi.fn() } } }));
+vi.mock('wxt/browser', () => ({ browser: extension }));
 vi.mock('./LanguageProvider', () => ({ useCopy: () => copy, useLanguage: () => ({ locale: copy === englishCopy ? 'en' : 'zh-CN' }) }));
 vi.mock('./Primitives', () => ({ Brand: () => 'Passpine', ApplicationIcon: () => null }));
 vi.mock('./ShortcutSettings', () => ({ ShortcutSettings: () => null }));
@@ -17,6 +19,8 @@ vi.mock('./AppearanceSettings', () => ({ AppearanceSettings: () => null }));
 vi.mock('./LanguageSettings', () => ({ LanguageSettings: () => null }));
 beforeEach(() => {
   copy = chineseCopy;
+  extension.management.getSelf.mockResolvedValue({ installType: 'normal' });
+  extension.storage.local.get.mockResolvedValue({});
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });

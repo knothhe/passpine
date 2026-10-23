@@ -41,7 +41,9 @@ describe('extension boundary', () => {
     expect(validUIRequest({ ...request, tab: undefined })).toBe(false);
   });
   it('rejects protocol mismatch and malformed replies', () => {
-    expect(() => unwrap({ protocol: 2, status: 'ok', data: {} })).toThrow();
+    expect(() => unwrap({ protocol: 2, status: 'ok', data: {} })).toThrow(expect.objectContaining({ code: 'protocol_mismatch' }));
+    expect(() => unwrap({ protocol: 1, requestId: 'unsupported', status: 'error', code: 'protocol_mismatch' })).toThrow(expect.objectContaining({ code: 'protocol_mismatch' }));
+    expect(unwrap({ protocol: 1, status: 'ok', data: { version: '9.2.0' } })).toEqual({ version: '9.2.0' });
     expect(() => unwrap({ protocol: 1, status: 'ok' })).toThrow();
     expect(() => unwrap({ protocol: 1, status: 'error', code: 'locked' })).toThrow(/锁定/);
     expect(unwrap({ protocol: 1, status: 'ok', data: {} })).toEqual({});

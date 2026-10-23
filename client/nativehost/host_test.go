@@ -158,3 +158,34 @@ func TestOversizedResponsePreservesRequestCorrelation(t *testing.T) {
 		t.Fatalf("oversized response cannot be matched to its request: %s", response)
 	}
 }
+
+func TestRelayRejectsUnsupportedProtocolBeforeConnecting(t *testing.T) {
+	// No desktop endpoint exists: protocol errors must still be correlated
+	// immediately, rather than timing out or becoming app_unavailable.
+	client := NewRelayClient(t.TempDir())
+	defer client.Close()
+	for _, test := range []struct {
+		name, request, code string
+	}{
+		{"newer protocol", `{"protocol":2,"requestId":"compatibility","action":"lock"}`, "protocol_mismatch"},
+		{"invalid protocol type", `{"protocol":"1","requestId":"compatibility","action":"lock"}`, "invalid_request"},
+		{"missing protocol", `{"requestId":"compatibility","action":"lock"}`, "invalid_request"},
+		{"supported protocol without product versions", `{"protocol":1,"requestId":"compatibility","action":"configure"}`, "app_unavailable"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := client.Send([]byte(test.request))
+			var got struct {
+				Protocol  int    `json:"protocol"`
+				RequestID string `json:"requestId"`
+				Status    string `json:"status"`
+				Code      string `json:"code"`
+			}
+			if err := json.Unmarshal(response, &got); err != nil {
+				t.Fatal(err)
+			}
+			if got.Protocol != Protocol || got.RequestID != "compatibility" || got.Status != "error" || got.Code != test.code {
+				t.Fatalf("wrong protocol response: %s", response)
+			}
+		})
+	}
+}

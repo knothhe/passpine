@@ -10,14 +10,5 @@
   },
   "fillMatch": {
     "message": "填充匹配账号"
-  },
-  "extensionNameDev": {
-    "message": "Passpine Dev"
-  },
-  "extensionDescriptionDev": {
-    "message": "将独立的本机 Passpine Dev 密码库连接到浏览器。"
-  },
-  "openAppDev": {
-    "message": "打开 Passpine Dev"
   }
 }

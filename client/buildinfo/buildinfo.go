@@ -37,16 +37,10 @@ func BundleID() string {
 }
 func HostName() string { return BundleID() }
 func FirefoxID() string {
-	if IsRelease() {
-		return "passpine@knothhe.com"
-	}
-	return "passpine-dev@knothhe.com"
+	return "passpine@knothhe.com"
 }
 func ChromiumID() string {
-	if IsRelease() {
-		return ReleaseChromiumID
-	}
-	return DevChromiumID
+	return ReleaseChromiumID
 }
 func HomeEnvironment() string {
 	if IsRelease() {

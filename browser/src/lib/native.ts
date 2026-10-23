@@ -13,6 +13,7 @@ type Pending = { resolve(value: unknown): void; reject(error: unknown): void; ti
 // One native process per background lifetime. Reconnect only for a new explicit request;
 // an interrupted mutation is rejected and never replayed.
 export class NativeConnection {
+  private closed = false;
   private port?: NativePort;
   private pending = new Map<string, Pending>();
   private configuring?: Promise<unknown>;
@@ -20,6 +21,7 @@ export class NativeConnection {
   constructor(private connect: () => NativePort, private timeoutMs = 125_000) {}
 
   request<T>(request: NativeRequest): Promise<T> {
+    if (this.closed) return Promise.reject(new PassPineError('native_connection_failed'));
     if (request.action === 'configure' && this.configuring) return this.configuring as Promise<T>;
     const operation = this.sendWhenReady<T>(request);
     if (request.interactive && ['fetch', 'copy', 'unlock'].includes(request.action)) {
@@ -34,12 +36,22 @@ export class NativeConnection {
     }
     return operation;
   }
+  disconnect(): void {
+    this.closed = true;
+    const port = this.port;
+    if (port) this.failPort(port);
+    this.configuring = undefined;
+    this.interactions.clear();
+    try { port?.disconnect(); } catch {}
+  }
   private async sendWhenReady<T>(request: NativeRequest): Promise<T> {
+    if (this.closed) throw new PassPineError('native_connection_failed');
     if (request.action === 'status' || request.action === 'configure') {
       // The native host processes requests in order. Start short metadata
       // deadlines only after any system authentication dialog has finished.
       while (this.interactions.size) await Promise.allSettled([...this.interactions]);
     }
+    if (this.closed) throw new PassPineError('native_connection_failed');
     return this.send<T>(request);
   }
   private ensurePort(): NativePort {

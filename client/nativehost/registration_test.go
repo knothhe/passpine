@@ -12,7 +12,7 @@ import (
 	"github.com/knothhe/passpine/client/buildinfo"
 )
 
-func TestDevelopmentRegistrationPreservesReleaseManifestAndRejectsReleaseOrigin(t *testing.T) {
+func TestDevelopmentRegistrationPreservesReleaseHostAndAcceptsUnifiedExtension(t *testing.T) {
 	if buildinfo.IsRelease() {
 		t.Skip("development registration boundary")
 	}
@@ -35,8 +35,11 @@ func TestDevelopmentRegistrationPreservesReleaseManifestAndRejectsReleaseOrigin(
 		t.Fatal("development registration changed the release manifest")
 	}
 	dev := manifestFor(helper, targets[0])
-	if len(dev.AllowedOrigins) != 1 || dev.AllowedOrigins[0] != "chrome-extension://"+buildinfo.DevChromiumID+"/" || Authorized([]string{"chrome-extension://" + buildinfo.ReleaseChromiumID + "/"}) {
-		t.Fatal("release browser identity can access development sessions")
+	if len(dev.AllowedOrigins) != 1 || dev.AllowedOrigins[0] != "chrome-extension://"+buildinfo.ReleaseChromiumID+"/" || !Authorized([]string{"chrome-extension://" + buildinfo.ReleaseChromiumID + "/"}) || Authorized([]string{"chrome-extension://" + buildinfo.DevChromiumID + "/"}) {
+		t.Fatal("development host must authorize only the unified extension identity")
+	}
+	if firefox := manifestFor(helper, registrationTarget{firefox: true}); len(firefox.AllowedExtensions) != 1 || firefox.AllowedExtensions[0] != "passpine@knothhe.com" || !Authorized([]string{"manifest", "passpine@knothhe.com"}) || Authorized([]string{"manifest", "passpine-dev@knothhe.com"}) {
+		t.Fatal("development Firefox host must authorize only the unified extension identity")
 	}
 }
 

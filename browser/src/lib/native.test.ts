@@ -32,6 +32,25 @@ describe('persistent native connection', () => {
     expect(count).toBe(2); expect(second.messages.map(message => message.action)).toEqual(['configure']);
     second.reply(0, {}); await retry;
   });
+  it('retires a selected client, rejects queued metadata and never reconnects it', async () => {
+    const channel = mockPort(), connect = vi.fn(() => channel.port), connection = new NativeConnection(connect);
+    const fetch = connection.request({ protocol: 1, action: 'fetch', vaultId: 'vault', entry: 'entry', interactive: true });
+    const configure = connection.request({ protocol: 1, action: 'configure' });
+    const shared = connection.request({ protocol: 1, action: 'configure' });
+    const status = connection.request({ protocol: 1, action: 'status' });
+    const results = Promise.allSettled([fetch, configure, shared, status]);
+    expect(channel.messages.map(message => message.action)).toEqual(['fetch']);
+    connection.disconnect();
+    for (const result of await results) {
+      expect(result.status).toBe('rejected');
+      if (result.status === 'rejected') expect(result.reason).toMatchObject({ code: 'native_connection_failed' });
+    }
+    channel.reply(0, { contents: 'late-secret' });
+    await expect(connection.request({ protocol: 1, action: 'configure' })).rejects.toMatchObject({ code: 'native_connection_failed' });
+    await expect(connection.request({ protocol: 1, action: 'save', entry: 'entry', contents: 'changed', mode: 'edit', revision: 'old' })).rejects.toMatchObject({ code: 'native_connection_failed' });
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(channel.messages.map(message => message.action)).toEqual(['fetch']);
+  });
   it.each(['copy', 'copy-generated'] as const)('does not deduplicate %s requests', async action => {
     const channel = mockPort(), connection = new NativeConnection(() => channel.port);
     const contents = action === 'copy-generated' ? { contents: 'fresh-password' } : { entry: 'same' };

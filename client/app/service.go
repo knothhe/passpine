@@ -973,8 +973,11 @@ func writePrivate(path string, data []byte, noReplace bool) error {
 func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 	lease := browserResponseLease{epoch: s.cancellation.Load()}
 	var r Request
-	if len(raw) > nativehost.MaxFrame || json.Unmarshal(raw, &r) != nil || r.Protocol != 1 {
-		return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})
+	if len(raw) > nativehost.MaxFrame || json.Unmarshal(raw, &r) != nil || r.Protocol == 0 {
+		return encode(Response{RequestID: r.RequestID, Protocol: nativehost.Protocol, Status: "error", Code: "invalid_request"})
+	}
+	if r.Protocol != nativehost.Protocol {
+		return encode(Response{RequestID: r.RequestID, Protocol: nativehost.Protocol, Status: "error", Code: "protocol_mismatch"})
 	}
 	switch r.Action {
 	case "configure", "status", "list", "unlock", "lock", "generate":

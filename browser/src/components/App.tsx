@@ -14,6 +14,7 @@ import { SessionGuard } from '../lib/session';
 import { matchesPopupShortcut, usePopupShortcuts } from '../lib/popup-shortcuts';
 import { ShortcutKeys } from './ShortcutRecorder';
 import { useExpiringValue } from '../lib/use-expiring-value';
+import { subscribeClientTarget } from '../lib/client-target';
 
 export type Detail = EntryDocument & { entry: Entry; vaultId: string; receivedAt: number };
 export type EditorValue = { vaultId: string; original?: Detail; password?: string };
@@ -22,6 +23,15 @@ type RefreshResult = { ok: boolean; error?: string };
 type PopupView = 'list' | 'detail' | 'editor';
 
 export function App({ client }: { client: Client }) {
+  const [connectionGeneration, setConnectionGeneration] = useState(0);
+  useEffect(() => subscribeClientTarget(() => {}, client.demo, () => setConnectionGeneration(value => value + 1)), [client.demo]);
+  // A different client owns a different vault session, including when both
+  // clients happen to return the same vault ID or metadata revision.
+  return <VaultApp key={connectionGeneration} client={client}/>;
+}
+
+function VaultApp({ client: sourceClient }: { client: Client }) {
+  const [client] = useState(() => sourceClient.scope?.() ?? sourceClient);
   const copy = useCopy();
   const { locale } = useLanguage();
   const [snapshot, setSnapshot] = useState<Snapshot>();

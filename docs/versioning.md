@@ -1,6 +1,6 @@
 # 版本管理与发布
 
-客户端和浏览器扩展共享一个稳定版本。根目录 `package.json` 是统一版本来源，`browser/package.json` 必须一致。客户端构建将版本注入客户端和 Native Messaging Host 的 `--version`、macOS bundle；WXT 从扩展包读取 manifest 和 ZIP 版本。
+客户端和浏览器扩展在同次发布中共享一个稳定版本。根目录 `package.json` 是统一版本来源，`browser/package.json` 必须一致。客户端构建将版本注入客户端和 Native Messaging Host 的 `--version`、macOS bundle；WXT 从扩展包读取 manifest 和 ZIP 版本。发布版本号不参与连接校验：用户安装的客户端与扩展可以来自不同发布，只要通信协议兼容即可，见[通信兼容规则](ARCHITECTURE.md#协议兼容)。
 
 ## 一条命令发布
 
@@ -82,13 +82,13 @@ make release-initial RELEASE_FLAGS="--apply --no-push"
 make release VERSION_BUMP=patch RELEASE_FLAGS="--apply --no-push"
 ```
 
-版本命令只更新两个 `package.json`，不提交、不打 tag、不构建或推送。直接 `go run` 默认 Dev 通道，`--version` 返回 `development`；本地 Make 构建注入 `<基础版本>-dev.<提交>`，扩展保留浏览器要求的数字 manifest 版本并显示 Dev 名称。`--build-channel` 可检查客户端及 Host 的实际通道。`--no-push` 不查询远程，不能证明版本尚未发布。
+版本命令只更新两个 `package.json`，不提交、不打 tag、不构建或推送。直接 `go run` 默认 Dev 通道，`--version` 返回 `development`；本地 Make 构建注入 `<基础版本>-dev.<提交>`。扩展统一使用数字 manifest 版本与 Passpine 名称。`--build-channel` 可检查客户端及 Host 的实际通道。`--no-push` 不查询远程，不能证明版本尚未发布。
 
 ## Dev 与正式版
 
-`make build` / `make install` 及其客户端、扩展子命令默认服务本地 Dev 开发。Dev 使用 `Passpine Dev` 应用名、独立的应用标识、数据目录、Native Messaging Host 和扩展 ID；不迁移正式数据，不扫描 `~/.password-store`，不启用正式更新。构建产物位于 `dist/dev/` 和浏览器独立 Dev 输出目录。具体安装位置见 [本地安装](install-local.md)。
+`make build` / `make install` 默认构建 Dev 客户端和统一扩展。Dev 客户端使用 `Passpine Dev` 应用名、独立的应用标识、数据目录和 Native Messaging Host；不迁移正式数据，不扫描 `~/.password-store`，不启用正式更新。客户端产物位于 `dist/dev/`，扩展始终使用 `browser/.output/`。扩展不再按构建通道切换身份；商店安装固定连接正式客户端，本地解包加载可在设置中选择 Dev 客户端。具体安装位置见 [本地安装](install-local.md)。
 
-正式版只由 GitHub Actions 在匹配版本的发布 tag 上设置 `PASSPINE_BUILD_CHANNEL=release` 后构建。脚本校验 Actions 环境、仓库、tag/HEAD 和源码状态，发布步骤再次检查制品身份。仅在本地设置 `PASSPINE_BUILD_CHANNEL=release` 不会生成正式版；本地安装入口也拒绝正式通道，正式版请下载 Release 安装包。
+正式客户端只由 GitHub Actions 在匹配版本的发布 tag 上设置 `PASSPINE_BUILD_CHANNEL=release` 后构建。脚本校验 Actions 环境、仓库、tag/HEAD 和源码状态，发布步骤再次检查制品身份。仅在本地设置 `PASSPINE_BUILD_CHANNEL=release` 不会生成正式客户端；客户端本地安装入口也拒绝正式通道，正式客户端请下载 Release 安装包。统一扩展可在本地构建与安装，无需设置客户端发布通道。
 
 ## 失败与恢复
 

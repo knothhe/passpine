@@ -1,0 +1,10 @@
+window.H2_DESIGN_CANVAS={boards:[
+{file:'release.html',titleKey:'releaseBoard',x:0,y:100,w:900,h:340},
+{file:'dev.html',titleKey:'devBoard',x:950,y:100,w:900,h:340},
+{file:'saving.html',titleKey:'savingBoard',x:0,y:500,w:900,h:340},
+{file:'error.html',titleKey:'errorBoard',x:950,y:500,w:900,h:390},
+{file:'load-error.html',titleKey:'loadBoard',x:0,y:950,w:900,h:390},
+{file:'store.html',titleKey:'storeBoard',x:950,y:950,w:900,h:340},
+{file:'dev.html',titleKey:'narrowBoard',x:0,y:1400,w:390,h:420},
+{file:'dev.html?lang=en&theme=dark',titleKey:'darkBoard',x:440,y:1400,w:900,h:340}
+]};

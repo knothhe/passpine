@@ -25,7 +25,7 @@ func configFixture(t *testing.T) string {
 	return base
 }
 
-func TestChannelsUseDifferentSystemAndBrowserIdentities(t *testing.T) {
+func TestChannelsUseSeparateSystemIdentitiesAndOneBrowserIdentity(t *testing.T) {
 	for _, channel := range []string{"dev", "release", "invalid"} {
 		t.Run(channel, func(t *testing.T) {
 			testChannel(t, channel)
@@ -37,7 +37,7 @@ func TestChannelsUseDifferentSystemAndBrowserIdentities(t *testing.T) {
 				if Name() != "Passpine" || BundleID() != "com.knothhe.passpine" || HostName() != BundleID() || FirefoxID() != "passpine@knothhe.com" || ChromiumID() != ReleaseChromiumID || HomeEnvironment() != "PASSPINE_HOME" || DefaultGlobalShortcut() != "Ctrl+Alt+Space" || Version("1.2.3") != "1.2.3" || ChannelName() != "release" {
 					t.Fatal("release identity changed")
 				}
-			} else if Name() != "Passpine Dev" || BundleID() != "com.knothhe.passpine.dev" || HostName() != BundleID() || FirefoxID() != "passpine-dev@knothhe.com" || ChromiumID() != DevChromiumID || ChromiumID() == ReleaseChromiumID || HomeEnvironment() != "PASSPINE_DEV_HOME" || DefaultGlobalShortcut() != "Ctrl+Alt+Shift+Space" || Version("1.2.3") != "1.2.3-dev" || ChannelName() != "dev" {
+			} else if Name() != "Passpine Dev" || BundleID() != "com.knothhe.passpine.dev" || HostName() != BundleID() || FirefoxID() != "passpine@knothhe.com" || ChromiumID() != ReleaseChromiumID || HomeEnvironment() != "PASSPINE_DEV_HOME" || DefaultGlobalShortcut() != "Ctrl+Alt+Shift+Space" || Version("1.2.3") != "1.2.3-dev" || ChannelName() != "dev" {
 				t.Fatal("development identity overlaps the release")
 			}
 		})
