@@ -267,6 +267,8 @@ func (a *application) gitStatusLabel() string {
 	switch {
 	case a.state.GitSyncing:
 		return a.t("正在同步")
+	case a.gitActionPending:
+		return a.t("正在处理 Git 操作…")
 	case a.state.GitRefreshing && a.state.GitStatusAt == "":
 		return a.t("正在检查")
 	case a.state.GitConflict:
@@ -314,6 +316,8 @@ func (a *application) gitStatusHint() string {
 	switch {
 	case a.state.GitSyncing:
 		return a.t("正在同步加密条目，可以继续使用密码库。")
+	case a.gitActionPending:
+		return a.t("Git 操作正在后台进行，本地密码库仍可使用。")
 	case a.state.GitRefreshing && a.state.GitStatusAt == "":
 		return a.t("正在读取本机仓库状态。")
 	case a.state.GitConflict:
@@ -408,10 +412,16 @@ func (a *application) gitSettingsStatus(c *ui.Context) {
 }
 
 func (a *application) gitHeaderStatus(c *ui.Context) {
-	status := ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(6).Tooltip(a.gitStatusDescription())
+	// The header is the single place for Git status; its details live in the
+	// tooltip and recovery actions in the vault sync settings it opens.
+	status := ui.ButtonBase(c).Key("git-header-status").Label(a.gitStatusLabel()).Tooltip(a.gitStatusDescription()).
+		Shrink(0).Height(32).Padding(6, 8).AlignItems(ui.Center).Gap(6).Radius(c.Theme().Radius)
+	if status.Hovered() {
+		status.Background(c.Theme().Text.Alpha(.04))
+	}
 	status.Children(func() {
-		if a.state.GitSyncing {
-			components.ProgressRing(c, -1).Size(14, 14).Label(a.t("正在同步密码库"))
+		if a.state.GitSyncing || a.gitActionPending {
+			components.ProgressRing(c, -1).Size(14, 14).Label(a.gitStatusLabel())
 		} else {
 			icon, color := lucide.GitBranch(), c.Theme().TextMuted
 			if a.state.GitError != "" || a.state.GitConflict {
@@ -423,4 +433,7 @@ func (a *application) gitHeaderStatus(c *ui.Context) {
 			components.Text(c, a.gitStatusLabel()).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).SingleLine()
 		}
 	})
+	if status.Clicked() {
+		a.navigateSettingsCategory("vault")
+	}
 }
