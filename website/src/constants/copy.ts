@@ -36,6 +36,13 @@ export const zh = {
     extensionAlt: "Passpine 浏览器扩展：搜索和填充演示账号",
     points: ["无需注册账户", "密码条目本地加密", "沿用标准 pass 格式"],
   },
+  video: {
+    eyebrow: "VIDEO",
+    title: "30 秒看 Passpine 怎么用",
+    description: "填充登录、生成密码、Git 同步，以及导入已有的 pass 密码库。",
+    label: "Passpine 产品演示视频",
+    unsupported: "当前浏览器无法播放此视频。",
+  },
   features: {
     eyebrow: "FEATURES",
     title: "日常需要的功能",
@@ -244,6 +251,14 @@ export const en: Copy = {
       "Entries encrypted locally",
       "Standard pass format",
     ],
+  },
+  video: {
+    eyebrow: "VIDEO",
+    title: "Passpine in 30 seconds",
+    description:
+      "Fill sign-ins, generate passwords, sync with Git, and import an existing pass vault.",
+    label: "Passpine product demo video",
+    unsupported: "This browser can't play the video.",
   },
   features: {
     eyebrow: "FEATURES",

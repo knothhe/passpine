@@ -31,6 +31,7 @@ import {
   type Copy,
   type LanguagePreference,
 } from "./constants/copy";
+import { promoVideo } from "./constants/media";
 import {
   chooseAsset,
   chooseExtension,
@@ -110,7 +111,7 @@ function useLanguage() {
       /* Storage can be disabled. */
     }
   }, [language, copy, preference]);
-  return { copy, preference, setPreference };
+  return { copy, language, preference, setPreference };
 }
 
 function useRelease() {
@@ -383,7 +384,8 @@ export function DownloadSection({
 }
 
 export function App() {
-  const { copy: c, preference, setPreference } = useLanguage();
+  const { copy: c, language, preference, setPreference } = useLanguage();
+  const video = promoVideo(language);
   const [device, setDevice] = useState<Device>(() => detectPlatform());
   const releaseState = useRelease();
   useEffect(() => {
@@ -489,6 +491,33 @@ export function App() {
                 </span>
               ))}
             </div>
+          </section>
+          <section
+            id="video"
+            className="video-section section-shell"
+            aria-labelledby="video-title"
+          >
+            <div className="section-heading split-heading">
+              <div>
+                <span className="eyebrow">{c.video.eyebrow}</span>
+                <h2 id="video-title">{c.video.title}</h2>
+              </div>
+              <p>{c.video.description}</p>
+            </div>
+            <video
+              key={video.src}
+              className="promo-video"
+              src={video.src}
+              poster={video.poster}
+              aria-label={c.video.label}
+              controls
+              playsInline
+              preload="none"
+              width={1920}
+              height={1080}
+            >
+              {c.video.unsupported}
+            </video>
           </section>
           <section
             id="features"
