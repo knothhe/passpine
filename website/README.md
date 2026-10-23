@@ -33,6 +33,12 @@ pnpm --dir website run sync:releases
 
 官网支持 `system`、`en` 和 `zh-CN` 三种语言选项。默认跟随系统，不支持的系统语言回退为 English，与客户端和扩展保持一致；手动选择会保存在浏览器中。文案集中管理在 `src/constants/copy.ts`，新增用户可见内容需同步补齐中英文。
 
+## 宣传片
+
+视频区块按当前语言播放中文或英文宣传片。视频和封面不随站点打包，存放在 R2 bucket `oss`（自定义域名 `oss.knothhe.com`）的 `passpine/promo/<版本>/` 下，地址集中在 `src/constants/media.ts`；`public/_headers` 的 CSP 已为该域名放行 `img-src` 与 `media-src`。
+
+宣传片源码位于 `design/promo-video`：`pnpm --dir design/promo-video run render` 渲染中英文成片和封面，登录 Wrangler 后 `pnpm --dir design/promo-video run upload` 上传。已上传的版本不覆盖；更新视频时提高上传脚本中的 `VERSION`，并同步修改 `media.ts`。
+
 ## GitHub Releases 下载
 
 安装包来自 [knothhe/passpine 的 GitHub Releases](https://github.com/knothhe/passpine/releases/latest)。下载区按 Release 实际附件生成卡片，仅显示已发布且符合预期命名与下载地址规则的文件，不为尚未发布的系统或架构生成按钮。页面在浏览器中检测操作系统和可用的架构信息，优先排列匹配的安装包；其他实际可下载的文件仍保留在列表中。
