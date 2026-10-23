@@ -31,6 +31,8 @@ export const englishCopy = {
   },
   accounts: {
     title: 'Accounts', details: 'Account details', create: 'New account', edit: 'Edit account', delete: 'Delete account', fill: 'Fill account',
+    fillCredentials: 'Fill login',
+    fillEntry: (title: string) => `Fill username and password for ${title}`,
     openWebsiteFirst: 'Open a website first', currentWebsite: 'Current website', noWebsite: 'No current website', websiteNotOpen: 'No website open',
     websiteNotSet: 'No website set', websiteAssociated: 'Linked to the current website', associateCurrentWebsite: 'Link to current website',
     dissociateCurrentWebsite: 'Unlink current website',
@@ -47,7 +49,7 @@ export const englishCopy = {
     noMatches: 'No linked accounts',
     count: (count: number) => `${count} ${count === 1 ? 'account' : 'accounts'}`,
     search: 'Search accounts', searchVault: 'Search vault', clearSearch: 'Clear search', searchResults: 'Search results', all: 'All accounts',
-    noResults: 'No matching accounts', empty: 'No accounts in this vault yet', loading: 'Loading account…',
+    noResults: 'No matching accounts', noResultsHelp: 'Try another keyword, or clear the search to see all accounts.', empty: 'No accounts in this vault yet', loading: 'Loading account…',
     maskedPassword: '••••••••••••••••', maskedOTP: '••••••',
     otp: (seconds: number) => seconds > 0 ? `One-time code · ${seconds}s` : 'One-time code · Refreshing',
     insecureProtocol: 'HTTP',
@@ -66,6 +68,9 @@ export const englishCopy = {
     moveToTrash: 'Move to trash', movedToTrash: 'Moved to encrypted trash',
   },
   editor: {
+    unsavedTitle: 'Discard unsaved changes?',
+    unsavedDescription: 'Changes to this account have not been saved. Keep editing to retain your input, or discard these changes.',
+    continueEditing: 'Keep editing', discardChanges: 'Discard changes',
     backToDetails: 'Back to account details', backToEditor: 'Back to editing', name: 'Name', pathPlaceholder: 'path/to/entry (nested paths supported)',
     usernamePlaceholder: 'Username or email', websitePlaceholder: 'https://example.com', customFields: 'Custom fields', addField: 'Add field',
     fieldKeyPlaceholder: 'key', fieldValuePlaceholder: 'value',

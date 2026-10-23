@@ -126,6 +126,22 @@ describe('extension language settings', () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
+  it('translates an open unsaved-changes dialog without clearing inputs or requesting credentials', async () => {
+    const { client, request } = clientFixture();
+    await render(createElement(EditorForm, { client, value: { vaultId: 'vault' }, defaultURL: 'https://例子.test', close: () => {}, saved: async () => {} }));
+    const input = container.querySelector<HTMLInputElement>('input[placeholder="用户名或邮箱"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '中文 user@example.test');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => container.querySelector<HTMLButtonElement>('form button[aria-label="返回密码库"]')!.click());
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain('放弃未保存的修改？');
+    await act(async () => externalLanguage('en'));
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain('Discard unsaved changes?');
+    expect(container.querySelector<HTMLInputElement>('input[placeholder="Username or email"]')?.value).toBe('中文 user@example.test');
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it('rolls back an unsuccessful save and lets the user retry without changing appearance settings', async () => {
     await render();
     extension.storage.local.set.mockRejectedValueOnce(new Error('Storage unavailable'));

@@ -56,6 +56,21 @@ async function pressNavigation(target: Element, key: string, modifiers: Keyboard
 }
 
 describe('account list keyboard navigation', () => {
+  it('clears an empty search from the results body and restores the search focus without refetching', async () => {
+    const fixture = navigationFixture(), request = vi.spyOn(fixture.client, 'request');
+    await render(fixture.client);
+    const search = container.querySelector<HTMLInputElement>('input[aria-label="搜索密码库"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'no such account');
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(container.querySelector('.no-results')?.textContent).toContain('换个关键词，或清除搜索查看全部账号。');
+    await act(async () => container.querySelector<HTMLButtonElement>('.no-results button')!.click());
+    expect(search.value).toBe(''); expect(document.activeElement).toBe(search);
+    expect(container.querySelectorAll('button[data-entry-path]')).toHaveLength(3);
+    expect(request).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ['n', { ctrlKey: true }, [0, 1, 2]],
     ['p', { ctrlKey: true }, [2, 1, 0]],
@@ -219,6 +234,7 @@ describe('account list primary action', () => {
   it.each([[false, false], [false, true], [true, false], [true, true]])('fills from the entry body and stays in the list (locked=%s, matched=%s)', async (locked, matched) => {
     const fixture = fillFixture({ locked, matched });
     await render(fixture.client);
+    expect(container.querySelector('button[data-entry-path]')?.getAttribute('aria-label')).toBe('填充「Alex」的账号与密码');
     await act(async () => container.querySelector<HTMLButtonElement>('button[data-entry-path]')!.click());
     expect(fixture.requests.map(request => request.action)).toEqual(locked ? ['snapshot', 'unlock', 'snapshot', 'fill', 'snapshot'] : ['snapshot', 'fill', 'snapshot']);
     expect(fixture.requests.find(request => request.action === 'fill')).toEqual({ action: 'fill', vaultId: 'first', entry: 'accounts/Alex', tab: fixture.state.tab });
@@ -258,8 +274,10 @@ describe('account list primary action', () => {
     localStorage.setItem('popupShortcuts', JSON.stringify([{ id: 'fill', action: 'fill', shortcut: 'Alt+F' }]));
     const fixture = fillFixture();
     await render(fixture.client); await clickAction('查看 Alex');
-    expect(currentPage().querySelector<HTMLButtonElement>('button[aria-label="填充账号"]')?.disabled).toBe(false);
-    if (trigger === 'button') await clickAction('填充账号');
+    expect(currentPage().querySelector<HTMLButtonElement>('button[aria-label="填充账号与密码"]')?.disabled).toBe(false);
+    expect(currentPage().querySelector('button[aria-label="填充账号与密码"]')?.textContent).toBe('填充账号与密码');
+    expect(currentPage().querySelector('button[aria-label="编辑账号"]')?.textContent).toBe('');
+    if (trigger === 'button') await clickAction('填充账号与密码');
     else await pressNavigation(window.document.activeElement!, 'f', { altKey: true });
     expect(fixture.requests.some(request => request.action === 'fill')).toBe(true);
     expect(currentPage().dataset.popupPage).toBe('detail');
@@ -270,7 +288,7 @@ describe('account list primary action', () => {
     expect(fixture.requests).toContainEqual({ action: 'dissociate', vaultId: 'first', entry: 'accounts/Alex', tab: fixture.state.tab });
     expect(currentPage().querySelector('[aria-label="已关联当前网站"]')).toBeNull();
     expect(container.querySelector('.notice[role="status"]')?.textContent).toContain('已取消关联 example.test');
-    expect(currentPage().querySelector<HTMLButtonElement>('button[aria-label="填充账号"]')?.disabled).toBe(false);
+    expect(currentPage().querySelector<HTMLButtonElement>('button[aria-label="填充账号与密码"]')?.disabled).toBe(false);
     await clickAction('返回密码库');
     expect(container.querySelector('.site-account-badge')).toBeNull();
     expect(container.querySelector('.site-match-count')?.textContent).toBe('尚无关联账号');
@@ -322,7 +340,7 @@ describe('account list primary action', () => {
     if (trigger === 'list') await act(async () => container.querySelector<HTMLButtonElement>('button[data-entry-path]')!.click());
     else {
       await clickAction('查看 Alex');
-      if (trigger === 'detail button') await clickAction('填充账号');
+      if (trigger === 'detail button') await clickAction('填充账号与密码');
       else await pressNavigation(document.activeElement!, 'f', { altKey: true });
     }
     const actionsBeforeResult = fixture.requests.map(request => request.action);
@@ -432,6 +450,30 @@ async function clickAction(label: string) {
 }
 
 describe('responsive detail navigation and session safety', () => {
+  it.each(['lock', 'session expiry', 'visibility loss'])('scrubs dirty editor and its leave dialog immediately on %s', async trigger => {
+    const fixture = detailFixture();
+    await render(fixture.client); await clickAction('查看 Alex');
+    await act(async () => fixture.fetch.resolve(credentials));
+    await clickAction('编辑账号');
+    const username = currentPage().querySelector<HTMLInputElement>('input[placeholder="用户名或邮箱"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(username, 'private-draft');
+      username.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await clickAction('返回账号详情');
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+    if (trigger === 'lock') await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="锁定密码库"]')!.click());
+    else {
+      if (trigger === 'session expiry') fixture.state.locked = true;
+      else vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+      await act(async () => document.dispatchEvent(new Event('visibilitychange')));
+    }
+    expect(currentPage().dataset.popupPage).toBe('list');
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(Array.from(container.querySelectorAll('input')).some(input => ['private-draft', 'sensitive-password', 'private-user'].includes(input.value))).toBe(false);
+    expect(container.textContent).not.toContain('sensitive-note');
+  });
+
   it('animates forward into details and editing, then reverses direction when going back', async () => {
     const fixture = detailFixture();
     await render(fixture.client); await clickAction('查看 Alex');
