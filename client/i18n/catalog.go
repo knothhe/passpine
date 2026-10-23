@@ -5,25 +5,36 @@ const ClipboardWriteFailed = "无法写入剪贴板，请重试。"
 // CLIHelp lists commands with the invoked program name, so one template
 // documents both `passpine ...` and the optional `pass ...` alias.
 const CLIHelp = `用法：
-  %[1]s [ls] [子文件夹]                列出条目
-  %[1]s find 条目名称…                 按名称查找条目
+  %[1]s [ls] [子文件夹]
+      列出条目
+  %[1]s find 条目名称…
+      按名称查找条目
   %[1]s [show] [-c[行号]] [-q[行号]] 条目名称
-                                        显示条目，或复制 / 以二维码显示指定行
-  %[1]s grep [-i] [-F] 搜索内容        在解密内容中搜索
-  %[1]s insert [-e | -m] [-f] 条目名称 添加条目
-  %[1]s edit 条目名称                  使用 $EDITOR 编辑条目
+      显示条目，或复制 / 以二维码显示指定行
+  %[1]s grep [-i] [-F] 搜索内容
+      在解密内容中搜索
+  %[1]s insert [-e | -m] [-f] 条目名称
+      添加条目
+  %[1]s edit 条目名称
+      使用 $EDITOR 编辑条目
   %[1]s generate [-n] [-c] [-q] [-i | -f] 条目名称 [长度]
-                                        生成密码
-  %[1]s rm [-r] [-f] 条目名称          将条目或文件夹移到回收站
-  %[1]s mv [-f] 原名称 新名称          移动或重命名
-  %[1]s cp [-f] 原名称 新名称          复制
-  %[1]s otp [-c] 条目名称              显示当前 TOTP 验证码
-  %[1]s git Git 命令参数…              在密码库中运行 Git
+      生成密码
+  %[1]s rm [-r] [-f] 条目名称
+      将条目或文件夹移到回收站
+  %[1]s mv [-f] 原名称 新名称
+      移动或重命名
+  %[1]s cp [-f] 原名称 新名称
+      复制
+  %[1]s otp [-c] 条目名称
+      显示当前 TOTP 验证码
+  %[1]s git Git 命令参数…
+      在密码库中运行 Git
   %[1]s cli install [--pass-alias] [--dir 目录]
-                                        安装命令，可选添加 pass 别名
+      安装命令，可选添加 pass 别名
   %[1]s cli uninstall [--pass-alias] [--dir 目录]
-                                        移除命令链接或 pass 别名
-  %[1]s cli status [--dir 目录]         查看命令与别名状态
+      移除命令链接或 pass 别名
+  %[1]s cli status [--dir 目录]
+      查看命令与别名状态
 
 默认使用 Passpine 客户端当前选择的密码库；设置 PASSWORD_STORE_DIR 可选择其他已在客户端中打开的密码库。
 也支持 PASSWORD_STORE_CLIP_TIME、PASSWORD_STORE_GENERATED_LENGTH、PASSWORD_STORE_X_SELECTION 和 EDITOR。
@@ -648,28 +659,29 @@ var english = map[string]string{
 	"%s 已存在。要覆盖吗？":                "An entry already exists for %s. Overwrite it?",
 	"%s 是文件夹，不能复制或显示二维码。":         "%s is a folder and cannot be copied or shown as a QR code.",
 	"%s 是文件夹，删除时请使用 --recursive。": "%s is a folder. Use --recursive to remove it.",
-	"%s：未启用":                          "%s: not enabled",
-	"%s 未安装：%s":                       "%s is not installed: %s",
-	"%s 的 Passpine 私钥口令：":             "Passpine private key passphrase for %s: ",
-	"%s 的内容未更改。":                      "Password for %s unchanged.",
-	"%s 的新密码：":                        "The generated password for %s is:",
-	"%s 的第 %d 行没有可复制的内容。":             "There is nothing to use from %s at line %d.",
-	"Windows 暂不支持自动安装命令链接。":           "Installing command links automatically is not supported on Windows yet.",
-	"两次输入的密码不一致。":                     "The entered passwords do not match.",
-	"仍要继续吗？":                          "Continue anyway?",
-	"再次输入 %s 的密码：":                    "Retype password for %s: ",
-	"密码存储":                            "Password Store",
-	"密码库中没有 %s。":                      "%s is not in the password store.",
-	"密码库正被另一个操作使用，请稍后重试。":             "The vault is in use by another operation. Try again shortly.",
-	"密码库还不是 Git 仓库。请运行“%s git init”。": "The password store is not a Git repository. Run \"%s git init\".",
-	"密码长度必须在 4 到 256 之间。":             "Password length must be between 4 and 256.",
-	"密码长度必须是数字：%s":                    "Password length must be a number: %s",
-	"已保存，但未能提交到 Git：%s":               "Saved, but could not commit to Git: %s",
-	"已创建 %s：%s":                       "Created %s: %s",
-	"已将 %s 复制到剪贴板，将在 %d 秒后清除。":        "Copied %s to clipboard. Will clear in %d seconds.",
-	"已移到回收站：%s":                       "Moved to trash: %s",
-	"已移除 %s：%s":                       "Removed %s: %s",
-	"找不到可用的剪贴板工具。请安装 wl-clipboard、xclip 或 xsel。":          "No clipboard tool found. Install wl-clipboard, xclip or xsel.",
+	"%s：未启用":              "%s: not enabled",
+	"%s 未安装：%s":           "%s is not installed: %s",
+	"%s 的 Passpine 私钥口令：": "Passpine private key passphrase for %s: ",
+	"%s 的内容未更改。":          "Password for %s unchanged.",
+	"%s 的新密码：":            "The generated password for %s is:",
+	"%s 的第 %d 行没有可复制的内容。": "There is nothing to use from %s at line %d.",
+	"Windows 版暂不支持命令行，请在 macOS 或 Linux 上使用 %s。":  "The command line is not available on Windows yet. Use %s on macOS or Linux.",
+	"Windows 暂不支持自动安装命令链接。":                      "Installing command links automatically is not supported on Windows yet.",
+	"两次输入的密码不一致。":                                "The entered passwords do not match.",
+	"仍要继续吗？":                                     "Continue anyway?",
+	"再次输入 %s 的密码：":                               "Retype password for %s: ",
+	"密码存储":                                       "Password Store",
+	"密码库中没有 %s。":                                 "%s is not in the password store.",
+	"密码库正被另一个操作使用，请稍后重试。":                        "The vault is in use by another operation. Try again shortly.",
+	"密码库还不是 Git 仓库。请运行“%s git init”。":            "The password store is not a Git repository. Run \"%s git init\".",
+	"密码长度必须在 4 到 256 之间。":                        "Password length must be between 4 and 256.",
+	"密码长度必须是数字：%s":                               "Password length must be a number: %s",
+	"已保存，但未能提交到 Git：%s":                          "Saved, but could not commit to Git: %s",
+	"已创建 %s：%s":                                  "Created %s: %s",
+	"已将 %s 复制到剪贴板，将在 %d 秒后清除。":                   "Copied %s to clipboard. Will clear in %d seconds.",
+	"已移到回收站：%s":                                  "Moved to trash: %s",
+	"已移除 %s：%s":                                  "Removed %s: %s",
+	"找不到可用的剪贴板工具。请安装 wl-clipboard、xclip 或 xsel。": "No clipboard tool found. Install wl-clipboard, xclip or xsel.",
 	"找不到此密码库的 Passpine 私钥。请先在 Passpine 客户端中创建、打开或导入该密码库。": "No Passpine private key was found for this vault. Create, open or import it in the Passpine client first.",
 	"搜索词：%s":              "Search Terms: %s",
 	"无效的搜索表达式：%s":         "Invalid search pattern: %s",
@@ -704,26 +716,36 @@ var english = map[string]string{
 	"错误：%s":                                                                                             "Error: %s",
 	"需要在终端中输入私钥口令才能解锁密码库。":                                                                              "A terminal is required to enter the private key passphrase and unlock the vault.",
 	CLIHelp: `Usage:
-  %[1]s [ls] [subfolder]               List entries
-  %[1]s find pass-names...             Find entries by name
+  %[1]s [ls] [subfolder]
+      List entries
+  %[1]s find pass-names...
+      Find entries by name
   %[1]s [show] [-c[line]] [-q[line]] pass-name
-                                        Show an entry, or copy / show a line as a QR code
-  %[1]s grep [-i] [-F] search-string   Search decrypted contents
+      Show an entry, or copy / show a line as a QR code
+  %[1]s grep [-i] [-F] search-string
+      Search decrypted contents
   %[1]s insert [-e | -m] [-f] pass-name
-                                        Add an entry
-  %[1]s edit pass-name                 Edit an entry with $EDITOR
+      Add an entry
+  %[1]s edit pass-name
+      Edit an entry with $EDITOR
   %[1]s generate [-n] [-c] [-q] [-i | -f] pass-name [length]
-                                        Generate a password
-  %[1]s rm [-r] [-f] pass-name         Move an entry or folder to the trash
-  %[1]s mv [-f] old-path new-path      Move or rename
-  %[1]s cp [-f] old-path new-path      Copy
-  %[1]s otp [-c] pass-name             Show the current TOTP code
-  %[1]s git git-command-args...        Run Git in the password store
+      Generate a password
+  %[1]s rm [-r] [-f] pass-name
+      Move an entry or folder to the trash
+  %[1]s mv [-f] old-path new-path
+      Move or rename
+  %[1]s cp [-f] old-path new-path
+      Copy
+  %[1]s otp [-c] pass-name
+      Show the current TOTP code
+  %[1]s git git-command-args...
+      Run Git in the password store
   %[1]s cli install [--pass-alias] [--dir DIRECTORY]
-                                        Install the command, optionally with a pass alias
+      Install the command, optionally with a pass alias
   %[1]s cli uninstall [--pass-alias] [--dir DIRECTORY]
-                                        Remove the command link or the pass alias
-  %[1]s cli status [--dir DIRECTORY]   Show command and alias status
+      Remove the command link or the pass alias
+  %[1]s cli status [--dir DIRECTORY]
+      Show command and alias status
 
 Uses the vault currently selected in the Passpine client. Set PASSWORD_STORE_DIR to use another vault already opened in the client.
 PASSWORD_STORE_CLIP_TIME, PASSWORD_STORE_GENERATED_LENGTH, PASSWORD_STORE_X_SELECTION and EDITOR are also supported.

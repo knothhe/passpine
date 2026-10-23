@@ -26,7 +26,7 @@ passpine cli status                   # 查看 passpine 与 pass 的状态
 
 链接默认放在 `~/.local/bin`，可用 `--dir` 指定其他目录。安装不会覆盖已有的 `pass` 或其他文件，卸载只移除指向当前 Passpine 的符号链接；若 PATH 中原版 pass 排在前面会给出提示。通过 `pass` 调用时，不带参数等同于 `pass ls`。
 
-Windows 客户端以 GUI 子系统构建，暂不支持命令行输出和自动安装链接。
+Windows 客户端以 GUI 子系统构建，暂不支持命令行：在终端中运行命令只会提示不支持并退出；从快捷方式等非终端位置带参数启动时仍打开桌面客户端。
 
 开发时可用 `make client:install` 自动创建的 Dev 测试密码库验证命令行，详见[本地安装说明](install-local.md)。
 

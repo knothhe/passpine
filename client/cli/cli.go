@@ -54,15 +54,17 @@ type command struct {
 
 // Invoked reports whether the executable should run the command line instead
 // of the desktop client. A bare `passpine` and flag-only launches keep opening
-// the desktop app; the `pass` alias always uses the command line.
+// the desktop app; the `pass` alias always uses the command line. On Windows a
+// command is recognised only when started from a console.
 func Invoked(args []string) bool {
+	return commandArgs(args) && attachParentConsole()
+}
+
+func commandArgs(args []string) bool {
 	if len(args) == 0 {
 		return false
 	}
-	if programName(args[0]) == passAlias {
-		return true
-	}
-	return len(args) > 1 && (!strings.HasPrefix(args[1], "-") || args[1] == "-h" || args[1] == "--help")
+	return programName(args[0]) == passAlias || len(args) > 1 && (!strings.HasPrefix(args[1], "-") || args[1] == "-h" || args[1] == "--help")
 }
 
 func programName(arg0 string) string {
@@ -96,6 +98,9 @@ func Main(args []string, release string) int {
 		}
 	}
 	defer c.close()
+	if c.unsupportedConsole() {
+		return 1
+	}
 	args = args[1:]
 	if len(args) == 0 {
 		args = []string{"ls"}
