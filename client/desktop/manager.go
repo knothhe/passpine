@@ -20,6 +20,7 @@ func (a *application) entriesTitle() string {
 // collapsed or presented as a narrow-window overlay. Each owns its scroll state.
 func (a *application) managerColumnsView(c *ui.Context) {
 	ui.Column(c).Key("manager-frame-inset").Fill().MinWidth(0).Padding(managerFrameInset).Background(c.Theme().Background).Children(func() {
+		a.gitRecoveryView(c)
 		ui.Row(c).Key("manager-columns").Fill().MinWidth(0).Radius(12).Border(1, c.Theme().Border).Background(c.Theme().Surface).Clip().Children(func() {
 			list := ui.Column(c).Key("entry-list-column").Label(a.t("条目列表")).Width(a.managerListWidth(c)).MinWidth(managerListMinWidth).Shrink(1).FillHeight()
 			list.Children(func() {

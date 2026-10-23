@@ -602,4 +602,16 @@ var english = map[string]string{
 	"清除搜索": "Clear search",
 	"同步":   "Sync",
 	"加密文件": "Encrypted file",
+
+	"正在处理 Git 操作…":            "Processing Git operation…",
+	"Git 操作正在后台进行，本地密码库仍可使用。": "Git is running in the background. Your local vault remains available.",
+	"存在同步冲突":                  "Sync conflicts detected",
+	"已保存的本地内容仍可使用。请先解决仓库冲突，再重新同步。":      "Saved local contents remain available. Resolve repository conflicts before syncing again.",
+	"已保存的本地内容仍可使用。安装 Git 后可启用密码库同步。":    "Saved local contents remain available. Install Git to enable vault sync.",
+	"已保存的本地内容仍可使用。初始化 Git 后可备份与同步加密条目。": "Saved local contents remain available. Initialize Git to back up and sync encrypted entries.",
+	"已保存的本地内容仍可使用。添加远端地址后可跨设备同步。":       "Saved local contents remain available. Add a remote address to sync across devices.",
+	"远端同步未完成": "Remote sync did not finish",
+	"已保存的本地内容仍可使用。查看错误详情，确认同步配置后重试。": "Saved local contents remain available. Review the error and sync settings, then retry.",
+	"重试同步":   "Retry sync",
+	"查看同步设置": "Sync settings",
 }
