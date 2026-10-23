@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -8,6 +10,30 @@ import (
 
 	"golang.org/x/sys/windows"
 )
+
+var attachConsole = windows.NewLazySystemDLL("kernel32.dll").NewProc("AttachConsole")
+
+// attachParentConsole connects the GUI-subsystem client to the console it was
+// started from. Without one, the arguments came from a shortcut or file
+// manager, so the desktop client opens instead.
+func attachParentConsole() bool {
+	const attachParentProcess = ^uintptr(0)
+	if r, _, err := attachConsole.Call(attachParentProcess); r == 0 && !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+		return false
+	}
+	return true
+}
+
+// unsupportedConsole reports that the command line is not available yet. The
+// GUI-subsystem client has no standard streams, so it writes to the console.
+func (c *command) unsupportedConsole() bool {
+	if out, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0); err == nil {
+		defer out.Close()
+		c.stderr = out
+	}
+	fmt.Fprintln(c.stderr, c.t("Windows 版暂不支持命令行，请在 macOS 或 Linux 上使用 %s。", c.program))
+	return true
+}
 
 func openTerminal() (in, out *os.File, err error) {
 	in, err = os.OpenFile("CONIN$", os.O_RDWR, 0)

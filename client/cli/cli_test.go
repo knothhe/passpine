@@ -30,8 +30,8 @@ func TestInvokedKeepsDesktopLaunches(t *testing.T) {
 		{[]string{"/home/u/.local/bin/pass"}, true},
 		{[]string{"/opt/bin/Pass.exe", "-c", "mail"}, true},
 	} {
-		if got := Invoked(test.args); got != test.want {
-			t.Errorf("Invoked(%q) = %v, want %v", test.args, got, test.want)
+		if got := commandArgs(test.args); got != test.want {
+			t.Errorf("commandArgs(%q) = %v, want %v", test.args, got, test.want)
 		}
 	}
 }

@@ -10,6 +10,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func attachParentConsole() bool { return true }
+
+func (c *command) unsupportedConsole() bool { return false }
+
 // openTerminal returns the controlling terminal so the private-key passphrase
 // is never read from a pipe meant for entry contents.
 func openTerminal() (in, out *os.File, err error) {
