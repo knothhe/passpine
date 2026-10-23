@@ -22,9 +22,14 @@ func (a *application) vaultView(c *ui.Context) {
 }
 func (a *application) listView(c *ui.Context) {
 	a.filtered = a.entries()
-	ui.Column(c).Fill().MinHeight(0).Padding(24, 16, 12, 16).Gap(14).Children(func() {
-		ui.Row(c).FillWidth().MinHeight(32).AlignItems(ui.Center).Gap(8).Children(func() {
-			components.Text(c, a.entriesTitle()).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").FontSize(scaledFontSize(c, 18)).Bold()
+	ui.Column(c).Fill().MinHeight(0).Padding(24, 16, 12, 16).Gap(16).Children(func() {
+		ui.Row(c).FillWidth().MinHeight(43).AlignItems(ui.Start).Gap(8).Children(func() {
+			ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
+				components.Text(c, a.entriesTitle()).FillWidth().SingleLine().Ellipsis("…").FontSize(scaledFontSize(c, 18)).Bold()
+				ui.Row(c).FillWidth().Label(a.t("条目数量")).Children(func() {
+					components.Text(c, a.entriesCountLabel()).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+				})
+			})
 			if iconButton(c, lucide.Plus(), a.t("新建条目"), components.ButtonGhost).Tooltip(a.t("新建条目")).Clicked() {
 				a.newEntry()
 			}
@@ -43,16 +48,26 @@ func (a *application) listView(c *ui.Context) {
 			ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Gap(12).Children(func() {
 				components.Icon(c, lucide.SearchX).Size(28, 28).TextColor(c.Theme().TextMuted)
 				muted(c, a.t("没有找到条目"))
-				if a.query == "" {
+				if strings.TrimSpace(a.query) == "" {
 					if components.Button(c, a.t("新建条目"), components.ButtonOutline).Clicked() {
 						a.newEntry()
+					}
+				} else {
+					components.Text(c, a.t("试试其他关键词，或清除搜索以查看当前文件夹的条目。")).Wrap().TextAlign(ui.Center).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
+					if components.Button(c, a.t("清除搜索"), components.ButtonOutline).Clicked() {
+						a.query = ""
+						a.filtered = a.entries()
+						a.syncSelectedIndex()
+						a.list.ScrollTo(0, ui.Start)
+						a.searchRef.Focus()
+						a.lastInput = time.Now()
 					}
 				}
 			})
 		} else {
 			components.List(c, &a.list, len(a.filtered), func(i int) {
 				e := a.filtered[i]
-				row := ui.Row(c).FillWidth().MinHeight(64).Padding(10, 8).AlignItems(ui.Center).Gap(10).Radius(c.Theme().Radius).Label(a.t("账号 %s", e.Path))
+				row := ui.Row(c).FillWidth().MinHeight(60).Padding(8, 9).AlignItems(ui.Center).Gap(8).Radius(c.Theme().Radius).Label(a.t("账号 %s", e.Path))
 				selected := e.Path == a.selected
 				showCopy := row.Hovered() || row.FocusWithin() || i == a.selectedIndex && a.list.Focused(c)
 				if selected {
@@ -65,37 +80,25 @@ func (a *application) listView(c *ui.Context) {
 					row.Background(c.Theme().Text.Alpha(.04))
 				}
 				row.Children(func() {
-					entryAvatar(c, e.Path, 34, selected)
 					ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-						components.Text(c, e.Name).SingleLine().FontSize(scaledFontSize(c, 13)).Bold()
-						if e.Folder != "" {
-							components.Text(c, e.Path).SingleLine().FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+						components.Text(c, e.Name).SingleLine().Ellipsis("…").FontSize(scaledFontSize(c, 13)).Bold()
+						components.Text(c, a.entrySubtitle(e)).SingleLine().Ellipsis("…").FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+					})
+					ui.Box(c).Size(28, 28).Shrink(0).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+						if selected && !showCopy {
+							components.Icon(c, lucide.ChevronRight()).Size(14, 14).TextColor(c.Theme().TextMuted)
+						}
+						copy := iconButton(c, lucide.Copy(), a.t("复制密码 %s", e.Name), components.ButtonGhost).Key("copy-entry").Absolute().Left(0).Top(0).Size(28, 28).Disabled(a.busy)
+						if !showCopy {
+							copy.Opacity(0)
+						}
+						if copy.Clicked() {
+							a.copyEntry(e.Path)
 						}
 					})
-					copy := iconButton(c, lucide.Copy(), a.t("复制密码 %s", e.Name), components.ButtonGhost).Size(30, 30).Disabled(a.busy)
-					if !showCopy {
-						copy.Opacity(0)
-					}
-					if copy.Clicked() {
-						a.copyEntry(e.Path)
-					}
 				})
 			}).Grow(1).FillWidth()
 		}
-	})
-}
-
-func entryAvatar(c *ui.Context, path string, size float32, selected bool) {
-	color, background := c.Theme().TextMuted, c.Theme().Text.Alpha(.06)
-	if selected {
-		color, background = c.Theme().Accent, c.Theme().Accent.Alpha(.12)
-	}
-	initials := []rune(strings.ToUpper(entryName(path)))
-	if len(initials) > 2 {
-		initials = initials[:2]
-	}
-	ui.Box(c).Size(size, size).Shrink(0).Radius(size / 4).Background(background).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-		components.Text(c, string(initials)).FontSize(scaledFontSize(c, size/3)).Bold().TextColor(color).SingleLine()
 	})
 }
 
@@ -135,17 +138,8 @@ func (a *application) detailView(c *ui.Context) {
 	components.ScrollView(c, components.ScrollViewOptions{}).Key("detail-scroll").Label(a.t("条目详情")).TrackScroll(&a.detailScroll).Fill().Children(func() {
 		ui.Column(c).FillWidth().AlignItems(ui.Center).Children(func() {
 			ui.Column(c).Key("entry-detail").FillWidth().MaxWidth(808).Padding(24).Children(func() {
-				ui.Row(c).Key("account-heading").FillWidth().Margin(0, 0, 26, 0).AlignItems(ui.Start).Gap(12).Children(func() {
-					ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-						ui.Row(c).FillWidth().MinHeight(32).AlignItems(ui.Center).Children(func() {
-							components.Text(c, entryName(path)).FillWidth().FontSize(scaledFontSize(c, 22)).FontWeight(500).Wrap()
-						})
-						ui.Row(c).Key("detail-path").FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-							// Fix line spacing so fallback font metrics for different
-							// entry names cannot shift the controls below the heading.
-							components.Text(c, path).Grow(1).MinWidth(0).FontSize(scaledFontSize(c, 11)).LineHeight(1.4).TextColor(c.Theme().TextMuted).Wrap()
-						})
-					})
+				ui.Row(c).Key("detail-toolbar").FillWidth().MinHeight(32).AlignItems(ui.Center).Gap(12).Children(func() {
+					a.detailBreadcrumb(c, path, pending.Pending)
 					ui.Row(c).Key("detail-actions").Height(32).Shrink(0).AlignItems(ui.Center).Children(func() {
 						allRevealed := a.allDetailFieldsRevealed()
 						revealIcon, revealLabel := lucide.Eye(), a.t("显示全部字段")
@@ -164,9 +158,18 @@ func (a *application) detailView(c *ui.Context) {
 						}
 					})
 				})
-				ui.Column(c).Key("credential-card").Label(a.t("账号字段")).FillWidth().Children(func() {
+				website := d.URL
+				if pending.Pending {
+					for _, field := range pending.Fields {
+						if field.Key == "url" {
+							website = field.Value
+						}
+					}
+				}
+				a.detailHero(c, path, website)
+				ui.Column(c).Key("credential-card").Label(a.t("账号字段")).FillWidth().Gap(1).Dividers(1, c.Theme().Border).Children(func() {
 					if pending.Pending {
-						for _, f := range pending.Fields {
+						for _, f := range orderedDetailFields(pending.Fields) {
 							label := f.Label
 							if !strings.HasPrefix(f.Key, "custom:") {
 								label = a.t(label)
@@ -174,15 +177,15 @@ func (a *application) detailView(c *ui.Context) {
 							a.detailField(c, f.Key, label, f.Value, f.Secret, true)
 						}
 					} else {
-						a.secretField(c, "password", a.t("密码"), d.Password, true)
 						if d.Username != "" {
 							a.secretField(c, "username", a.t("用户名"), d.Username, false)
 						}
-						if d.URL != "" {
-							a.secretField(c, "url", a.t("网址"), d.URL, false)
-						}
+						a.secretField(c, "password", a.t("密码"), d.Password, true)
 						if d.OTP != "" {
 							a.secretField(c, "otp", a.t("一次性密码"), d.OTP, true)
+						}
+						if d.URL != "" {
+							a.secretField(c, "url", a.t("网址"), d.URL, false)
 						}
 						for i, f := range extraFields(d.Contents) {
 							a.secretField(c, "custom:"+strconv.Itoa(i), f[0], f[1], true)
@@ -190,7 +193,7 @@ func (a *application) detailView(c *ui.Context) {
 					}
 				})
 				if d.Notes != "" || pending.HasNotes {
-					notes := ui.Column(c).Key("detail-notes").FillWidth().Margin(24, 0, 0, 0).Gap(8)
+					notes := ui.Column(c).Key("detail-notes").FillWidth().Margin(20, 0, 0, 0).Gap(8)
 					if pending.Pending {
 						notes.MinHeight(notes.LayoutBounds().H)
 					}
@@ -203,24 +206,7 @@ func (a *application) detailView(c *ui.Context) {
 						}
 					})
 				}
-				if d.URL != "" || pending.HasWebsite {
-					ui.Row(c).Key("website-action").FillWidth().Margin(20, 0, 0, 0).Children(func() {
-						open := components.Button(c, "", components.ButtonOutline).Label(a.t("打开网站")).Height(32).Padding(6, 10).Gap(6).Disabled(pending.Pending)
-						open.Children(func() {
-							components.Icon(c, lucide.ArrowUpRight()).Size(16, 16)
-							components.Text(c, a.t("打开网站")).FontSize(scaledFontSize(c, 12)).SingleLine()
-						})
-						if open.Clicked() {
-							if safeWebsite(d.URL) {
-								if err := mygo.Shell.OpenExternal(d.URL); err != nil {
-									a.errorText = err.Error()
-								}
-							} else {
-								a.errorText = a.t("只允许打开 http 或 https 网址。")
-							}
-						}
-					})
-				}
+				a.detailMetadata(c, path)
 			})
 		})
 	})
@@ -257,9 +243,8 @@ func (a *application) secretField(c *ui.Context, key, label, value string, secre
 
 func (a *application) detailField(c *ui.Context, key, label, value string, secret, pending bool) {
 	revealed := a.detailFieldRevealed(key)
-	minimumHeight := float32(80)
-	row := ui.Column(c).Key(key).FillWidth().Padding(18, 0).Gap(6).
-		BorderWidth(0, 0, 1, 0).BorderColor(c.Theme().Border)
+	minimumHeight := float32(76)
+	row := ui.Column(c).Key(key).FillWidth().Padding(12, 0).Gap(6)
 	if pending {
 		// Keep long fields in place while the read-only surface waits.
 		minimumHeight = max(minimumHeight, row.LayoutBounds().H)
@@ -293,6 +278,17 @@ func (a *application) detailField(c *ui.Context, key, label, value string, secre
 							a.revealedFields = make(map[string]bool)
 						}
 						a.revealedFields[key] = !revealed
+					}
+				}
+				if key == "url" {
+					if iconButton(c, lucide.ArrowUpRight(), a.t("打开网站"), components.ButtonGhost).Disabled(pending).Tooltip(a.t("打开网站")).Clicked() {
+						if safeWebsite(value) {
+							if err := mygo.Shell.OpenExternal(value); err != nil {
+								a.errorText = err.Error()
+							}
+						} else {
+							a.errorText = a.t("只允许打开 http 或 https 网址。")
+						}
 					}
 				}
 				copy := components.Button(c, "", components.ButtonGhost).Label(a.t("复制%s", label)).Tooltip(a.t("复制%s", label)).Height(32).MinWidth(c.Theme().Rem(5.6)).Shrink(0).Padding(0, 9).Gap(6).AlignItems(ui.Center).Border(0, c.Theme().Border).TextColor(c.Theme().TextMuted).Disabled(pending)

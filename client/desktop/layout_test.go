@@ -58,8 +58,8 @@ func TestClientManagerHasNavigationListAndDetail(t *testing.T) {
 		}
 	}
 	count, ok := view.Find("条目数量")
-	if !ok || count.X < a.shell.LeftWidth() || count.X+count.W > row.X+row.W+20 || count.Y < 700 {
-		t.Fatalf("entry count is not in the middle column footer: %v", count)
+	if !ok || count.X < a.shell.LeftWidth() || count.X+count.W > row.X+row.W+20 || count.Y > row.Y {
+		t.Fatalf("entry count is not below the middle column title: %v", count)
 	}
 }
 
@@ -239,7 +239,7 @@ func TestThreeColumnScrollAreasKeepFootersAndOtherColumnsStill(t *testing.T) {
 		t.Fatal("scrolling detail moved the account list")
 	}
 	if after, found := view.Find("条目数量"); !found || after != count {
-		t.Fatal("scrolling the account list or detail moved the fixed list footer")
+		t.Fatal("scrolling the account list or detail moved the fixed list heading count")
 	}
 }
 

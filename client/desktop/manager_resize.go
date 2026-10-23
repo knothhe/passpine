@@ -7,6 +7,8 @@ import (
 )
 
 const (
+	managerFrameInset     float32 = 8
+	managerFrameBorder    float32 = 1
 	managerListMinWidth   float32 = 240
 	managerListMaxWidth   float32 = 480
 	managerDetailMinWidth float32 = 360
@@ -21,7 +23,11 @@ func managerListDefaultWidth(c *ui.Context) float32 {
 }
 
 func (a *application) managerListWidthLimits(c *ui.Context) (float32, float32) {
-	maximum := max(float32(0), min(managerListMaxWidth, a.mainContentWidth(c)-managerDetailMinWidth))
+	available := a.mainContentWidth(c) - 2*(managerFrameInset+managerFrameBorder)
+	if a.page == "recovery" {
+		available = a.mainContentWidth(c)
+	}
+	maximum := max(float32(0), min(managerListMaxWidth, available-managerDetailMinWidth))
 	return min(managerListMinWidth, maximum), maximum
 }
 

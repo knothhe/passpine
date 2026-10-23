@@ -931,7 +931,15 @@ func (a *application) header(c *ui.Context) {
 		if a.state.Configured {
 			a.vaultSelector(c)
 			a.gitHeaderStatus(c)
-			if iconButton(c, lucide.RefreshCw(), a.t("同步密码库"), components.ButtonOutline).Disabled(a.gitActionPending || a.state.GitSyncing || !a.state.GitInitialized).Clicked() {
+			sync := components.Button(c, "", components.ButtonGhost).Label(a.t("同步密码库")).Tooltip(a.t("同步密码库")).Height(32).Padding(6, 8).Gap(6).
+				Disabled(a.gitActionPending || a.state.GitSyncing || !a.state.GitInitialized)
+			sync.Children(func() {
+				components.Icon(c, lucide.RefreshCw()).Size(16, 16)
+				if a.mainContentWidth(c) >= 540 {
+					components.Text(c, a.t("同步")).FontSize(scaledFontSize(c, 12)).SingleLine()
+				}
+			})
+			if sync.Clicked() {
 				a.call(app.Request{Action: "git-sync"}, func(app.Data) { a.notice = a.t("同步完成") })
 			}
 			lockIcon, lockLabel := lucide.LockKeyhole(), a.t("锁定密码库")
