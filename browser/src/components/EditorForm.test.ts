@@ -24,6 +24,82 @@ async function click(text: string) {
   const button = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent?.trim() === text)!;
   expect(button).toBeDefined(); await act(async () => button.click());
 }
+async function dialogClick(text: string) {
+  const button = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')).find(button => button.textContent?.trim() === text)!;
+  expect(button).toBeDefined(); await act(async () => button.click());
+}
+
+describe('unsaved entry changes', () => {
+  const original = { contents: 'secret\nusername: alice\ntoken: existing', revision: 'revision-1', entry: { path: 'work/account', title: 'account', folder: 'work', matched: false }, vaultId: 'vault', receivedAt: Date.now() };
+  async function render() {
+    const close = vi.fn(), saved = vi.fn(async () => {}), request = vi.fn(async () => ({}));
+    const client: Client = { demo: true, openOptions: async () => {}, copy: async () => {}, request: request as Client['request'] };
+    await act(async () => root.render(createElement(Theme, {}, createElement(EditorForm, { client, value: { vaultId: 'vault', original }, defaultURL: '', close, saved }))));
+    return { close, saved, request };
+  }
+
+  it.each(['back', 'cancel'])('leaves unchanged or restored input without confirmation through %s', async action => {
+    const { close } = await render();
+    const username = container.querySelector<HTMLInputElement>('input[placeholder="用户名或邮箱"]')!;
+    await change(username, 'changed'); await change(username, 'alice');
+    // An empty, newly added custom row does not change the saved document.
+    await click('添加字段');
+    if (action === 'cancel') await click('取消');
+    else await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="返回账号详情"]')!.click());
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it.each(['back', 'cancel'])('keeps changed fields and selection when continuing after %s', async action => {
+    const { close, request } = await render();
+    const username = container.querySelector<HTMLInputElement>('input[placeholder="用户名或邮箱"]')!;
+    await change(username, '中文 user@example.test');
+    username.focus(); username.setSelectionRange(3, 7, 'backward');
+    if (action === 'cancel') await click('取消');
+    else await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="返回账号详情"]')!.click());
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain('放弃未保存的修改？');
+    const restoreFrames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { restoreFrames.push(callback); return 1; });
+    await dialogClick('继续编辑');
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    await act(async () => { for (const frame of restoreFrames) frame(0); });
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(username.value).toBe('中文 user@example.test');
+    expect(document.activeElement).toBe(username);
+    expect([username.selectionStart, username.selectionEnd, username.selectionDirection]).toEqual([3, 7, 'backward']);
+    expect(close).not.toHaveBeenCalled(); expect(request).not.toHaveBeenCalled();
+  });
+
+  it('confirms removed custom fields and only leaves after discard', async () => {
+    const { close, request } = await render();
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="删除字段 1"]')!.click());
+    await click('取消');
+    expect(close).not.toHaveBeenCalled();
+    await dialogClick('放弃修改');
+    expect(close).toHaveBeenCalledOnce(); expect(request).not.toHaveBeenCalled();
+  });
+
+  it('returns focus to the form if the last edited custom field was removed', async () => {
+    await render();
+    container.querySelector<HTMLInputElement>('input[aria-label="字段 1 名称"]')!.focus();
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="删除字段 1"]')!.click());
+    await click('取消');
+    const restoreFrames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { restoreFrames.push(callback); return 1; });
+    await dialogClick('继续编辑');
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    await act(async () => { for (const frame of restoreFrames) frame(0); });
+    expect(document.activeElement).toBe(container.querySelector('form input'));
+  });
+
+  it('saves changes without a leave confirmation', async () => {
+    const { close, saved, request } = await render();
+    await change(container.querySelector<HTMLInputElement>('input[placeholder="用户名或邮箱"]')!, 'new-user');
+    await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(request).toHaveBeenCalledOnce(); expect(saved).toHaveBeenCalledOnce(); expect(close).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+  });
+});
 
 describe('entry editor', () => {
   it('preserves surviving custom source lines when an earlier row is removed', async () => {

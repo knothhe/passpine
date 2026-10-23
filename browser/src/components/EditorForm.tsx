@@ -1,6 +1,6 @@
 import { useCopy, useLanguage } from './LanguageProvider';
 import { useEffect, useRef, useState } from 'react';
-import { Button, Callout, IconButton, Text, TextField } from '@radix-ui/themes';
+import { AlertDialog, Button, Callout, Flex, IconButton, Text, TextField } from '@radix-ui/themes';
 import { Eye, EyeOff, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { additionalFields, isPrimaryFieldKey, parseDocument, updateDocument, validateEntry } from '../lib/model';
 import { errorMessage } from '../lib/errors';
@@ -18,13 +18,27 @@ export function EditorForm({ client, value, defaultURL, close, saved }: { client
   const [error, setError] = useState(''), [saving, setSaving] = useState(false), [reveal, setReveal] = useState(false);
   useEffect(() => { setError(''); }, [locale]);
   const session = useRef(0), savingRequest = useRef(false), defaultWebsite = useRef(defaultURL), nextField = useRef(0);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const editorForm = useRef<HTMLFormElement>(null);
+  const initialForm = useRef(''), lastField = useRef<HTMLInputElement | null>(null), discarded = useRef(false);
+  const returnFocus = useRef<{ field: HTMLInputElement | null; start: number | null; end: number | null; direction: 'forward' | 'backward' | 'none' | null }>({ field: null, start: null, end: null, direction: null });
+  const fingerprint = (nextFields: typeof fields, extraFields: typeof customFields) => JSON.stringify({ fields: nextFields, custom: extraFields.filter(field => field.key || field.value).map(({ key, value }) => ({ key, value })) });
+  const requestLeave = () => {
+    if (savingRequest.current) return;
+    if (fingerprint(fields, customFields) === initialForm.current) { close(); return; }
+    const field = lastField.current;
+    returnFocus.current = { field, start: field?.selectionStart ?? null, end: field?.selectionEnd ?? null, direction: field?.selectionDirection ?? null };
+    discarded.current = false; setLeaveOpen(true);
+  };
   const passwordInput = useRef<HTMLInputElement>(null), wasGenerating = useRef(false);
   defaultWebsite.current = defaultURL;
   useEffect(() => {
     session.current++;
     const doc = value.original ? parseDocument(value.original.contents) : undefined;
-    setFields({ path: value.original?.entry.path ?? '', username: doc?.username ?? '', password: doc?.password ?? value.password ?? '', url: doc?.urls[0] ?? defaultWebsite.current, notes: doc?.notes ?? '' });
-    setCustomFields(doc ? additionalFields(doc).map((field, sourceIndex) => ({ ...field, sourceIndex, id: nextField.current++ })) : []);
+    const nextFields = { path: value.original?.entry.path ?? '', username: doc?.username ?? '', password: doc?.password ?? value.password ?? '', url: doc?.urls[0] ?? defaultWebsite.current, notes: doc?.notes ?? '' };
+    const nextCustom = doc ? additionalFields(doc).map((field, sourceIndex) => ({ ...field, sourceIndex, id: nextField.current++ })) : [];
+    initialForm.current = fingerprint(nextFields, nextCustom);
+    setFields(nextFields); setCustomFields(nextCustom); setLeaveOpen(false);
     setError(''); setReveal(false); setGeneratorOpen(false);
     return () => { session.current++; };
   }, [value]);
@@ -55,8 +69,8 @@ export function EditorForm({ client, value, defaultURL, close, saved }: { client
     } catch (error) { if (current === session.current) setError(errorMessage(error, copy)); }
     finally { savingRequest.current = false; if (current === session.current) setSaving(false); }
   };
-  return <><form className="popup-screen editor-screen" inert={generatorOpen} aria-hidden={generatorOpen} onSubmit={event => void save(event)}>
-    <PageHeader title={value.original ? copy.accounts.edit : copy.accounts.create} backLabel={value.original ? copy.editor.backToDetails : copy.common.backToVault} back={close} disabled={saving}/>
+  return <><form ref={editorForm} className="popup-screen editor-screen" inert={generatorOpen} aria-hidden={generatorOpen} onSubmit={event => void save(event)} onFocusCapture={event => { if (event.target instanceof HTMLInputElement) lastField.current = event.target; }}>
+    <PageHeader title={value.original ? copy.accounts.edit : copy.accounts.create} backLabel={value.original ? copy.editor.backToDetails : copy.common.backToVault} back={requestLeave} disabled={saving}/>
     <main className="screen-content editor-content">
       <fieldset className="editor-fields" disabled={saving}>
         <label className="field-label">{copy.editor.name}<TextField.Root autoFocus required value={fields.path} placeholder={copy.editor.pathPlaceholder} onChange={event => update('path', event.target.value)}/></label>
@@ -67,6 +81,25 @@ export function EditorForm({ client, value, defaultURL, close, saved }: { client
       </fieldset>
     </main>
     {error && <Callout.Root color="red" size="1" role="alert" className="screen-error"><Callout.Text>{error}</Callout.Text></Callout.Root>}
-    <footer className="screen-footer"><Button type="button" color="gray" variant="soft" disabled={saving} onClick={close}>{copy.common.cancel}</Button><Button type="submit" className="grow" loading={saving}>{copy.common.save}</Button></footer>
-  </form><Generator client={client} open={generatorOpen} close={() => setGeneratorOpen(false)} usePassword={password => { update('password', password); setGeneratorOpen(false); }} canSave useLabel={copy.generator.usePassword} backLabel={copy.editor.backToEditor}/></>;
+    <footer className="screen-footer"><Button type="button" color="gray" variant="soft" disabled={saving} onClick={requestLeave}>{copy.common.cancel}</Button><Button type="submit" className="grow" loading={saving}>{copy.common.save}</Button></footer>
+  </form><Generator client={client} open={generatorOpen} close={() => setGeneratorOpen(false)} usePassword={password => { update('password', password); setGeneratorOpen(false); }} canSave useLabel={copy.generator.usePassword} backLabel={copy.editor.backToEditor}/>
+    <AlertDialog.Root open={leaveOpen} onOpenChange={setLeaveOpen}>
+      <AlertDialog.Content className="leave-dialog" maxWidth="340px" onCloseAutoFocus={event => {
+        if (discarded.current) return;
+        event.preventDefault();
+        requestAnimationFrame(() => {
+          const { field, start, end, direction } = returnFocus.current;
+          if (!field?.isConnected) { editorForm.current?.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true }); return; }
+          field.focus({ preventScroll: true });
+          if (start !== null && end !== null) field.setSelectionRange(start, end, direction ?? undefined);
+        });
+      }}>
+        <AlertDialog.Title>{copy.editor.unsavedTitle}</AlertDialog.Title>
+        <AlertDialog.Description size="2">{copy.editor.unsavedDescription}</AlertDialog.Description>
+        <Flex justify="end" gap="2" mt="5" wrap="wrap">
+          <AlertDialog.Action><Button type="button" variant="soft" color="gray" onClick={() => { discarded.current = true; close(); }}>{copy.editor.discardChanges}</Button></AlertDialog.Action>
+          <AlertDialog.Cancel><Button type="button">{copy.editor.continueEditing}</Button></AlertDialog.Cancel>
+        </Flex>
+      </AlertDialog.Content>
+    </AlertDialog.Root></>;
 }

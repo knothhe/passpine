@@ -18,7 +18,7 @@ export function Brand() {
 }
 
 export function ActionIcon({ label, children, onClick, disabled, loading }: { label: string; children: React.ReactNode; onClick(): void; disabled?: boolean; loading?: boolean }) {
-  return <Tooltip content={label}><IconButton aria-label={label} aria-busy={loading || undefined} variant="ghost" color="gray" size="2" disabled={disabled} onClick={onClick}>{children}</IconButton></Tooltip>;
+  return <Tooltip content={label}><IconButton type="button" aria-label={label} aria-busy={loading || undefined} variant="ghost" color="gray" size="2" disabled={disabled} onClick={onClick}>{children}</IconButton></Tooltip>;
 }
 
 export function PageHeader({ title, backLabel, back, disabled, children }: { title: string; backLabel?: string; back(): void; disabled?: boolean; children?: React.ReactNode }) {
