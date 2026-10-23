@@ -1,0 +1,16 @@
+body { background: var(--bg); }
+#canvas-root { height:100dvh; display:flex; flex-direction:column; }
+.canvas-toolbar { display:flex; flex:none; align-items:center; justify-content:space-between; gap:20px; padding:14px 24px; min-height:64px; background:var(--surface); border-bottom:1px solid var(--border); }
+.canvas-toolbar h1 { font-size:14px; font-weight:600; }
+.canvas-controls { display:flex; align-items:center; gap:8px; }
+.canvas-controls output { width:48px; text-align:center; font-size:11px; font-variant-numeric:tabular-nums; }
+.canvas-viewport { position:relative; flex:1; min-height:0; overflow:hidden; cursor:grab; touch-action:none; }
+.canvas-viewport.dragging { cursor:grabbing; }
+.canvas-stage { position:absolute; left:0; top:0; transform-origin:0 0; }
+.canvas-board { position:absolute; }
+.canvas-board a { position:absolute; bottom:calc(100% + 12px); left:0; right:0; display:flex; justify-content:space-between; align-items:center; text-decoration:none; color:var(--fg); font-size:16px; font-weight:500; }
+.canvas-board a span { font-size:13px; color:var(--muted); }
+.canvas-board img { width:100%; height:100%; display:block; border:1px solid var(--border); pointer-events:none; background:var(--surface); }
+.canvas-note { position:absolute; font-size:17px; color:var(--muted); line-height:1.7; }
+.canvas-help { position:absolute; bottom:16px; right:20px; padding:8px 12px; background:var(--surface); border:1px solid var(--border); border-radius:6px; font-size:11px; color:var(--muted); pointer-events:none; }
+@media(max-width:760px){ .canvas-toolbar{padding:12px;flex-wrap:wrap;gap:8px}.canvas-controls{flex-wrap:wrap}.canvas-help{max-width:calc(100% - 24px);right:12px;bottom:12px} }

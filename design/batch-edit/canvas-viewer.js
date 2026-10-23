@@ -1,0 +1,23 @@
+(() => {
+  const lang = new URLSearchParams(location.search).get("lang") === "en" ? "en" : "zh-CN";
+  const c = globalThis.PASSPINE_BATCH_COPY[lang], config = globalThis.PASSPINE_BATCH_BOARDS;
+  const esc = value => String(value).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  document.documentElement.lang = lang; document.title = c.canvasTitle;
+  document.getElementById("canvas-root").innerHTML = `<header class="canvas-toolbar"><h1>${c.canvasTitle}</h1><div class="canvas-controls"><a class="text-button" href="index.html?lang=${lang}">${c.backPrototype}</a><button class="button" id="zoom-out" aria-label="${c.zoomOut}">−</button><output id="zoom-label">100%</output><button class="button" id="zoom-in" aria-label="${c.zoomIn}">+</button><button class="button" id="fit">${c.fit}</button><button class="button" id="actual">${c.actualSize}</button></div></header><main class="canvas-viewport" tabindex="0" aria-label="${c.canvasTitle}"><div class="canvas-stage">${config.boards.map(board => `<section class="canvas-board" style="left:${board.x}px;top:${board.y}px;width:${board.w}px;height:${board.h}px"><a href="${esc(board.file)}" target="_blank" rel="noopener">${c[board.key]}<span>${board.w} × ${board.h}</span></a><img src="evidence/${esc(board.image)}" alt="${c[board.key]}" width="${board.w}" height="${board.h}"></section>`).join("")}${config.notes.map(note => `<p class="canvas-note" style="left:${note.x}px;top:${note.y}px;width:${note.w}px">${c[note.key]}</p>`).join("")}</div><div class="canvas-help">${c.canvasHint}</div></main>`;
+  const viewport = document.querySelector(".canvas-viewport"), stage = document.querySelector(".canvas-stage");
+  let state = { x: 30, y: 30, zoom: 1 }, drag;
+  const draw = () => { stage.style.transform = `translate(${state.x}px,${state.y}px) scale(${state.zoom})`; document.getElementById("zoom-label").value = `${Math.round(state.zoom * 100)}%`; };
+  const zoom = (factor, x = viewport.clientWidth / 2, y = viewport.clientHeight / 2) => { const next = Math.min(2, Math.max(.08, state.zoom * factor)), ratio = next / state.zoom; state.x = x - (x - state.x) * ratio; state.y = y - (y - state.y) * ratio; state.zoom = next; draw(); };
+  const fit = () => { state = { x: 30, y: 25, zoom: Math.min(1, (viewport.clientWidth - 60) / config.width) }; draw(); };
+  document.getElementById("fit").onclick = fit;
+  document.getElementById("actual").onclick = () => { state = { x: 30, y: 30, zoom: 1 }; draw(); };
+  document.getElementById("zoom-in").onclick = () => zoom(1.2);
+  document.getElementById("zoom-out").onclick = () => zoom(1 / 1.2);
+  viewport.addEventListener("pointerdown", event => { if (event.target.closest("a,button")) return; drag = { x: event.clientX, y: event.clientY, sx: state.x, sy: state.y }; viewport.setPointerCapture(event.pointerId); viewport.classList.add("dragging"); });
+  viewport.addEventListener("pointermove", event => { if (drag) { state.x = drag.sx + event.clientX - drag.x; state.y = drag.sy + event.clientY - drag.y; draw(); } });
+  const end = () => { drag = null; viewport.classList.remove("dragging"); };
+  viewport.addEventListener("pointerup", end); viewport.addEventListener("pointercancel", end);
+  viewport.addEventListener("wheel", event => { event.preventDefault(); if (event.metaKey || event.ctrlKey) { const r = viewport.getBoundingClientRect(); zoom(Math.exp(-event.deltaY * .003), event.clientX - r.left, event.clientY - r.top); } else { state.x -= event.deltaX; state.y -= event.deltaY; draw(); } }, { passive: false });
+  viewport.addEventListener("keydown", event => { if (["+", "=", "-", "0"].includes(event.key)) { event.preventDefault(); if (event.key === "0") fit(); else zoom(event.key === "-" ? 1 / 1.2 : 1.2); } });
+  fit();
+})();
