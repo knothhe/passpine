@@ -1,39 +1,39 @@
 {
-  "tag_name": "v0.1.2",
-  "html_url": "https://github.com/knothhe/passpine/releases/tag/v0.1.2",
+  "tag_name": "v0.1.6",
+  "html_url": "https://github.com/knothhe/passpine/releases/tag/v0.1.6",
   "draft": false,
   "prerelease": false,
-  "published_at": "2026-10-22T09:30:18Z",
+  "published_at": "2026-10-22T20:02:37Z",
   "assets": [
     {
-      "name": "passpine-0.1.2-chrome.zip",
-      "size": 387026,
+      "name": "passpine-0.1.6-chrome.zip",
+      "size": 387112,
       "state": "uploaded",
-      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.2/passpine-0.1.2-chrome.zip"
+      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.6/passpine-0.1.6-chrome.zip"
     },
     {
-      "name": "passpine-0.1.2-firefox.zip",
-      "size": 387024,
+      "name": "passpine-0.1.6-firefox.zip",
+      "size": 387108,
       "state": "uploaded",
-      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.2/passpine-0.1.2-firefox.zip"
+      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.6/passpine-0.1.6-firefox.zip"
     },
     {
-      "name": "Passpine-0.1.2-linux-amd64.tar.gz",
-      "size": 8205299,
+      "name": "Passpine-0.1.6-linux-amd64.tar.gz",
+      "size": 9354815,
       "state": "uploaded",
-      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.2/Passpine-0.1.2-linux-amd64.tar.gz"
+      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.6/Passpine-0.1.6-linux-amd64.tar.gz"
     },
     {
-      "name": "Passpine-0.1.2-macos-arm64.zip",
-      "size": 8069459,
+      "name": "Passpine-0.1.6-macos-arm64.zip",
+      "size": 9098257,
       "state": "uploaded",
-      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.2/Passpine-0.1.2-macos-arm64.zip"
+      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.6/Passpine-0.1.6-macos-arm64.zip"
     },
     {
-      "name": "Passpine-0.1.2-windows-amd64-setup.exe",
-      "size": 7461167,
+      "name": "Passpine-0.1.6-windows-amd64-setup.exe",
+      "size": 8667892,
       "state": "uploaded",
-      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.2/Passpine-0.1.2-windows-amd64-setup.exe"
+      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.6/Passpine-0.1.6-windows-amd64-setup.exe"
     }
   ]
 }
