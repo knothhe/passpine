@@ -595,4 +595,11 @@ var english = map[string]string{
 	"开始朗读": "Start Speaking",
 	"停止朗读": "Stop Speaking",
 	"请先保存或关闭当前编辑的条目。": "Save or close the entry you are editing first.",
+
+	"条目列表": "Entry list",
+	"条目路径": "Entry path",
+	"试试其他关键词，或清除搜索以查看当前文件夹的条目。": "Try another keyword, or clear the search to see entries in this folder.",
+	"清除搜索": "Clear search",
+	"同步":   "Sync",
+	"加密文件": "Encrypted file",
 }

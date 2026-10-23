@@ -94,7 +94,7 @@ func TestManagerLayoutResponsiveClampAndIdleFramesNeverRewriteSavedPreference(t 
 		t.Fatal(err)
 	}
 	a, view, _ := managerLayoutFixture(t, directory, 961)
-	assertManagerListWidth(t, view, 961-a.shell.LeftWidth()-360)
+	assertManagerListWidth(t, view, 961-a.shell.LeftWidth()-360-2*(managerFrameInset+managerFrameBorder))
 	for _, width := range []int{860, 1120, 961} {
 		view.SetSize(width, 760)
 		view.Frame()

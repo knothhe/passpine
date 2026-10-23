@@ -19,36 +19,34 @@ func (a *application) entriesTitle() string {
 // Keep the list and inspector mounted under the same keys when navigation is
 // collapsed or presented as a narrow-window overlay. Each owns its scroll state.
 func (a *application) managerColumnsView(c *ui.Context) {
-	ui.Row(c).Key("manager-columns").Fill().MinWidth(0).Children(func() {
-		list := ui.Column(c).Key("entry-list-column").Width(a.managerListWidth(c)).MinWidth(managerListMinWidth).Shrink(1).FillHeight().Background(c.Theme().Surface)
-		list.Children(func() {
-			a.listView(c)
-			a.listFooter(c)
-		})
-		ui.Column(c).Key("entry-inspector-column").Grow(1).MinWidth(managerDetailMinWidth).FillHeight().Background(c.Theme().Surface).Children(func() {
-			ui.Column(c).Key("entry-inspector-body").Fill().MinWidth(0).Clip().Children(func() {
-				ui.Box(c).Absolute().Left(0).Top(0).Bottom(0).Width(1).Background(c.Theme().Border)
-				if a.state.Locked {
-					a.unlockView(c)
-				} else if a.editor.open {
-					a.editorView(c)
-				} else {
-					a.detailView(c)
-				}
+	ui.Column(c).Key("manager-frame-inset").Fill().MinWidth(0).Padding(managerFrameInset).Background(c.Theme().Background).Children(func() {
+		ui.Row(c).Key("manager-columns").Fill().MinWidth(0).Radius(12).Border(1, c.Theme().Border).Background(c.Theme().Surface).Clip().Children(func() {
+			list := ui.Column(c).Key("entry-list-column").Label(a.t("条目列表")).Width(a.managerListWidth(c)).MinWidth(managerListMinWidth).Shrink(1).FillHeight()
+			list.Children(func() {
+				a.listView(c)
 			})
-			a.managerResizeHandle(c, list)
+			ui.Column(c).Key("entry-inspector-column").Grow(1).MinWidth(managerDetailMinWidth).FillHeight().Children(func() {
+				ui.Column(c).Key("entry-inspector-body").Fill().MinWidth(0).Clip().Children(func() {
+					ui.Box(c).Absolute().Left(0).Top(0).Bottom(0).Width(1).Background(c.Theme().Border)
+					if a.state.Locked {
+						a.unlockView(c)
+					} else if a.editor.open {
+						a.editorView(c)
+					} else {
+						a.detailView(c)
+					}
+				})
+				a.managerResizeHandle(c, list)
+			})
 		})
 	})
 }
 
-func (a *application) listFooter(c *ui.Context) {
-	label := a.countLabel(len(a.filtered))
+func (a *application) entriesCountLabel() string {
 	if strings.TrimSpace(a.query) != "" {
-		label = a.t("%d / %d 个条目", len(a.filtered), len(a.state.Entries))
+		return a.t("%d / %d 个条目", len(a.filtered), len(a.state.Entries))
 	}
-	ui.Row(c).FillWidth().MinHeight(39).Shrink(0).Padding(10, 16).BorderWidth(1, 0, 0, 0).BorderColor(c.Theme().Border).Label(a.t("条目数量")).AlignItems(ui.Center).Children(func() {
-		components.Text(c, label).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
-	})
+	return a.countLabel(len(a.filtered))
 }
 
 func managerGlyphSize(c *ui.Context) float32 { return c.Theme().Rem(4.0 / 3.0) }

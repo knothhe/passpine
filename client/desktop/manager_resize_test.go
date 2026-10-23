@@ -22,7 +22,7 @@ func managerResizeFixture(width int) (*application, *ui.Tester) {
 
 func managerResizeListBounds(t *testing.T, view *ui.Tester) ui.Rect {
 	t.Helper()
-	for _, label := range []string{"条目数量", "Entry count"} {
+	for _, label := range []string{"条目列表", "Entry list", "条目数量", "Entry count"} {
 		if bounds, found := view.Find(label); found && bounds.W > 0 && bounds.H > 0 {
 			// Recovery's pane has a one-DIP right border outside its footer.
 			// The separator center is the actual column edge on both pages.
@@ -140,7 +140,7 @@ func TestManagerResizeWindowAndSidebarClampWithoutLosingPreference(t *testing.T)
 	a, view := managerResizeFixture(1120)
 	dragManagerListTo(t, a, view, 480)
 	view.SetSize(961, 760)
-	want := 961 - a.shell.LeftWidth() - 360
+	want := 961 - a.shell.LeftWidth() - 360 - 2*(managerFrameInset+managerFrameBorder)
 	assertManagerListWidth(t, view, want)
 	managerResizeScreenshot(t, view, "manager-list-clamped-961")
 	if a.managerListPreferredWidth != 480 {
@@ -157,7 +157,7 @@ func TestManagerResizeWindowAndSidebarClampWithoutLosingPreference(t *testing.T)
 	assertManagerListWidth(t, view, want)
 	a.shell.SetLeftWidth(280)
 	view.Frame()
-	assertManagerListWidth(t, view, 321)
+	assertManagerListWidth(t, view, 321-2*(managerFrameInset+managerFrameBorder))
 	if a.managerListPreferredWidth != 480 {
 		t.Fatal("resizing navigation overwrote the list width preference")
 	}
@@ -169,7 +169,7 @@ func TestManagerResizeWindowAndSidebarClampWithoutLosingPreference(t *testing.T)
 	assertManagerListWidth(t, view, 480)
 	view.Key(0, ui.KeyEscape)
 	view.SetSize(1120, 760)
-	assertManagerListWidth(t, view, 480)
+	assertManagerListWidth(t, view, 480-2*(managerFrameInset+managerFrameBorder))
 	if err := view.Click(a.t("切换侧栏")); err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +260,7 @@ func TestManagerResizeMinimumInspectorKeepsLocalizedControlsVisible(t *testing.T
 			view.Frame()
 			dragManagerListTo(t, a, view, 480)
 			list := managerResizeListBounds(t, view)
-			if !visualNear(961-(list.X+list.W), 360) {
+			if !visualNear(961-(list.X+list.W), 360+managerFrameInset+managerFrameBorder) {
 				t.Fatal("the split did not reserve the inspector's minimum width")
 			}
 			assertTypographyBounds(t, view, 961, 760,
