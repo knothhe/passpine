@@ -98,3 +98,11 @@ fi
 
 "$host" --register
 echo "Installed client: $destination"
+
+# A fictional vault gives the development client and CLI something to test
+# against. Seeding is idempotent and never blocks the installation.
+if [[ "${PASSPINE_SKIP_TEST_VAULT:-}" != "1" ]]; then
+  client="$destination"
+  [[ -d "$destination" ]] && client="$destination/Contents/MacOS/passpine"
+  "$client" --seed-test-vault || echo "Test vault was not created; rerun: \"$client\" --seed-test-vault" >&2
+fi

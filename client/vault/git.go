@@ -305,6 +305,33 @@ func (v *Vault) GitSync(ctx context.Context) (GitResult, error) {
 	return result, nil
 }
 
+// GitCommit records store changes locally with a pass-style message. Stores
+// without a Git checkout are left alone, so pass-compatible tools can call it
+// after every write. It never fetches, rebases or pushes.
+func (v *Vault) GitCommit(ctx context.Context, message string) (bool, error) {
+	ctx, cancel, e := v.beginGit(ctx)
+	if e != nil {
+		return false, e
+	}
+	defer cancel()
+	v.gitOperations.Lock()
+	defer v.gitOperations.Unlock()
+	v.operations.Lock()
+	defer v.operations.Unlock()
+	if !managedStore(ctx, v.config.Directory) {
+		return false, nil
+	}
+	unlock, e := lockStore(v.config.Directory)
+	if e != nil {
+		return false, e
+	}
+	defer unlock()
+	if pendingGitOperation(ctx, v.config.Directory) {
+		return false, errors.New("finish the current Git merge or rebase before committing")
+	}
+	return v.commitStoreLocked(ctx, message)
+}
+
 // Only local working-tree and index changes own the store lock. Sharing the
 // vault operation mutex makes a foreground write wait for this short atomic
 // section instead of rejecting it with ErrBusy midway through a local commit.
@@ -325,45 +352,8 @@ func (v *Vault) gitSyncLocal(ctx context.Context, upstream string) (bool, error)
 	if pendingGitOperation(ctx, v.config.Directory) {
 		return false, errors.New("finish the current Git merge or rebase before syncing")
 	}
-	staged, e := gitCommand(ctx, v.config.Directory, "diff", "--cached", "--name-only")
-	if e != nil {
+	if _, e = v.commitStoreLocked(ctx, "Update password store"); e != nil {
 		return false, e
-	}
-	if staged != "" {
-		return false, errors.New("Git has staged changes; commit or unstage them before syncing")
-	}
-	files, e := gitCommand(ctx, v.config.Directory, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
-	if e != nil {
-		return false, e
-	}
-	args := []string{"add", "-A", "--"}
-	seen := map[string]bool{}
-	for _, file := range strings.Split(files, "\x00") {
-		if !isStoreFile(file) || seen[file] {
-			continue
-		}
-		seen[file] = true
-		if _, e := safeRead(v.config.Directory, file); e != nil && !errors.Is(e, os.ErrNotExist) {
-			return false, fmt.Errorf("unsafe password-store file: %w", e)
-		}
-		args = append(args, file)
-	}
-	if e = ctx.Err(); e != nil {
-		return false, e
-	}
-	if len(args) > 3 {
-		if _, e = gitCommand(ctx, v.config.Directory, args...); e != nil {
-			return false, e
-		}
-	}
-	staged, e = gitCommand(ctx, v.config.Directory, "diff", "--cached", "--name-only")
-	if e != nil {
-		return false, e
-	}
-	if staged != "" {
-		if _, e = gitCommand(ctx, v.config.Directory, "-c", "user.name=Passpine", "-c", "user.email=passpine@localhost", "commit", "-m", "Update password store"); e != nil {
-			return false, e
-		}
 	}
 	if upstream == "" {
 		return false, nil
@@ -433,4 +423,50 @@ func Clone(ctx context.Context, remote, destination string) error {
 		return &os.LinkError{Op: "rename", Old: checkout, New: absolute, Err: e}
 	}
 	return nil
+}
+
+// commitStoreLocked stages only password-store files. Callers hold the vault
+// operation mutex and the store lock, and have verified the Git checkout.
+func (v *Vault) commitStoreLocked(ctx context.Context, message string) (bool, error) {
+	staged, e := gitCommand(ctx, v.config.Directory, "diff", "--cached", "--name-only")
+	if e != nil {
+		return false, e
+	}
+	if staged != "" {
+		return false, errors.New("Git has staged changes; commit or unstage them first")
+	}
+	files, e := gitCommand(ctx, v.config.Directory, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	if e != nil {
+		return false, e
+	}
+	args := []string{"add", "-A", "--"}
+	seen := map[string]bool{}
+	for _, file := range strings.Split(files, "\x00") {
+		if !isStoreFile(file) || seen[file] {
+			continue
+		}
+		seen[file] = true
+		if _, e := safeRead(v.config.Directory, file); e != nil && !errors.Is(e, os.ErrNotExist) {
+			return false, fmt.Errorf("unsafe password-store file: %w", e)
+		}
+		args = append(args, file)
+	}
+	if e := ctx.Err(); e != nil {
+		return false, e
+	}
+	if len(args) > 3 {
+		if _, e = gitCommand(ctx, v.config.Directory, args...); e != nil {
+			return false, e
+		}
+	}
+	staged, e = gitCommand(ctx, v.config.Directory, "diff", "--cached", "--name-only")
+	if e != nil {
+		return false, e
+	}
+	if staged != "" {
+		if _, e = gitCommand(ctx, v.config.Directory, "-c", "user.name=Passpine", "-c", "user.email=passpine@localhost", "commit", "-m", message); e != nil {
+			return false, e
+		}
+	}
+	return staged != "", nil
 }

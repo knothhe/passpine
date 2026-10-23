@@ -51,6 +51,8 @@ make client:install
 make client:install CLIENT_INSTALL_DIR="/Applications"
 ```
 
+macOS / Linux 的 `make client:install` 安装后会在 Dev 数据目录的 `test-vault/` 中创建虚构的测试密码库（含演示条目并初始化 Git），口令为 `Passpine-demo-2026`。已存在时跳过；已有其他密码库时不改变当前选择，可在客户端切换或通过 `PASSWORD_STORE_DIR` 供命令行使用。Dev 客户端运行时不会创建，需退出后运行 `passpine-dev --seed-test-vault`（macOS 为应用包内的 `Contents/MacOS/passpine`）；设置 `PASSPINE_SKIP_TEST_VAULT=1` 可跳过。
+
 `CLIENT_INSTALL_DIR` 是安装父目录，需对其有写权限。macOS 更新会替换应用包，不保留旧版应用资源。关闭正在运行的 Dev 客户端后再更新并重新启动。当前已验收 macOS Apple Silicon；Linux 已在 Arch Linux 的 Wayland 桌面验证构建、安装、Host 注册和隔离演示窗口渲染，其他发行版仍需验证。
 
 Linux 桌面会话中可运行原生启动测试（使用临时演示库，渲染后自动退出）：

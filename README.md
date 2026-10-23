@@ -28,6 +28,8 @@ make help               # 查看全部命令和参数
 3. 导出恢复私钥并验证备份，妥善保存密码库目录、恢复私钥和口令。
 4. 按需在设置中启用 Git 同步和浏览器连接。使用扩展时需保持客户端运行。
 
+客户端也提供兼容 pass 的命令行，如 `passpine show -c email/work`；可选运行 `passpine cli install --pass-alias` 添加 `pass` 别名。详见[命令行说明](docs/cli.md)。
+
 打开已有库时，默认通过系统 GPG 按 `.gpg-id` 匹配密钥（仅此方式需要 GnuPG）；也可选择 `.asc` / `.pgp` / `.gpg` / `.key` 私钥文件并输入口令。私钥文件通常已含公钥，多收件人库需补齐对应公钥；暂不支持硬件卡私钥。
 
 密码库保留 pass 的 `.gpg` / `.gpg-id` 格式，私钥保存在应用数据目录，不进入同步仓库。macOS 正式版数据目录为 `~/Library/Application Support/Passpine/`，Dev 为 `~/Library/Application Support/Passpine Dev/`。
@@ -47,6 +49,7 @@ bash scripts/check.sh                            # 运行检查与测试
 ## 文档
 
 - [本地安装与平台依赖](docs/install-local.md)
+- [命令行与 pass 别名](docs/cli.md)
 - [浏览器扩展开发](browser/README.md)
 - [官网开发与部署](website/README.md)
 - [Chrome Web Store 提交材料](docs/chrome-web-store/README.md)
