@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill, Audio, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion";
 import { FeatureBar } from "./components";
-import { copy } from "./copy";
+import { CopyContext, dictionaries, type Locale } from "./copy";
 import { Intro, Outro } from "./scenes/Bookends";
 import { Fill } from "./scenes/Fill";
 import { Generate } from "./scenes/Generate";
@@ -25,7 +25,8 @@ const scenes = [
   [timing.outro, Outro],
 ] as const;
 
-export const Promo = () => {
+export const Promo = ({ locale }: { locale: Locale }) => {
+  const copy = dictionaries[locale];
   const frame = useCurrentFrame();
   const active = features.findLastIndex((f) => frame >= f.from);
   const barOpacity = interpolate(frame, [timing.fill.from, timing.fill.from + 20, timing.outro.from - 12, timing.outro.from], [0, 1, 1, 0], {
@@ -34,14 +35,16 @@ export const Promo = () => {
   });
 
   return (
-    <AbsoluteFill style={{ background: paper, fontFamily: fonts.sans }}>
-      <Audio src={staticFile("music.wav")} volume={musicVolume} />
-      {scenes.map(([t, Scene], i) => (
-        <Sequence key={i} from={t.from} durationInFrames={t.duration}>
-          <Scene />
-        </Sequence>
-      ))}
-      <FeatureBar labels={[copy.fill.title, copy.generate.title, copy.sync.title, copy.vault.title]} active={active} opacity={barOpacity} />
-    </AbsoluteFill>
+    <CopyContext.Provider value={copy}>
+      <AbsoluteFill style={{ background: paper, fontFamily: fonts.sans }}>
+        <Audio src={staticFile("music.wav")} volume={musicVolume} />
+        {scenes.map(([t, Scene], i) => (
+          <Sequence key={i} from={t.from} durationInFrames={t.duration}>
+            <Scene />
+          </Sequence>
+        ))}
+        <FeatureBar labels={[copy.fill.title, copy.generate.title, copy.sync.title, copy.vault.title]} active={active} opacity={barOpacity} />
+      </AbsoluteFill>
+    </CopyContext.Provider>
   );
 };

@@ -2,11 +2,10 @@ import React from "react";
 import type { ReactNode } from "react";
 import { interpolate, useCurrentFrame } from "remotion";
 import { Check, FeatureCard, Toast, Window } from "../components";
-import { copy } from "../copy";
+import { useCopy } from "../copy";
 import { ink, muted, pop, ramp, sceneFade, timing } from "../theme";
 import { VaultList } from "./VaultList";
 
-const c = copy.sync;
 
 const SyncIcon = ({ angle }: { angle: number }) => (
   <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth={2} strokeLinecap="round" style={{ transform: `rotate(${angle}deg)` }}>
@@ -22,6 +21,7 @@ const Row = ({ label, children }: { label: string; children: ReactNode }) => (
 );
 
 export const Sync = () => {
+  const c = useCopy().sync;
   const frame = useCurrentFrame();
   const enter = ramp(frame, 0, 26);
   const syncing = frame >= 18 && frame < 60;
