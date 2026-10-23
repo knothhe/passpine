@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/knothhe/passpine/client/nativehost"
 )
 
 func TestOpenExistingVaultAutomaticallyUsesSystemGPG(t *testing.T) {
@@ -175,6 +177,41 @@ func TestBrowserBoundaryAndMetadataOnly(t *testing.T) {
 	must(t, s, Request{Action: "lock"})
 	if len(must(t, s, Request{Action: "list"}).Entries) != 1 {
 		t.Fatal("locked metadata missing")
+	}
+}
+
+func TestBrowserProtocolCompatibilityDoesNotRequireProductVersions(t *testing.T) {
+	s := testService(t)
+	relay := nativehost.NewRelayClient(s.directory)
+	defer relay.Close()
+	for _, transport := range []struct {
+		name string
+		send func([]byte) json.RawMessage
+	}{
+		{"desktop boundary", func(raw []byte) json.RawMessage { return s.handleBrowser(raw) }},
+		{"native relay", relay.Send},
+	} {
+		t.Run(transport.name, func(t *testing.T) {
+			// Product versions are deliberately absent. The wire protocol
+			// alone decides whether these independently built peers can talk.
+			var configured Response
+			if err := json.Unmarshal(transport.send([]byte(`{"protocol":1,"requestId":"compatible","action":"configure"}`)), &configured); err != nil {
+				t.Fatal(err)
+			}
+			if configured.Protocol != nativehost.Protocol || configured.RequestID != "compatible" || configured.Status != "ok" || !configured.Data.Configured || configured.Data.Locked {
+				t.Fatalf("supported protocol required a product version: %+v", configured)
+			}
+			var rejected Response
+			if err := json.Unmarshal(transport.send([]byte(`{"protocol":2,"requestId":"incompatible","action":"lock"}`)), &rejected); err != nil {
+				t.Fatal(err)
+			}
+			if rejected.Protocol != nativehost.Protocol || rejected.RequestID != "incompatible" || rejected.Status != "error" || rejected.Code != "protocol_mismatch" {
+				t.Fatalf("unsupported protocol did not return a correlated error: %+v", rejected)
+			}
+			if must(t, s, Request{Action: "status"}).Locked {
+				t.Fatal("incompatible request executed its lock action")
+			}
+		})
 	}
 }
 func TestRestoreDefaultsToOriginalPathWithoutOverwriting(t *testing.T) {

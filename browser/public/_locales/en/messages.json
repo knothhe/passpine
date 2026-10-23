@@ -10,14 +10,5 @@
   },
   "fillMatch": {
     "message": "Fill matching account"
-  },
-  "extensionNameDev": {
-    "message": "Passpine Dev"
-  },
-  "extensionDescriptionDev": {
-    "message": "Connect your separate Passpine Dev vault to your browser."
-  },
-  "openAppDev": {
-    "message": "Open Passpine Dev"
   }
 }

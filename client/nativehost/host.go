@@ -26,6 +26,10 @@ var FirefoxID = buildinfo.FirefoxID()
 // ChromiumID is tied to the checked-in browser manifest public key.
 var ChromiumID = buildinfo.ChromiumID()
 
+// Protocol is independent of product versions. Increase it only for
+// incompatible changes to native messages or their meaning.
+const Protocol = 1
+
 const MaxFrame = 1024 * 1024
 
 // Native authentication may wait up to two minutes for a user to respond.
@@ -96,7 +100,7 @@ func writeAll(w io.Writer, b []byte) error {
 	return nil
 }
 func failure(code string) json.RawMessage {
-	b, _ := json.Marshal(map[string]any{"protocol": 1, "status": "error", "code": code})
+	b, _ := json.Marshal(map[string]any{"protocol": Protocol, "status": "error", "code": code})
 	return b
 }
 
@@ -105,7 +109,7 @@ func requestFailure(request json.RawMessage, code string) json.RawMessage {
 		RequestID string `json:"requestId"`
 	}
 	_ = json.Unmarshal(request, &r)
-	b, _ := json.Marshal(map[string]any{"protocol": 1, "requestId": r.RequestID, "status": "error", "code": code})
+	b, _ := json.Marshal(map[string]any{"protocol": Protocol, "requestId": r.RequestID, "status": "error", "code": code})
 	return b
 }
 
@@ -247,11 +251,14 @@ func (c *RelayClient) Send(request []byte) json.RawMessage {
 		Protocol  int    `json:"protocol"`
 		RequestID string `json:"requestId"`
 	}
-	if json.Unmarshal(request, &r) != nil || r.Protocol != 1 {
-		return failure("invalid_request")
+	if json.Unmarshal(request, &r) != nil || r.Protocol == 0 {
+		return requestFailure(request, "invalid_request")
+	}
+	if r.Protocol != Protocol {
+		return requestFailure(request, "protocol_mismatch")
 	}
 	fail := func(code string) json.RawMessage {
-		b, _ := json.Marshal(map[string]any{"protocol": 1, "requestId": r.RequestID, "status": "error", "code": code})
+		b, _ := json.Marshal(map[string]any{"protocol": Protocol, "requestId": r.RequestID, "status": "error", "code": code})
 		return b
 	}
 	if time.Since(c.lastUsed) > 60*time.Second {

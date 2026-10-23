@@ -1,6 +1,4 @@
-import { BUILD_CHANNEL } from '../lib/build-channel';
-
-export const brandName = BUILD_CHANNEL === 'release' ? 'Passpine' : 'Passpine Dev';
+export const brandName = 'Passpine';
 
 // All browser UI copy lives here. Keep complete messages together and pass
 // runtime values as arguments; never translate vault contents or protocol IDs.
@@ -41,13 +39,22 @@ export const chineseCopy = {
   },
   connection: {
     disconnectedTitle: '未连接客户端',
-    openClient: `请打开 ${brandName} 客户端。`,
+    openClient: '请打开所选的 Passpine 客户端。',
     reconnect: '重新连接',
     guide: '连接指引',
     connecting: '正在连接…',
     clientConnection: '客户端连接',
     clientName: `${brandName} 客户端`,
     status: { connecting: '连接中', disconnected: '未连接', notSet: '未设置', locked: '已锁定', connected: '已连接' },
+  },
+  clientTarget: {
+    title: '桌面客户端',
+    description: '选择此插件连接的客户端，更改后立即生效。',
+    storeDescription: '连接 Passpine 正式客户端。',
+    release: '正式版',
+    dev: 'Dev 版',
+    loadFailed: '无法读取客户端设置，当前使用正式版。请重新打开设置后重试。',
+    saveFailed: '无法保存客户端设置，仍使用原来的客户端。请重试。',
   },
   accounts: {
     title: '账号',
@@ -260,7 +267,7 @@ export const chineseCopy = {
     unsupported_action: '客户端不支持此操作，请同时更新两端。',
     response_too_large: '账号内容过大，无法传输到扩展，请在客户端打开。',
     operation_failed: '操作未完成，请在客户端检查详情后重试。',
-    app_unavailable: `请先打开 ${brandName} 客户端，再重新连接。`,
+    app_unavailable: '请先打开所选的 Passpine 客户端，再重新连接。',
     native_connection_failed: '尚未连接客户端。请在客户端的「浏览器连接」中安装 Native Messaging Host。',
     background_unavailable: '扩展后台未响应，请重新打开扩展或在扩展管理页重新加载。',
     invalid_response: '客户端返回了无法识别的响应，请重新连接客户端。',
@@ -268,7 +275,7 @@ export const chineseCopy = {
     system_unlock_required: '请先在客户端使用私钥口令解锁，并启用系统解锁。',
     authentication_cancelled: '系统验证已取消或未完成，密码库仍保持锁定。',
     unauthorized: '浏览器扩展尚未获得客户端授权，请检查扩展 ID。',
-    protocol_mismatch: '客户端与扩展的协议版本不同，请同时更新两端。',
+    protocol_mismatch: '客户端与扩展的通信协议不兼容，请更新客户端或扩展后重试。',
     vault_changed: '当前密码库已切换，请刷新列表后重试。',
     revision_conflict: '此条目已在其他位置修改，请重新打开后编辑。',
     revision_required: '请重新打开此条目后再修改。',

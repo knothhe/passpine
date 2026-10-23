@@ -18,15 +18,15 @@ make -C .. browser:build
 pnpm run zip
 ```
 
-本地 ZIP 使用 `.output-dev/passpine-dev-<版本>-chrome.zip` 和对应的 Firefox ZIP；正式 CI ZIP 沿用 `.output/passpine-<版本>-chrome.zip` 和对应 Firefox ZIP。均不额外生成 sources ZIP；Edge 复用 Chrome 包。正式版本只由 GitHub Actions CI 构建和发布，发布 tag 与签名流程见[版本与发布](../docs/versioning.md)。扩展包仍需解包加载，Firefox 商店签名和自动上架尚未接入。
+本地与 CI 均使用 `.output/passpine-<版本>-chrome.zip` 和对应的 Firefox ZIP，不额外生成 sources ZIP；Edge 复用 Chrome 包。扩展不区分 Dev / 正式构建身份，本地构建不受桌面正式发布限制。正式发布仍由 GitHub Actions 在发布 tag 上完成，见[版本与发布](../docs/versioning.md)。扩展包可解包加载，Firefox 商店签名和自动上架尚未接入。
 
 [本地安装、配置与浏览器加载说明](../docs/install-local.md)
 
-客户端设置 → 浏览器会检测已安装的浏览器，可逐项注册或修复本机 Native Messaging Host。不同构建通道使用独立身份：
-- 本地默认构建 Passpine Dev：Chrome ID `dcfgpoaeamdmkgoepgkdllccakegldfc`、Firefox ID `passpine-dev@knothhe.com`、Native Host `com.knothhe.passpine.dev`，输出在 `.output-dev/chrome-mv3` 和 `.output-dev/firefox-mv3`。本地安装目录名称自动带 `-dev` 后缀；Dev 不预占正式扩展的浏览器快捷键，可在设置中自行分配。
-- 正式扩展由 GitHub Actions CI 从发布 tag 构建：Chrome ID `obnlebeedcbbchadakacilopfdaifgjh`、Firefox ID `passpine@knothhe.com`、Native Host `com.knothhe.passpine`，输出沿用 `.output/`。正式扩展和 Dev 扩展仅连接各自的客户端。
+客户端设置 → 浏览器会检测已安装的浏览器，可逐项注册或修复本机 Native Messaging Host。扩展统一使用 Chrome ID `obnlebeedcbbchadakacilopfdaifgjh`、Firefox ID `passpine@knothhe.com`，输出为 `.output/chrome-mv3` 和 `.output/firefox-mv3`，名称始终为 Passpine。
 
-两个通道的公开身份集中在 `config/browser-identities.json`。Chrome manifest 的 `key` 用于固定扩展 ID，与客户端更新签名公钥无关；Dev 扩展身份不需要保留私钥。
+默认连接正式 Host `com.knothhe.passpine`。本地解包加载时，设置页可选择 Dev Host `com.knothhe.passpine.dev`；商店安装仅显示正式客户端说明，连接层也会忽略残留的 Dev 设置。安装来源通过无需额外权限的 `management.getSelf()` 检查，查询失败时固定正式目标。切换后旧连接及弹窗会话失效，不自动回退或重放旧操作。
+
+公开身份集中在 `config/browser-identities.json`，构建使用其中的 `release` 身份；旧 Dev 身份仅保留为历史记录与拒绝旧身份的测试。Chrome manifest 的 `key` 用于固定扩展 ID，与客户端更新签名公钥无关。旧 Dev 客户端需要更新并修复浏览器连接，重新授权统一扩展。
 
 ## 独立交互预览
 
@@ -58,6 +58,7 @@ pnpm run preview
 
 - 后台通过持久 `runtime.connectNative` Port 连接 Go host。`requestId` 关联并发响应，复用进程与本机连接。只合并在途 `configure` 请求；断线后拒绝所有在途请求，下次显式操作才重连。保存、删除、复制从不自动重放。
 - 协议为 `{ protocol: 1, requestId, action, ... }`，返回 `{ protocol: 1, requestId, status, data, code?, message? }`。所有条目操作携带当前 `vaultId`；编辑和删除携带读取时的 `revision`，重命名使用原条目加 `destination`。
+- 协议版本独立于产品版本；不同版本的客户端与扩展可以连接。兼容扩展继续使用协议 1，仅破坏消息结构或既有语义时提升协议号。不支持的协议明确返回 `protocol_mismatch`，规则见[协议兼容](../docs/ARCHITECTURE.md#协议兼容)。
 - 只允许正确扩展 ID 和精确 `popup.html` / `options.html` 地址发起内部请求；设置页允许浏览器标签页元数据。无后台响应、格式异常与真实协议版本差异分别报告，避免将连接失败误报为版本不一致。内容脚本和任意网页不能请求密码。
 - 权限仅为 `activeTab`、`scripting`、`nativeMessaging`、`storage`、`clipboardWrite`。没有 `<all_urls>`、`tabs`、`clipboardRead` 或常驻注入脚本。
 - 用户点击填充或使用快捷键后，后台核验活动 tab ID、完整 URL 与精确 hostname，再向顶层 frame 注入一次性填写函数；函数再次核验完整 URL。填充不要求已有网站关联，填写成功后才保存该账号与当前 hostname 的关联。不会自动提交表单，也不进入跨域 iframe。

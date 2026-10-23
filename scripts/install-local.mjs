@@ -8,7 +8,7 @@ import { createInterface } from "node:readline"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 const browsers = ["chrome", "firefox", "edge"]
-const defaultOutputs = { chrome: "browser/.output-dev/chrome-mv3", firefox: "browser/.output-dev/firefox-mv3", edge: "browser/.output-dev/chrome-mv3" }
+const defaultOutputs = { chrome: "browser/.output/chrome-mv3", firefox: "browser/.output/firefox-mv3", edge: "browser/.output/chrome-mv3" }
 const marker = ".h2-ext-local.json"
 const projectRoot = fileURLToPath(new URL("../", import.meta.url))
 const identities = JSON.parse(fs.readFileSync(new URL("../config/browser-identities.json", import.meta.url), "utf8"))
@@ -102,11 +102,6 @@ function validateDestination(destination, root, browser, sources) {
   requireThat(stat.isDirectory() && !stat.isSymbolicLink(), "Installation directory must be a real directory, not a symlink or file.")
   if (fs.readdirSync(destination).length === 0)
     return
-  const manifestPath = path.join(destination, "manifest.json")
-  if (fs.existsSync(manifestPath)) {
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"))
-    requireThat(manifest.key !== identities.release.key && manifest.browser_specific_settings?.gecko?.id !== identities.release.firefoxID, "Development installation must not replace a release extension directory.")
-  }
   let ownership
   try {
     ownership = JSON.parse(fs.readFileSync(path.join(destination, marker), "utf8"))
@@ -114,7 +109,7 @@ function validateDestination(destination, root, browser, sources) {
   catch {
     // Existing manual installations need confirmation before replacement.
   }
-  return !(ownership?.installer === "h2-ext-local" && ownership?.schema === 2 && ownership?.project === realRoot && ownership?.browser === browser && ownership?.channel === "dev")
+  return !(ownership?.installer === "h2-ext-local" && ownership?.schema === 2 && ownership?.project === realRoot && ownership?.browser === browser)
 }
 
 export async function confirmOverwrite(destination, { input = process.stdin, output = process.stdout } = {}) {
@@ -164,8 +159,8 @@ function build(browser, root, options) {
   const command = options.packageManager + (process.platform === "win32" ? ".cmd" : "")
   requireThat(/^[a-zA-Z0-9:_-]+$/.test(script), "Build script names may contain only letters, numbers, colons, underscores and hyphens.")
   const result = process.platform === "win32"
-    ? spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `${command} run ${script}`], { cwd: root, env: { ...process.env, PASSPINE_BUILD_CHANNEL: "dev" }, stdio: "inherit" })
-    : spawnSync(command, ["run", script], { cwd: root, env: { ...process.env, PASSPINE_BUILD_CHANNEL: "dev" }, stdio: "inherit" })
+    ? spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `${command} run ${script}`], { cwd: root, env: process.env, stdio: "inherit" })
+    : spawnSync(command, ["run", script], { cwd: root, env: process.env, stdio: "inherit" })
   if (result.error)
     throw result.error
   requireThat(result.status === 0, `Build failed for ${browser}; installation was not changed.`)
@@ -185,9 +180,7 @@ export async function installLocal(argv, { root = projectRoot, runBuild = build,
   requireThat(directory !== undefined, `No installation directory configured for ${browser}. Copy .install-local.example.json to .install-local.json and edit its directories, or pass --dir <path>.`)
   const packagePath = path.join(root, "package.json")
   const packageName = fs.existsSync(packagePath) ? JSON.parse(fs.readFileSync(packagePath, "utf8")).name : undefined
-  const requestedName = args.name ?? config.name ?? packageName ?? path.basename(canonical(root))
-  validateName(requestedName)
-  const name = requestedName.toLowerCase().endsWith("-dev") ? requestedName : `${requestedName}-dev`
+  const name = args.name ?? config.name ?? packageName ?? path.basename(canonical(root))
   validateName(name)
   const parentDirectory = resolveDirectory(directory, root)
   const destination = path.join(parentDirectory, name)
@@ -199,9 +192,9 @@ export async function installLocal(argv, { root = projectRoot, runBuild = build,
   const source = options.outputs[browser]
   const manifest = JSON.parse(fs.readFileSync(path.join(source, "manifest.json"), "utf8"))
   requireThat(manifest?.manifest_version === 3 && typeof manifest.name === "string" && manifest.name.trim(), "Build output must contain a valid MV3 manifest.")
-  requireThat(manifest.key === identities.dev.key, "Local installation requires a development extension build; release extension output was not installed.")
+  requireThat(manifest.key === identities.release.key, "Local installation requires the unified extension identity; legacy development extension output was not installed.")
   if (browser === "firefox")
-    requireThat(manifest.browser_specific_settings?.gecko?.id === identities.dev.firefoxID, "Local installation requires the development Firefox extension identity.")
+    requireThat(manifest.browser_specific_settings?.gecko?.id === identities.release.firefoxID, "Local installation requires the unified Firefox extension identity.")
   const versionRules = browser === "firefox"
     ? "1–4 integers of up to nine digits, without leading zeros"
     : "1–4 integers between 0 and 65535, without leading zeros, and must not be all zero"
@@ -214,7 +207,7 @@ export async function installLocal(argv, { root = projectRoot, runBuild = build,
   let backupNeedsRecovery = false
   try {
     fs.cpSync(source, stagedExtension, { recursive: true })
-    fs.writeFileSync(path.join(stagedExtension, marker), `${JSON.stringify({ installer: "h2-ext-local", schema: 2, project: canonical(root), browser, channel: "dev", version: manifest.version }, null, 2)}\n`)
+    fs.writeFileSync(path.join(stagedExtension, marker), `${JSON.stringify({ installer: "h2-ext-local", schema: 2, project: canonical(root), browser, version: manifest.version }, null, 2)}\n`)
     requireThat(!validateDestination(destination, root, browser, Object.values(options.outputs)) || overwriteConfirmed, "Installation directory changed before replacement and now needs overwrite confirmation. Run make browser:install again.")
     const hadPrevious = fs.existsSync(destination)
     if (hadPrevious) {
@@ -246,7 +239,7 @@ export async function installLocal(argv, { root = projectRoot, runBuild = build,
 async function main() {
   const argv = process.argv.slice(2)
   if (argv.includes("--help") || argv.includes("-h")) {
-    console.log("Usage: node scripts/install-local.mjs [chrome|firefox|edge] [--browser <browser>] [--dir <parent-directory>] [--name <plugin-name>] [--config <file>]\nBuilds development MV3 and installs into <parent-directory>/<plugin-name>-dev. Names already ending in -dev are retained. Default name: package.json name, falling back to the project folder name.\nDefaults: .install-local.json, then Chrome. CLI options override config.\nRelative parent directories resolve from the repository; ~/ expands to your home.\nOnly the development plugin directory is replaced; release extension directories and other files in the parent directory are preserved.\nExisting plugin directories from other installations require overwrite confirmation [Y/n].\nLoad the plugin directory in Chrome/Edge, or its manifest.json temporarily in Firefox. Reload after updates.")
+    console.log("Usage: node scripts/install-local.mjs [chrome|firefox|edge] [--browser <browser>] [--dir <parent-directory>] [--name <plugin-name>] [--config <file>]\nBuilds MV3 and installs into <parent-directory>/<plugin-name>, using the same extension identity as published builds. Default name: package.json name, falling back to the project folder name.\nDefaults: .install-local.json, then Chrome. CLI options override config.\nRelative parent directories resolve from the repository; ~/ expands to your home.\nOnly the named plugin directory is replaced; other files in the parent directory are preserved.\nExisting plugin directories from other installations require overwrite confirmation [Y/n].\nLoad the plugin directory in Chrome/Edge, or its manifest.json temporarily in Firefox. Reload after updates.")
     return
   }
   const result = await installLocal(argv)

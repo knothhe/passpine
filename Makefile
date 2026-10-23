@@ -9,8 +9,9 @@ CLIENT_BUILD = bash scripts/build-client.sh
 CLIENT_INSTALL = bash scripts/install-client.sh
 endif
 
-# Local builds and installations are isolated development versions.
-# GitHub Actions sets release explicitly after verifying its release tag.
+# Desktop builds and installations are isolated development versions.
+# GitHub Actions sets the desktop release channel after verifying its release tag.
+# Browser extensions use one identity and output directory in every environment.
 PASSPINE_BUILD_CHANNEL ?= dev
 export PASSPINE_BUILD_CHANNEL
 

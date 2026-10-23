@@ -1,6 +1,6 @@
 # 本地安装
 
-本地命令统一构建和安装 **Dev 版**。正式版由 GitHub Actions 在发布 tag 上构建，从 GitHub Release 下载安装；本地安装脚本拒绝正式通道。Dev 与正式版使用不同的应用、数据及浏览器身份，可同时安装。Dev 不检查正式更新，也不自动发现 `~/.password-store`；开发时请使用测试密码库。
+本地命令构建和安装 **Dev 客户端及统一浏览器扩展**。正式客户端由 GitHub Actions 在发布 tag 上构建，从 GitHub Release 下载安装；客户端本地安装脚本拒绝正式通道。Dev 与正式客户端使用不同的应用、数据目录及 Native Host，可同时安装。Dev 不检查正式更新，也不自动发现 `~/.password-store`；开发时请使用测试密码库。扩展只有一组名称和 ID，默认连接正式客户端；本地解包加载时可在设置中切换 Dev 客户端，商店安装只连接正式客户端。
 
 需要 Make、Go 1.27.1+、Node.js 22.12+ 和 pnpm 12.11.2。macOS 还需要 Xcode Command Line Tools，构建会将 Swift 系统解锁辅助程序一并打包。在仓库根目录运行命令；Make 会按锁文件安装浏览器构建依赖。客户端和扩展通过不同前缀选择，无前缀的命令同时处理两者。
 
@@ -21,7 +21,7 @@ Linux 的快捷键录制在 GTK 原生窗口捕获按键，录制期间申请键
 
 Linux 默认使用 Cairo 软件渲染，避开当前 MyGo 0.5.5 在多窗口切换时因 OpenGL 上下文失效而退出的问题。可显式设置 `MYGO_GPU=1` 测试 GPU 路径，但当前版本尚未验证该路径的多窗口稳定性。
 
-Windows 还需安装 NSIS 3（例如 `choco install nsis`）。Make 根据系统自动分流；Windows 使用系统 PowerShell，无需 Bash。`make build` 同时生成 `dist/dev/` 内的 Dev 程序、`Passpine-Dev-<版本>-windows-amd64-setup.exe` 和独立的 Chrome/Firefox Dev 扩展。`make client:install` 静默运行安装包，默认安装到 `%LOCALAPPDATA%\Programs\Passpine Dev`；Windows 的 `CLIENT_INSTALL_DIR` 指应用目录本身，例如 `make client:install CLIENT_INSTALL_DIR="C:\Apps\Passpine Dev"`。`make install` 与直接运行 setup.exe 使用相同的默认目录；未指定目录时会沿用 Dev 注册表中记录的上次安装位置；Dev 和正式版的安装、卸载及浏览器注册表项互相独立。客户端安装成功后，Make 安装命令会从注册表读取并输出实际安装目录。
+Windows 还需安装 NSIS 3（例如 `choco install nsis`）。Make 根据系统自动分流；Windows 使用系统 PowerShell，无需 Bash。`make build` 同时生成 `dist/dev/` 内的 Dev 程序、`Passpine-Dev-<版本>-windows-amd64-setup.exe` 和统一的 Chrome/Firefox 扩展。`make client:install` 静默运行安装包，默认安装到 `%LOCALAPPDATA%\Programs\Passpine Dev`；Windows 的 `CLIENT_INSTALL_DIR` 指应用目录本身，例如 `make client:install CLIENT_INSTALL_DIR="C:\Apps\Passpine Dev"`。`make install` 与直接运行 setup.exe 使用相同的默认目录；未指定目录时会沿用 Dev 注册表中记录的上次安装位置；Dev 和正式版的安装、卸载及浏览器注册表项互相独立。客户端安装成功后，Make 安装命令会从注册表读取并输出实际安装目录。
 
 Windows 安装包使用当前用户权限，创建开始菜单快捷方式和系统卸载入口，为已安装的 Chrome、Edge、Brave 和 Firefox 写入 HKCU Native Messaging 注册表项。卸载会清理本安装的注册项和程序文件，保留密码库、密钥及用户数据。更新前应退出客户端。安装包没有 Authenticode 签名；Windows 支持使用当前账户的登录密码进行系统解锁；修改登录密码后，在安全设置中关闭系统解锁，用私钥口令打开密码库，再重新开启并锁定、使用私钥口令解锁以完成注册。
 
@@ -79,7 +79,7 @@ cp .install-local.example.json .install-local.json
 ```json
 {
   "browser": "chrome",
-  "name": "passpine-dev",
+  "name": "passpine",
   "directories": {
     "chrome": "~/ChromeExtensions",
     "firefox": "~/FirefoxExtensions",
@@ -88,7 +88,7 @@ cp .install-local.example.json .install-local.json
 }
 ```
 
-个人配置已被 Git 忽略。示例中的 Chrome 安装目标为 `~/ChromeExtensions/passpine-dev`，Firefox 为 `~/FirefoxExtensions/passpine-dev`。旧配置中的 `passpine` 会安全映射到 Dev 子目录，避免覆盖正式扩展；个人配置文件不会被重写。父目录支持 `~/`，相对路径以仓库根目录为基准；不展开 `$HOME` 等环境变量。省略名称时使用本项目 Dev 名称 `passpine-dev`，自定义名称也会确保 Dev 后缀。名称只决定本地子目录，不改变扩展 ID 或 manifest 名称。
+个人配置已被 Git 忽略。示例中的 Chrome 安装目标为 `~/ChromeExtensions/passpine`，Firefox 为 `~/FirefoxExtensions/passpine`。安装使用配置原名，不再自动添加 `-dev`；已有显式 `-dev` 名称仍按原名保留，个人配置文件不会被重写。父目录支持 `~/`，相对路径以仓库根目录为基准；不展开 `$HOME` 等环境变量。省略名称时使用包名 `passpine`。名称只决定本地子目录，不改变扩展 ID 或 manifest 名称。不会自动迁移、清理旧 Dev 插件目录或浏览器中的旧扩展。
 
 ```sh
 make browser:install
@@ -97,11 +97,11 @@ make browser:install BROWSER=edge
 make install
 
 # 无配置文件时，直接提供安装父目录
-make browser:install BROWSER=chrome INSTALL_ARGS='--dir "~/ChromeExtensions" --name passpine-dev'
+make browser:install BROWSER=chrome INSTALL_ARGS='--dir "~/ChromeExtensions" --name passpine'
 
 # CLI 选项优先于配置；也可选择另一份配置
 make browser:install INSTALL_ARGS='--config .install-local.custom.json'
-make browser:install BROWSER=firefox INSTALL_ARGS='--dir "~/FirefoxExtensions" --name passpine-dev'
+make browser:install BROWSER=firefox INSTALL_ARGS='--dir "~/FirefoxExtensions" --name passpine'
 node scripts/install-local.mjs --help
 ```
 
@@ -109,7 +109,7 @@ node scripts/install-local.mjs --help
 
 ## 构建映射与更新
 
-`make browser:build` 构建 Chrome 和 Firefox。单独构建使用 `make browser:build:chrome`、`make browser:build:firefox` 或 `make browser:build:edge`。Dev 的 Chrome / Edge 共用 `browser/.output-dev/chrome-mv3`，Firefox 使用 `browser/.output-dev/firefox-mv3`；正式 CI 使用独立的正式输出目录。安装只构建所选浏览器，默认使用配置中的 `browser`，省略时为 Chrome。
+`make browser:build` 构建 Chrome 和 Firefox。单独构建使用 `make browser:build:chrome`、`make browser:build:firefox` 或 `make browser:build:edge`。Chrome / Edge 共用 `browser/.output/chrome-mv3`，Firefox 使用 `browser/.output/firefox-mv3`；本地与 CI 使用同一扩展身份和输出路径。安装只构建所选浏览器，默认使用配置中的 `browser`，省略时为 Chrome。
 
 沿用 skill 的可选配置：`package_manager` 兼容 `npm` / `pnpm`，本项目依据根目录 `packageManager` 默认使用 `pnpm`；`build_scripts` 按浏览器指定仓库根目录 `package.json` 的脚本名；`output_directories` 指定对应的 MV3 解包目录。默认构建脚本为 `build:browser:chrome`、`build:browser:firefox`、`build:browser:edge`，均调用 Make。
 
@@ -119,13 +119,14 @@ node scripts/install-local.mjs --help
 
 ## 首次加载与使用
 
-1. 运行 `make client:install`，打开安装后的客户端并创建或打开密码库。
+1. 安装并打开正式客户端，或运行 `make client:install` 安装 Dev 客户端，再创建或打开密码库。
 2. Chrome 在 `chrome://extensions`、Edge 在 `edge://extensions` 开启开发者模式，加载配置中的固定插件子目录。Brave 可加载同一 Chromium 产物。Firefox 在 `about:debugging#/runtime/this-firefox` 临时加载固定目录中的 `manifest.json`，重启浏览器后需再次加载；商店分发需要 Firefox 签名。
 3. 更新后，在扩展管理页重新加载扩展。同步到安装目录不代表浏览器已加载新版本。
+   本地解包加载时，扩展设置 → 桌面客户端可选择正式版或 Dev 版，默认正式版。商店安装固定连接正式版，不显示 Dev 选择。目标切换会清除旧会话及未保存输入，不会自动连接另一个客户端。
 4. 支持的 Mac 和 Windows 默认启用系统解锁，首次用私钥口令打开密码库后完成系统验证：Mac 使用 Touch ID 或登录密码，Windows 使用当前账户的登录密码。扩展锁定时操作条目会自动请求系统验证，成功后继续操作；尚未启用系统解锁时会唤出客户端。客户端关闭则连接断开，可在客户端开启“关闭窗口后继续运行”。
 5. 点击账号正文直接填充，右侧详情图标用于查看。无需提前关联网站，成功填充后默认关联当前精确 hostname 并自动关闭弹窗；关联保存失败但网页已填充时同样关闭。再次打开后可在更多菜单或详情中取消关联，再次成功填充会重新关联。关联不自动继承子域，填充不会提交表单；无可填写表单时保留弹窗显示错误，且不会新增关联。独立 demo 保留弹窗和关联保存失败提示，用于检查界面状态。
 
-Dev Chrome / Edge 扩展 ID 为 `dcfgpoaeamdmkgoepgkdllccakegldfc`，Firefox ID 为 `passpine-dev@knothhe.com`，Native Host 为 `com.knothhe.passpine.dev`。正式版继续使用 `obnlebeedcbbchadakacilopfdaifgjh`、`passpine@knothhe.com` 和 `com.knothhe.passpine`。两组扩展只能连接对应通道的客户端。更新后重新加载扩展；连接失败时，在客户端设置中修复浏览器连接。
+Chrome / Edge 扩展 ID 统一为 `obnlebeedcbbchadakacilopfdaifgjh`，Firefox ID 为 `passpine@knothhe.com`。正式 Host 为 `com.knothhe.passpine`，Dev Host 为 `com.knothhe.passpine.dev`，各自继续使用独立数据目录。更新后的 Dev 客户端授权同一扩展 ID；旧 Dev 客户端需先更新，再在客户端设置中修复浏览器连接。产品版本号不要求一致，只要通信协议兼容即可。
 
 ## Agent 收尾安装
 

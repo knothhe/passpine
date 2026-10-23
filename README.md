@@ -13,11 +13,11 @@
 ```sh
 make                    # 构建 Dev 客户端和 Chrome / Firefox 扩展
 make client:install     # 安装 Dev 客户端并注册独立的浏览器连接
-make browser:install    # 按本地配置构建并安装 Dev 扩展
+make browser:install    # 按本地配置构建并安装统一扩展
 make help               # 查看全部命令和参数
 ```
 
-本地 `make build` / `make install` 始终用于 Dev 版；正式版由 GitHub Actions 在发布 tag 上构建并发布，从 [GitHub Releases](https://github.com/knothhe/passpine/releases) 下载。Dev 使用独立应用名称、应用标识、数据目录和扩展身份，不自动更新到正式版。扩展安装前需配置安装目录，安装后需在浏览器中加载。平台依赖、安装位置及操作步骤见[本地安装说明](docs/install-local.md)。
+本地 `make build` / `make install` 构建 Dev 客户端和统一浏览器扩展；正式客户端由 GitHub Actions 在发布 tag 上构建并发布，从 [GitHub Releases](https://github.com/knothhe/passpine/releases) 下载。Dev 客户端使用独立应用名称、应用标识、数据目录和 Native Host，不自动更新到正式版。扩展统一使用 Passpine 名称和同一扩展 ID，默认连接正式客户端；本地解包加载时可在设置中切换 Dev 客户端，商店安装只连接正式客户端。扩展安装前需配置安装目录，安装后需在浏览器中加载。平台依赖、安装位置及操作步骤见[本地安装说明](docs/install-local.md)。
 
 支持 macOS、Windows 和 Linux。macOS 应用使用本地签名，尚未配置 Developer ID 公证；Windows 安装包尚未配置 Authenticode 签名。
 

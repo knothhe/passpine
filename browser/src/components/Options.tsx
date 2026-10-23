@@ -1,19 +1,23 @@
 import { useCopy, useLanguage } from './LanguageProvider';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Callout, Card, Heading, Text } from '@radix-ui/themes';
 import { Check, ClipboardCopy, Globe2, RefreshCw } from 'lucide-react';
 import { Brand } from './Primitives';
 import { ShortcutSettings } from './ShortcutSettings';
 import { AppearanceSettings } from './AppearanceSettings';
 import { LanguageSettings } from './LanguageSettings';
+import { ClientTargetSettings, useClientTarget } from './ClientTargetSettings';
 import { About } from './About';
 import { errorMessage } from '../lib/errors';
-import { HOST, type Client, type Snapshot } from '../lib/types';
+import { type Client, type Snapshot } from '../lib/types';
+import { hostForTarget } from '../lib/client-target';
 import { useExpiringValue } from '../lib/use-expiring-value';
 
-export function Options({ client, extensionId, firefox = false }: { client: Client; extensionId: string; firefox?: boolean }) {
+export function Options({ client: sourceClient, extensionId, firefox = false }: { client: Client; extensionId: string; firefox?: boolean }) {
   const copy = useCopy();
   const { locale } = useLanguage();
+  const clientTarget = useClientTarget(sourceClient.demo);
+  const client = useMemo(() => sourceClient.scope?.() ?? sourceClient, [sourceClient, clientTarget.target, clientTarget.connectionRevision]);
   const [page, setPage] = useState<'settings' | 'about'>(() => new URLSearchParams(location.search).get('section') === 'about' ? 'about' : 'settings');
   const contentRef = useRef<HTMLDivElement>(null), previousPage = useRef(page);
   useEffect(() => { document.title = page === 'about' ? copy.about.pageTitle : copy.options.pageTitle; }, [page, locale, copy]);
@@ -42,7 +46,10 @@ export function Options({ client, extensionId, firefox = false }: { client: Clie
       if (sequence === refreshSequence.current) setChecking(false);
     }
   };
-  useEffect(() => { void refresh(); return () => { refreshSequence.current++; }; }, [client]);
+  useEffect(() => {
+    if (!clientTarget.loading) { setSnapshot(undefined); setNotice(''); void refresh(); }
+    return () => { refreshSequence.current++; };
+  }, [client, clientTarget.loading, clientTarget.target]);
   const copyId = async () => {
     setCopied(false);
     try { await navigator.clipboard.writeText(extensionId); setCopied(true); }
@@ -57,6 +64,7 @@ export function Options({ client, extensionId, firefox = false }: { client: Clie
     <div className="options-sections">
       <Card size="3" className="options-card"><LanguageSettings/></Card>
       <Card size="3" className="options-card"><AppearanceSettings/></Card>
+      <Card size="3" className="options-card"><ClientTargetSettings state={clientTarget}/></Card>
       <Card size="3" className="options-card options-card-connection">
         <div className="options-connection">
           <div className="options-connection-summary"><span className={`connection-dot ${!snapshot || snapshot.locked ? 'locked' : ''}`} aria-hidden="true"/><div><Heading as="h2" size="3">{checking ? copy.options.checkingConnection : snapshot ? snapshot.locked ? copy.options.connectedLocked : copy.connection.status.connected : copy.connection.disconnectedTitle}</Heading><Text as="p" size="2" color="gray">{snapshot?.vaultName || (snapshot ? copy.options.openVault : copy.options.connectLocal)}</Text></div></div>
@@ -71,7 +79,7 @@ export function Options({ client, extensionId, firefox = false }: { client: Clie
       </Card>
       <Card size="3" className="options-card">
         <div className="options-section-heading"><Globe2 size={18}/><Heading as="h2" size="3">{copy.options.connectionInfo}</Heading></div>
-        <dl className="diagnostic-list"><div><dt>{copy.options.nativeHost}</dt><dd><code>{HOST}</code></dd></div><div><dt>{copy.options.extensionID}</dt><dd><code>{extensionId}</code></dd></div></dl>
+        <dl className="diagnostic-list"><div><dt>{copy.options.nativeHost}</dt><dd><code>{hostForTarget(clientTarget.target)}</code></dd></div><div><dt>{copy.options.extensionID}</dt><dd><code>{extensionId}</code></dd></div></dl>
         <div className="options-card-actions"><Button variant="soft" color="gray" size="1" onClick={() => void copyId()}>{copied ? <Check size={14}/> : <ClipboardCopy size={14}/>} {copied ? copy.common.copied : copy.options.copyExtensionID}</Button></div>
       </Card>
     </div></>}
