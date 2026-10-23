@@ -2,6 +2,33 @@ package i18n
 
 const ClipboardWriteFailed = "无法写入剪贴板，请重试。"
 
+// CLIHelp lists commands with the invoked program name, so one template
+// documents both `passpine ...` and the optional `pass ...` alias.
+const CLIHelp = `用法：
+  %[1]s [ls] [子文件夹]                列出条目
+  %[1]s find 条目名称…                 按名称查找条目
+  %[1]s [show] [-c[行号]] [-q[行号]] 条目名称
+                                        显示条目，或复制 / 以二维码显示指定行
+  %[1]s grep [-i] [-F] 搜索内容        在解密内容中搜索
+  %[1]s insert [-e | -m] [-f] 条目名称 添加条目
+  %[1]s edit 条目名称                  使用 $EDITOR 编辑条目
+  %[1]s generate [-n] [-c] [-q] [-i | -f] 条目名称 [长度]
+                                        生成密码
+  %[1]s rm [-r] [-f] 条目名称          将条目或文件夹移到回收站
+  %[1]s mv [-f] 原名称 新名称          移动或重命名
+  %[1]s cp [-f] 原名称 新名称          复制
+  %[1]s otp [-c] 条目名称              显示当前 TOTP 验证码
+  %[1]s git Git 命令参数…              在密码库中运行 Git
+  %[1]s cli install [--pass-alias] [--dir 目录]
+                                        安装命令，可选添加 pass 别名
+  %[1]s cli uninstall [--pass-alias] [--dir 目录]
+                                        移除命令链接或 pass 别名
+  %[1]s cli status [--dir 目录]         查看命令与别名状态
+
+默认使用 Passpine 客户端当前选择的密码库；设置 PASSWORD_STORE_DIR 可选择其他已在客户端中打开的密码库。
+也支持 PASSWORD_STORE_CLIP_TIME、PASSWORD_STORE_GENERATED_LENGTH、PASSWORD_STORE_X_SELECTION 和 EDITOR。
+不带参数运行 passpine 会打开桌面客户端。`
+
 // Chinese source keys keep the original language readable while the English
 // catalog provides the default for unsupported system languages.
 var english = map[string]string{
@@ -288,7 +315,6 @@ var english = map[string]string{
 	"同步中…":                    "Syncing…",
 	"Git 已初始化":                "Git initialized",
 	"上次成功同步 %s":               "Last successful sync %s",
-	"正在同步密码库":                 "Syncing vault",
 	"打开密码库":                   "Open vault",
 	"创建密码库":                   "Create vault",
 	"首次使用？创建密码库时会在本机生成受口令保护的 OpenPGP（GPG）私钥，无需安装 GnuPG 或准备已有密钥。": "New to Passpine? Creating a vault generates a passphrase-protected OpenPGP (GPG) private key on this device. No GnuPG or existing key is needed.",
@@ -605,13 +631,101 @@ var english = map[string]string{
 
 	"正在处理 Git 操作…":            "Processing Git operation…",
 	"Git 操作正在后台进行，本地密码库仍可使用。": "Git is running in the background. Your local vault remains available.",
-	"存在同步冲突":                  "Sync conflicts detected",
-	"已保存的本地内容仍可使用。请先解决仓库冲突，再重新同步。":      "Saved local contents remain available. Resolve repository conflicts before syncing again.",
-	"已保存的本地内容仍可使用。安装 Git 后可启用密码库同步。":    "Saved local contents remain available. Install Git to enable vault sync.",
-	"已保存的本地内容仍可使用。初始化 Git 后可备份与同步加密条目。": "Saved local contents remain available. Initialize Git to back up and sync encrypted entries.",
-	"已保存的本地内容仍可使用。添加远端地址后可跨设备同步。":       "Saved local contents remain available. Add a remote address to sync across devices.",
-	"远端同步未完成": "Remote sync did not finish",
-	"已保存的本地内容仍可使用。查看错误详情，确认同步配置后重试。": "Saved local contents remain available. Review the error and sync settings, then retry.",
-	"重试同步":   "Retry sync",
-	"查看同步设置": "Sync settings",
+
+	// Command line. Keys are complete templates; entry names, paths and
+	// program names are passed as arguments and never translated.
+	"Passpine %s 命令行，兼容 pass": "Passpine %s command line, compatible with pass",
+	"Passpine 在客户端中创建或导入密码库并管理私钥。请打开 Passpine 客户端完成设置。": "Passpine creates or imports vaults and manages private keys in the desktop client. Open the Passpine client to finish setup.",
+	"PATH 中的 %s 会优先于 %s。":       "%s is found earlier in PATH than %s.",
+	"%s：%s 被其他程序占用":             "%s: %s is used by another program",
+	"%s 不在 PATH 中，请将它加入 PATH。":  "%s is not in PATH. Add it to PATH.",
+	"%s 不是 Passpine 创建的链接，已保留。": "%s is not a link created by Passpine and was kept.",
+	"%s 中没有 OTP 密钥。":            "%s has no OTP secret.",
+	"%s 中的 OTP 密钥无效。":           "The OTP secret in %s is invalid.",
+	"%s 已可用：%s":                 "%s is already available: %s",
+	"%s：已启用（%s）":                "%s: enabled (%s)",
+	"%s 已存在且不是 Passpine，未覆盖。请使用 --dir 选择其他目录。": "%s already exists and is not Passpine, so it was not replaced. Use --dir to choose another directory.",
+	"%s 已存在。要覆盖吗？":                "An entry already exists for %s. Overwrite it?",
+	"%s 是文件夹，不能复制或显示二维码。":         "%s is a folder and cannot be copied or shown as a QR code.",
+	"%s 是文件夹，删除时请使用 --recursive。": "%s is a folder. Use --recursive to remove it.",
+	"%s：未启用":                          "%s: not enabled",
+	"%s 未安装：%s":                       "%s is not installed: %s",
+	"%s 的 Passpine 私钥口令：":             "Passpine private key passphrase for %s: ",
+	"%s 的内容未更改。":                      "Password for %s unchanged.",
+	"%s 的新密码：":                        "The generated password for %s is:",
+	"%s 的第 %d 行没有可复制的内容。":             "There is nothing to use from %s at line %d.",
+	"Windows 暂不支持自动安装命令链接。":           "Installing command links automatically is not supported on Windows yet.",
+	"两次输入的密码不一致。":                     "The entered passwords do not match.",
+	"仍要继续吗？":                          "Continue anyway?",
+	"再次输入 %s 的密码：":                    "Retype password for %s: ",
+	"密码存储":                            "Password Store",
+	"密码库中没有 %s。":                      "%s is not in the password store.",
+	"密码库正被另一个操作使用，请稍后重试。":             "The vault is in use by another operation. Try again shortly.",
+	"密码库还不是 Git 仓库。请运行“%s git init”。": "The password store is not a Git repository. Run \"%s git init\".",
+	"密码长度必须在 4 到 256 之间。":             "Password length must be between 4 and 256.",
+	"密码长度必须是数字：%s":                    "Password length must be a number: %s",
+	"已保存，但未能提交到 Git：%s":               "Saved, but could not commit to Git: %s",
+	"已创建 %s：%s":                       "Created %s: %s",
+	"已将 %s 复制到剪贴板，将在 %d 秒后清除。":        "Copied %s to clipboard. Will clear in %d seconds.",
+	"已移到回收站：%s":                       "Moved to trash: %s",
+	"已移除 %s：%s":                       "Removed %s: %s",
+	"找不到可用的剪贴板工具。请安装 wl-clipboard、xclip 或 xsel。":          "No clipboard tool found. Install wl-clipboard, xclip or xsel.",
+	"找不到此密码库的 Passpine 私钥。请先在 Passpine 客户端中创建、打开或导入该密码库。": "No Passpine private key was found for this vault. Create, open or import it in the Passpine client first.",
+	"搜索词：%s":              "Search Terms: %s",
+	"无效的搜索表达式：%s":         "Invalid search pattern: %s",
+	"无效的选项：%s":            "Invalid option: %s",
+	"无法读取 %s：%s":          "Could not read %s: %s",
+	"显示二维码需要安装 qrencode。": "Showing QR codes requires qrencode.",
+	"条目名称无效或不安全。":         "The entry name is invalid or unsafe.",
+	"条目已在其他位置更改，请重试。":     "The entry changed elsewhere. Try again.",
+	"此系统没有内存文件系统，解密后的内容会临时写入磁盘目录 %s。":                                                                   "This system has no memory-backed filesystem; the decrypted contents will be written temporarily to %s on disk.",
+	"用法：%s cli install|uninstall|status [--pass-alias] [--dir 目录]":                                      "Usage: %s cli install|uninstall|status [--pass-alias] [--dir DIRECTORY]",
+	"用法：%s cp [--force,-f] 原名称 新名称":                                                                     "Usage: %s cp [--force,-f] old-path new-path",
+	"用法：%s edit 条目名称":                                                                                   "Usage: %s edit pass-name",
+	"用法：%s find 条目名称…":                                                                                  "Usage: %s find pass-names...",
+	"用法：%s generate [--no-symbols,-n] [--clip,-c] [--qrcode,-q] [--in-place,-i | --force,-f] 条目名称 [长度]": "Usage: %s generate [--no-symbols,-n] [--clip,-c] [--qrcode,-q] [--in-place,-i | --force,-f] pass-name [pass-length]",
+	"用法：%s git Git 命令参数…":                                                                               "Usage: %s git git-command-args...",
+	"用法：%s grep [-i] [-F] 搜索内容":                                                                         "Usage: %s grep [-i] [-F] search-string",
+	"用法：%s insert [--echo,-e | --multiline,-m] [--force,-f] 条目名称":                                       "Usage: %s insert [--echo,-e | --multiline,-m] [--force,-f] pass-name",
+	"用法：%s ls [子文件夹]":                                                                                   "Usage: %s ls [subfolder]",
+	"用法：%s mv [--force,-f] 原名称 新名称":                                                                     "Usage: %s mv [--force,-f] old-path new-path",
+	"用法：%s otp [code] [--clip,-c] 条目名称":                                                                 "Usage: %s otp [code] [--clip,-c] pass-name",
+	"用法：%s rm [--recursive,-r] [--force,-f] 条目名称":                                                       "Usage: %s rm [--recursive,-r] [--force,-f] pass-name",
+	"用法：%s show [--clip[=行号],-c[行号]] [--qrcode[=行号],-q[行号]] [条目名称]":                                     "Usage: %s show [--clip[=line-number],-c[line-number]] [--qrcode[=line-number],-q[line-number]] [pass-name]",
+	"目标条目已存在。":                                                                                          "The destination entry already exists.",
+	"确定要删除 %s 吗？":                                                                                       "Are you sure you would like to delete %s?",
+	"私钥口令不正确。":                                                                                          "Incorrect private key passphrase.",
+	"系统解锁未完成，请改用私钥口令。":                                                                                  "System unlock did not complete. Use the private key passphrase instead.",
+	"编辑器未正常退出：%s":                                                                                       "The editor did not exit cleanly: %s",
+	"行号必须是正整数：%s":                                                                                       "The line number must be a positive integer: %s",
+	"输入 %s 的内容，完成后按 Ctrl+D：":                                                                            "Enter contents of %s and press Ctrl+D when finished:",
+	"输入 %s 的密码：":                                                                                        "Enter password for %s: ",
+	"选项 %s 需要一个值":                                                                                       "Option %s requires a value",
+	"错误：%s":                                                                                             "Error: %s",
+	"需要在终端中输入私钥口令才能解锁密码库。":                                                                              "A terminal is required to enter the private key passphrase and unlock the vault.",
+	CLIHelp: `Usage:
+  %[1]s [ls] [subfolder]               List entries
+  %[1]s find pass-names...             Find entries by name
+  %[1]s [show] [-c[line]] [-q[line]] pass-name
+                                        Show an entry, or copy / show a line as a QR code
+  %[1]s grep [-i] [-F] search-string   Search decrypted contents
+  %[1]s insert [-e | -m] [-f] pass-name
+                                        Add an entry
+  %[1]s edit pass-name                 Edit an entry with $EDITOR
+  %[1]s generate [-n] [-c] [-q] [-i | -f] pass-name [length]
+                                        Generate a password
+  %[1]s rm [-r] [-f] pass-name         Move an entry or folder to the trash
+  %[1]s mv [-f] old-path new-path      Move or rename
+  %[1]s cp [-f] old-path new-path      Copy
+  %[1]s otp [-c] pass-name             Show the current TOTP code
+  %[1]s git git-command-args...        Run Git in the password store
+  %[1]s cli install [--pass-alias] [--dir DIRECTORY]
+                                        Install the command, optionally with a pass alias
+  %[1]s cli uninstall [--pass-alias] [--dir DIRECTORY]
+                                        Remove the command link or the pass alias
+  %[1]s cli status [--dir DIRECTORY]   Show command and alias status
+
+Uses the vault currently selected in the Passpine client. Set PASSWORD_STORE_DIR to use another vault already opened in the client.
+PASSWORD_STORE_CLIP_TIME, PASSWORD_STORE_GENERATED_LENGTH, PASSWORD_STORE_X_SELECTION and EDITOR are also supported.
+Running passpine without arguments opens the desktop client.`,
 }
