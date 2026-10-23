@@ -1,6 +1,8 @@
+import { createContext, useContext } from "react";
+
 // All on-screen text for the promo lives here, grouped by scene.
-// Product wording follows client/i18n and browser/src/constants/copy.ts.
-export const copy = {
+// Product wording follows client/i18n, browser/src/i18n and website/src/constants/copy.ts.
+export const zh = {
   brand: "Passpine",
   description: "兼容 pass 的本地密码管理器",
   fill: {
@@ -86,3 +88,89 @@ export const copy = {
     platforms: "macOS · Windows · Linux",
   },
 };
+
+export type Copy = typeof zh;
+
+export const en: Copy = {
+  brand: "Passpine",
+  description: "A local password manager compatible with pass",
+  fill: {
+    title: "Fill sign-ins",
+    caption: "The extension matches the site.\nPick an account to fill it.",
+    site: "mail.work.example",
+    loginTitle: "Sign in to work mail",
+    emailLabel: "Email",
+    passwordLabel: "Password",
+    signIn: "Sign in",
+    filled: "Filled",
+    username: "pine@work.example",
+    popupSearch: "Search accounts",
+    popupSection: "Matching accounts",
+    popupStatus: "Demo vault · Connected",
+    entries: zh.fill.entries,
+  },
+  generate: {
+    title: "Generate passwords",
+    caption: "Create strong passwords,\nencrypted and kept locally.",
+    window: "New entry",
+    nameLabel: "Name",
+    name: "Work/Figma",
+    usernameLabel: "Username",
+    username: "pine@example.test",
+    passwordLabel: "Password",
+    passwordPlaceholder: "Enter or generate a password",
+    generateButton: "Generate password",
+    generator: "Password generator",
+    length: "Length",
+    lengthValue: "20",
+    symbols: "Symbols",
+    password: zh.generate.password,
+    fillButton: "Generate and fill password",
+    save: "Save entry",
+    saved: "Entry encrypted and saved",
+  },
+  sync: {
+    title: "Git sync",
+    caption: "Sync on another computer,\nand the new entry is there.",
+    vault: "Personal vault",
+    allEntries: "All entries",
+    syncing: "Syncing…",
+    synced: "Synced · 1 new entry",
+    entries: [
+      { initials: "FI", name: "Figma", path: "Work/Figma", fresh: true },
+      { initials: "CL", name: "Cloudflare", path: "Dev/Cloudflare", fresh: false },
+      { initials: "GI", name: "GitHub", path: "Dev/GitHub", fresh: false },
+      { initials: "AP", name: "Apple", path: "Life/Apple", fresh: false },
+    ],
+    username: "pine@example.test",
+    usernameLabel: "Username",
+    totpLabel: "One-time code",
+    totp: "284 913",
+    passwordLabel: "Password",
+    copy: "Copy",
+  },
+  vault: {
+    title: "Import a pass vault",
+    caption: "Already using pass?\nImport your vault as is.",
+    window: "Passpine",
+    tabs: ["Create vault", "Import vault", "Clone from Git"],
+    found: "Found the default vault at ~/.password-store. Choose a key source to import it.",
+    keySource: "Key source",
+    sources: ["System GPG", "Key files"],
+    files: zh.vault.files,
+    importButton: "Import vault",
+    vaultName: "password-store",
+    allEntries: "All entries",
+    entries: zh.vault.entries,
+  },
+  outro: {
+    points: "No account to create · Encrypted locally · Standard pass format",
+    platforms: "macOS · Windows · Linux",
+  },
+};
+
+export type Locale = "zh-CN" | "en";
+export const dictionaries: Record<Locale, Copy> = { "zh-CN": zh, en };
+
+export const CopyContext = createContext<Copy>(zh);
+export const useCopy = () => useContext(CopyContext);

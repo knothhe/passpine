@@ -1,13 +1,13 @@
 import React from "react";
 import { interpolate, useCurrentFrame } from "remotion";
 import { Cursor, FeatureCard, Window } from "../components";
-import { copy } from "../copy";
+import { useCopy } from "../copy";
 import { fonts, ink, muted, pop, ramp, sceneFade, timing } from "../theme";
 import { VaultList } from "./VaultList";
 
-const c = copy.vault;
 
 export const Vault = () => {
+  const c = useCopy().vault;
   const frame = useCurrentFrame();
   const enter = ramp(frame, 0, 26);
   const importTab = frame >= 33;
@@ -51,7 +51,7 @@ export const Vault = () => {
               })}
             </div>
             <div style={{ position: "absolute", left: 120, top: 110, width: 760, opacity: panel, transform: `translateY(${(1 - panel) * 12}px)` }}>
-              <div style={{ padding: "14px 18px", borderRadius: 12, background: "#eef5ff", color: "#24508f", fontSize: 18 }}>{c.found}</div>
+              <div style={{ height: 50, padding: "0 18px", borderRadius: 12, background: "#eef5ff", color: "#24508f", fontSize: 17, display: "flex", alignItems: "center" }}>{c.found}</div>
               <div style={{ marginTop: 18, padding: "12px 18px", borderRadius: 12, border: "1px solid #ececea", fontFamily: fonts.mono, fontSize: 17 }}>
                 {c.files.map((f, i) => (
                   <div key={f} style={{ height: 30, display: "flex", alignItems: "center", color: i === 0 ? muted : ink, opacity: ramp(frame, 44 + i * 5, 54 + i * 5) }}>

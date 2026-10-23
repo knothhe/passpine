@@ -1,20 +1,23 @@
 import React from "react";
 import { interpolate, useCurrentFrame } from "remotion";
 import { Logo } from "../components";
-import { copy } from "../copy";
+import { useCopy } from "../copy";
 import { fonts, ink, muted, pop, ramp } from "../theme";
 
 const center = { position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: ink, fontFamily: fonts.sans } as const;
 
-const Lockup = ({ size, progress }: { size: number; progress: number }) => (
-  <div style={{ display: "flex", alignItems: "center", gap: size * 0.2, opacity: progress, transform: `scale(${0.9 + 0.1 * progress})` }}>
-    <Logo size={size} />
-    <div>
-      <div style={{ fontSize: size * 0.56, fontWeight: 700, letterSpacing: -1, lineHeight: 1.1 }}>{copy.brand}</div>
-      <div style={{ fontSize: size * 0.2, color: muted, marginTop: 6 }}>{copy.description}</div>
+const Lockup = ({ size, progress }: { size: number; progress: number }) => {
+  const copy = useCopy();
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: size * 0.2, opacity: progress, transform: `scale(${0.9 + 0.1 * progress})` }}>
+      <Logo size={size} />
+      <div>
+        <div style={{ fontSize: size * 0.56, fontWeight: 700, letterSpacing: -1, lineHeight: 1.1 }}>{copy.brand}</div>
+        <div style={{ fontSize: size * 0.2, color: muted, marginTop: 6 }}>{copy.description}</div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export const Intro = () => {
   const frame = useCurrentFrame();
@@ -27,6 +30,7 @@ export const Intro = () => {
 };
 
 export const Outro = () => {
+  const copy = useCopy();
   const frame = useCurrentFrame();
   const line = (delay: number) => {
     const t = ramp(frame, delay, delay + 22);

@@ -5,8 +5,9 @@
   "scripts": {
     "music": "node scripts/music.mjs",
     "studio": "node scripts/music.mjs && remotion studio src/index.ts",
-    "render": "node scripts/music.mjs && remotion render src/index.ts Promo out/passpine-promo.mp4",
-    "still": "node scripts/music.mjs && remotion still src/index.ts Promo"
+    "render": "bash scripts/render.sh",
+    "upload": "bash scripts/upload.sh",
+    "still": "node scripts/music.mjs && remotion still src/index.ts"
   },
   "dependencies": {
     "@remotion/cli": "4.0.534",

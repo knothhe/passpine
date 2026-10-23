@@ -1,10 +1,9 @@
 import React from "react";
 import { interpolate, useCurrentFrame } from "remotion";
 import { Check, Cursor, FeatureCard, Logo, Window, typed } from "../components";
-import { copy } from "../copy";
+import { useCopy } from "../copy";
 import { ink, pop, ramp, sceneFade, timing } from "../theme";
 
-const c = copy.fill;
 
 const Field = ({ label, value, active }: { label: string; value: string; active: boolean }) => (
   <div style={{ marginTop: 26 }}>
@@ -27,6 +26,7 @@ const Field = ({ label, value, active }: { label: string; value: string; active:
 );
 
 export const Fill = () => {
+  const c = useCopy().fill;
   const frame = useCurrentFrame();
   const enter = ramp(frame, 0, 26);
 

@@ -2,17 +2,16 @@ import React from "react";
 import type { ReactNode } from "react";
 import { useCurrentFrame } from "remotion";
 import { FeatureCard, Toast, Window, typed } from "../components";
-import { copy } from "../copy";
+import { useCopy } from "../copy";
 import { fonts, ink, muted, pop, ramp, sceneFade, timing } from "../theme";
 
-const c = copy.generate;
 const pool = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*";
 
 /** Deterministic scramble that settles on the final password. */
-const scramble = (frame: number, settleAt: number) =>
+const scramble = (password: string, frame: number, settleAt: number) =>
   frame >= settleAt
-    ? c.password
-    : Array.from(c.password, (_, i) => pool[(i * 7 + Math.floor(frame / 2) * 13 + i * i) % pool.length]).join("");
+    ? password
+    : Array.from(password, (_, i) => pool[(i * 7 + Math.floor(frame / 2) * 13 + i * i) % pool.length]).join("");
 
 const Field = ({ label, active, children }: { label: string; active: boolean; children: ReactNode }) => (
   <div style={{ marginBottom: 24 }}>
@@ -34,6 +33,7 @@ const Field = ({ label, active, children }: { label: string; active: boolean; ch
 );
 
 export const Generate = () => {
+  const c = useCopy().generate;
   const frame = useCurrentFrame();
   const enter = ramp(frame, 0, 26);
   const name = typed(c.name, frame, 16, 32);
@@ -123,7 +123,7 @@ export const Generate = () => {
                 textAlign: "center",
               }}
             >
-              {scramble(frame, 92)}
+              {scramble(c.password, frame, 92)}
             </div>
             <div style={{ display: "flex", alignItems: "center", marginTop: 20, fontSize: 18 }}>
               <span style={{ width: 60, color: muted }}>{c.length}</span>
