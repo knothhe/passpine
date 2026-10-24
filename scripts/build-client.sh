@@ -4,6 +4,7 @@ root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 IFS=$'\t' read -r channel version base_version output_dir app_name bundle_id package_name client_flags host_flags < <(node "$root_dir/scripts/build-channel.mjs" shell)
 node "$root_dir/scripts/dependencies.mjs"
 node "$root_dir/scripts/version.mjs" check
+node "$root_dir/scripts/dev-icons.mjs"
 mkdir -p "$output_dir"
 cd "$root_dir/client"
 if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -21,8 +22,10 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   cp "$output_dir/passpine" "$bundle/Contents/MacOS/passpine"
   cp "$output_dir/passpine-host" "$bundle/Contents/MacOS/passpine-host"
   cp "$output_dir/passpine-device-unlock" "$bundle/Contents/MacOS/passpine-device-unlock"
-  cp "$root_dir/client/assets/Passpine-monochrome.icns" "$bundle/Contents/Resources/Passpine.icns"
-  cp "$root_dir/client/assets/Passpine-monochrome.icns" "$bundle/Contents/Resources/Passpine-monochrome.icns"
+  icon="$root_dir/client/assets/Passpine-monochrome.icns"
+  [[ "$channel" != "dev" ]] || icon="$root_dir/client/assets/dev/monochrome/app-icon-dev.icns"
+  cp "$icon" "$bundle/Contents/Resources/Passpine.icns"
+  cp "$icon" "$bundle/Contents/Resources/Passpine-monochrome.icns"
   cat > "$bundle/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

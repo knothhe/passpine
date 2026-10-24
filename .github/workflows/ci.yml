@@ -78,7 +78,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libgtk-3-0 libwebkit2gtk-4.1-0 fonts-noto-cjk zip unzip 7zip nsis
+          sudo apt-get install --yes libgtk-3-0 libwebkit2gtk-4.1-0 fonts-noto-cjk zip unzip 7zip nsis xvfb xauth
 
       - name: Install Windows packaging and test tools
         if: runner.os == 'Windows'
@@ -166,6 +166,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/verify-windows-installer-update.ps1
+
+      - name: Verify isolated Linux Dev install and uninstall
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum node scripts/verify-dev-installation.mjs --run
+
+      - name: Verify isolated macOS and Windows Dev install and uninstall
+        if: runner.os != 'Linux'
+        run: node scripts/verify-dev-installation.mjs --run
 
       - name: Upload client build
         if: inputs.tag == ''

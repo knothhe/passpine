@@ -29,7 +29,9 @@ trap 'rm -rf "$staging"' EXIT
 install -m 755 "$dist_dir/passpine" "$staging/passpine"
 install -m 755 "$dist_dir/passpine-host" "$staging/passpine-host"
 install -m 755 "$root_dir/scripts/install-linux-release.sh" "$staging/install.sh"
-install -m 644 "$root_dir/client/assets/app-icon-monochrome.png" "$staging/app-icon-monochrome.png"
+icon="$root_dir/client/assets/app-icon-monochrome.png"
+[[ "$channel" != "dev" ]] || icon="$root_dir/client/assets/dev/monochrome/app-icon-dev.png"
+install -m 644 "$icon" "$staging/app-icon-monochrome.png"
 printf '%s\n' "$version" > "$staging/version.txt"
 archive="$dist_dir/$package_name-$version-linux-$arch.tar.gz"
 if [[ "$channel" == "dev" ]]; then

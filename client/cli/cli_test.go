@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -232,6 +233,9 @@ func TestEditUsesEditorAndRejectsUnchanged(t *testing.T) {
 	h := newHarness(t)
 	h.must("one\n", "insert", "-e", "note")
 	h.editor = "sed -i s/one/two/"
+	if runtime.GOOS == "darwin" {
+		h.editor = "sed -i '' s/one/two/"
+	}
 	h.must("", "edit", "note")
 	if out := h.must("", "show", "note"); out != "two\n" {
 		t.Fatalf("edited = %q", out)

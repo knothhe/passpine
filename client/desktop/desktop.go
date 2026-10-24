@@ -19,6 +19,7 @@ import (
 	"github.com/knothhe/passpine/client/i18n"
 	sidebar "github.com/knothhe/passpine/client/internal/clientshell"
 	"github.com/knothhe/passpine/client/internal/secureclipboard"
+	"github.com/knothhe/passpine/client/nativehost"
 	"github.com/knothhe/passpine/client/update"
 	"github.com/knothhe/passpine/client/vault"
 	"github.com/oneo-me/onevra/source/components"
@@ -32,6 +33,7 @@ type Backend interface {
 const defaultSidebarWidth = 200
 
 type application struct {
+	quit                                                                 quitState
 	buildVersion                                                         string
 	updates                                                              updateUI
 	aboutExpanded                                                        map[string]bool
@@ -144,19 +146,7 @@ func Run(service *app.Service, version string, updateConfigs ...update.Config) e
 	}
 	mygo.App.OnSecondInstance(func([]string, string) { a.show() })
 	mygo.App.OnActivate(func(bool) { a.show() })
-	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
-		a.saveManagerLayout()
-		a.saveQuickSearchPosition()
-		a.stopLightweightTimer()
-		a.closing = true
-		if a.updates.cancel != nil {
-			a.updates.cancel()
-		}
-		a.setShortcutRecording(false)
-		close(a.stop)
-		a.clearSecrets()
-		go service.Close()
-	})
+	mygo.App.OnBeforeQuit(a.beforeQuit)
 	mygo.App.OnWindowAllClosed(func() {
 		if !a.lifecycle.suspended {
 			mygo.App.Quit()
@@ -219,12 +209,20 @@ func Run(service *app.Service, version string, updateConfigs ...update.Config) e
 		})
 		go a.clock()
 	})
+	control, err := nativehost.StartDevelopmentControl(service.DataDirectory(), func() { a.runOnMain(a.requestQuit) })
+	if err != nil {
+		return err
+	}
+	if control != nil {
+		defer control.Close()
+	}
 	return mygo.App.Run()
 }
 
 func newApplication(service Backend) *application {
 	a := &application{service: service, runOnMain: mygo.RunOnMain, page: "entries", filter: "all", selectedIndex: -1, generator: generatorState{length: 24, lower: true, upper: true, numbers: true, symbols: true, exclude: true}, lastInput: time.Now(), stop: make(chan struct{})}
 	a.lifecycle.resumeTarget = "main"
+	a.quit.quit = mygo.App.Quit
 	a.restoreManagerLayout()
 	a.initializeEntryList()
 	return a
@@ -901,6 +899,9 @@ func (a *application) entries() []app.Entry {
 }
 
 func (a *application) sidebarView(c *ui.Context) {
+	if a.closing {
+		return
+	}
 	ui.Column(c).Fill().Padding(sidebar.HeaderHeight(c), 0, 0, 0).Children(func() {
 		if (a.page == "settings" || a.page == "activity") && !a.setup {
 			a.settingsSidebar(c)
@@ -919,6 +920,9 @@ func (a *application) sidebarToolbar(c *ui.Context) {
 }
 
 func (a *application) header(c *ui.Context) {
+	if a.closing {
+		return
+	}
 	title := map[string]string{"entries": a.t("密码库"), "recovery": a.t("恢复中心"), "settings": a.t("设置"), "activity": a.t("操作记录")}[a.page]
 	if (a.setup || !a.state.Configured) && !(a.page == "settings" && a.settingsState.Category == "about" && !a.setup) {
 		title = a.t("打开密码库")
@@ -1016,6 +1020,10 @@ func (a *application) vaultSelector(c *ui.Context) {
 }
 
 func (a *application) contentView(c *ui.Context) {
+	if a.closing {
+		ui.Column(c).Fill().Padding(48).Children(func() { components.Text(c, a.t("正在完成退出…")) })
+		return
+	}
 	a.flushMetadataRefresh()
 	if !a.shortcut.recording {
 		c.OnShortcut(ui.Cmd, ui.KeyBracketLeft, func() { a.moveHistory(-1) })

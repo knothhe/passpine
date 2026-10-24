@@ -1,6 +1,7 @@
 package nativehost
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,26 @@ import (
 
 	"golang.org/x/sys/windows/registry"
 )
+
+func unregisterPlatformHost(target registrationTarget, manifest string) error {
+	name := hostRegistryPath(target.id)
+	key, err := registry.OpenKey(registry.CURRENT_USER, name, registry.QUERY_VALUE)
+	if errors.Is(err, registry.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	value, _, err := key.GetStringValue("")
+	key.Close()
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(filepath.Clean(value), filepath.Clean(manifest)) {
+		return nil
+	}
+	return registry.DeleteKey(registry.CURRENT_USER, name)
+}
 
 func platformRegistrationTargets(home string) []registrationTarget {
 	targets := registrationTargets(home, "windows")

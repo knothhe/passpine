@@ -1,0 +1,2 @@
+# Keep the generator checksum stable across platform checkouts.
+scripts/dev_icon.py text eol=lf
