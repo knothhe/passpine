@@ -241,6 +241,7 @@ func (a *application) releaseUIPresentation() {
 	a.passphrase, a.confirmPassphrase, a.backupPassphrase = "", "", ""
 	clearDataSecrets(&a.state)
 	a.state.Entries, a.filtered, a.sortedEntries, a.cachedResults = nil, nil, nil, nil
+	a.state.Folders = nil
 	a.searchPaths, a.folders = nil, nil
 	a.cacheReady = false
 	a.recovery, a.activity = nil, nil

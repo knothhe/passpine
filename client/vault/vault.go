@@ -569,7 +569,21 @@ func (v *Vault) ListMetadata() ([]Entry, error) {
 }
 
 func (v *Vault) listMetadata() ([]Entry, error) {
+	entries, _, err := v.listMetadataWithFolders()
+	return entries, err
+}
+
+// ListMetadataWithFolders also includes empty directories, using the same
+// metadata-only traversal and browse-while-locked contract as ListMetadata.
+func (v *Vault) ListMetadataWithFolders() ([]Entry, []string, error) {
+	v.operations.Lock()
+	defer v.operations.Unlock()
+	return v.listMetadataWithFolders()
+}
+
+func (v *Vault) listMetadataWithFolders() ([]Entry, []string, error) {
 	entries := []Entry{}
+	folders := []string{}
 	e := filepath.WalkDir(v.config.Directory, func(filename string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -586,15 +600,19 @@ func (v *Vault) listMetadata() ([]Entry, error) {
 		if d.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
+		rel, e := filepath.Rel(v.config.Directory, filename)
+		if e != nil {
+			return e
+		}
 		if d.IsDir() {
+			folder := filepath.ToSlash(rel)
+			if ValidatePath(folder) == nil {
+				folders = append(folders, folder)
+			}
 			return nil
 		}
 		if !strings.HasSuffix(d.Name(), ".gpg") {
 			return nil
-		}
-		rel, e := filepath.Rel(v.config.Directory, filename)
-		if e != nil {
-			return e
 		}
 		name := strings.TrimSuffix(filepath.ToSlash(rel), ".gpg")
 		if ValidatePath(name) != nil {
@@ -615,10 +633,10 @@ func (v *Vault) listMetadata() ([]Entry, error) {
 		return nil
 	})
 	if e != nil {
-		return nil, e
+		return nil, nil, e
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
-	return entries, nil
+	return entries, folders, nil
 }
 
 // VerifyBackup checks that the backup can decrypt every current entry and

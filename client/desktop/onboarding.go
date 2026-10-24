@@ -264,7 +264,9 @@ func (a *application) unlockView(c *ui.Context) {
 		ui.Column(c).FillWidth().MaxWidth(360).MinWidth(0).Gap(20).Children(func() {
 			components.Icon(c, lucide.LockKeyhole).Size(40, 40).TextColor(c.Theme().Accent)
 			section(c, a.t("解锁密码库"), a.state.VaultName, nil)
-			if a.batch.active && a.batch.pending != "" {
+			if a.pendingUnlock.action == "cleanup-folders" {
+				muted(c, a.t("解锁后将清理密码库中的空文件夹。"))
+			} else if a.batch.active && a.batch.pending != "" {
 				muted(c, a.batchUnlockDescription())
 			} else if a.selected != "" && a.state.Settings.BrowseWhileLocked {
 				components.Text(c, entryName(a.selected)).Bold()
@@ -293,6 +295,10 @@ func (a *application) unlockView(c *ui.Context) {
 			if a.batch.active && a.batch.pending != "" {
 				if components.Button(c, a.t("返回选择"), components.ButtonGhost).Disabled(a.busy).Clicked() {
 					a.cancelBatchUnlock()
+				}
+			} else if a.pendingUnlock.action == "cleanup-folders" {
+				if components.Button(c, a.t("取消"), components.ButtonGhost).Disabled(a.busy).Clicked() {
+					a.cancelUnlockAction()
 				}
 			} else if components.Button(c, a.t("打开其他密码库"), components.ButtonGhost).Clicked() {
 				a.openSetup()

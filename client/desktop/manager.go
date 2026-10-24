@@ -90,7 +90,10 @@ func (a *application) navigationSidebar(c *ui.Context) {
 				}
 				if a.state.Configured && !a.setup && (!a.state.Locked || a.state.Settings.BrowseWhileLocked) {
 					a.entries()
-					components.Text(c, a.t("文件夹")).Margin(16, 8, 4, 8).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+					ui.Row(c).FillWidth().Margin(12, 8, 4, 8).AlignItems(ui.Center).Children(func() {
+						components.Text(c, a.t("文件夹")).Grow(1).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+						a.folderCleanupButton(c)
+					})
 					for _, folder := range a.folders {
 						folder := folder
 						if strings.Contains(folder, "/") {

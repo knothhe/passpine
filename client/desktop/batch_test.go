@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ type batchBackend struct {
 	mu       sync.Mutex
 	locked   bool
 	paths    []string
+	folders  []string
 	failures map[string]string
 	trash    map[string]string
 	requests []app.Request
@@ -23,19 +25,28 @@ func (b *batchBackend) Execute(r app.Request) app.Response {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.requests = append(b.requests, r)
-	if code := b.failures[r.Entry]; code != "" && r.Action != "list" {
-		return app.Response{Status: "error", Code: code}
-	}
 	data := app.Data{VaultID: "vault", Configured: true, Settings: app.DefaultSettings()}
 	data.Settings.Language, data.Settings.BrowseWhileLocked = "zh-CN", true
+	if code := b.failures[r.Entry]; code != "" && r.Action != "list" {
+		return app.Response{Status: "error", Code: code, Data: b.metadata(data)}
+	}
 	if r.Action == "unlock" {
 		b.locked = false
 	}
 	data.Locked = b.locked
-	if b.locked && (r.Action == "move" || r.Action == "trash" || r.Action == "restore") {
-		return app.Response{Status: "error", Code: "locked", Data: data}
+	if b.locked && (r.Action == "move" || r.Action == "trash" || r.Action == "restore" || r.Action == "create-folder") {
+		return app.Response{Status: "error", Code: "locked", Data: b.metadata(data)}
 	}
 	switch r.Action {
+	case "create-folder":
+		parts := strings.Split(r.Destination, "/")
+		for i := range parts {
+			folder := strings.Join(parts[:i+1], "/")
+			if !containsFolder(b.folders, folder) {
+				b.folders = append(b.folders, folder)
+			}
+		}
+		data.Destination = r.Destination
 	case "move":
 		b.rename(r.Entry, r.Destination)
 		data.Entry = r.Destination
@@ -47,11 +58,17 @@ func (b *batchBackend) Execute(r app.Request) app.Response {
 		data.Entry = b.trash[r.ID]
 		b.paths = append(b.paths, data.Entry)
 	}
+	return app.Response{Status: "ok", Data: b.metadata(data)}
+}
+
+func (b *batchBackend) metadata(data app.Data) app.Data {
+	data.Folders = append([]string{}, b.folders...)
+	data.EntriesVersion = uint64(len(b.requests))
 	for _, path := range b.paths {
 		folder, name := splitEntryPath(path)
 		data.Entries = append(data.Entries, app.Entry{Path: path, Name: name, Folder: folder})
 	}
-	return app.Response{Status: "ok", Data: data}
+	return data
 }
 
 func (b *batchBackend) rename(from, to string) {

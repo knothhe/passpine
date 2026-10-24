@@ -7,6 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
+	"github.com/knothhe/passpine/client/vault"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
 )
@@ -18,17 +19,19 @@ const batchCollapseThreshold = 4
 // batchState is the list's selection mode. Selection holds entry paths, never
 // secrets, and moving or trashing reads nothing beyond the latest revision.
 type batchState struct {
-	active      bool
-	selected    map[string]bool
-	anchor      string
-	destination string
-	chosen      bool
-	folderQuery string
-	collapsed   map[string]bool
-	list        components.ListState
-	progress    *batchProgress
-	result      *batchResult
-	// pending is the move or trash waiting for the vault to unlock; selection
+	active         bool
+	selected       map[string]bool
+	anchor         string
+	destination    string
+	chosen         bool
+	folderQuery    string
+	folderCreation *string
+	revealFolder   string
+	collapsed      map[string]bool
+	list           components.ListState
+	progress       *batchProgress
+	result         *batchResult
+	// pending is the organization action waiting for the vault to unlock; selection
 	// itself needs only entry paths, so it works while browsing locked.
 	pending string
 }
@@ -101,6 +104,8 @@ func (a *application) resumeBatchAction() bool {
 		a.startBatchTrash()
 	case "retry":
 		a.retryBatch()
+	case "create-folder":
+		a.createBatchFolder()
 	default:
 		return false
 	}
@@ -110,6 +115,8 @@ func (a *application) resumeBatchAction() bool {
 // batchUnlockDescription tells what unlocking will do, next to the unlock form.
 func (a *application) batchUnlockDescription() string {
 	switch a.batch.pending {
+	case "create-folder":
+		return a.t("解锁后将新建文件夹“%s”。", strings.TrimSpace(a.batch.folderQuery))
 	case "trash":
 		return a.t("解锁后将 %d 项移到回收站。", len(a.selectedBatchEntries()))
 	case "retry":
@@ -129,6 +136,40 @@ func (a *application) batchUnlockDescription() string {
 
 func (a *application) resetBatchDestination() {
 	a.batch.destination, a.batch.chosen, a.batch.folderQuery = "", false, ""
+}
+
+func (a *application) createBatchFolder() {
+	if a.busy || !a.batch.active || a.closing || a.updates.preparing {
+		return
+	}
+	folder := strings.TrimSpace(a.batch.folderQuery)
+	if vault.ValidatePath(folder) != nil {
+		a.errorText = a.t("文件夹路径无效，请使用 / 分隔层级，并避免空名称和特殊字符。")
+		return
+	}
+	if a.state.Locked {
+		a.requestBatchUnlock("create-folder")
+		return
+	}
+	// The request belongs to this selection session, even if the user leaves
+	// and re-enters selection mode before it completes.
+	a.batch.folderCreation = &folder
+	a.call(app.Request{Action: "create-folder", VaultID: a.state.VaultID, Destination: folder}, func(data app.Data) {
+		if !a.batch.active || a.page != "entries" || a.batch.folderCreation != &folder {
+			return
+		}
+		a.batch.folderCreation = nil
+		a.batch.destination, a.batch.chosen, a.batch.folderQuery = data.Destination, true, ""
+		a.batch.revealFolder = data.Destination
+		a.batch.result = nil
+		// A new descendant must remain visible even under a collapsed parent.
+		for parent := range a.batch.collapsed {
+			if strings.HasPrefix(data.Destination, parent+"/") {
+				delete(a.batch.collapsed, parent)
+			}
+		}
+		a.notice = a.t("已创建并选中文件夹“%s”", data.Destination)
+	})
 }
 
 // selectedBatchEntries returns the chosen entries that still exist, so entries
@@ -636,7 +677,7 @@ func (a *application) batchFolderOptions(c *ui.Context) {
 				a.batchFolderOption(c, folder, a.batchFolderLabel(folder), 0, false)
 			}
 		}
-		candidate := strings.Trim(strings.TrimSpace(a.batch.folderQuery), "/")
+		candidate := strings.TrimSpace(a.batch.folderQuery)
 		if candidate != "" && !containsFolder(a.folders, candidate) {
 			option := ui.ButtonBase(c).Key("batch-create-folder").FillWidth().MinHeight(34).Padding(6, 9).Gap(8).AlignItems(ui.Center).Radius(c.Theme().Radius).Label(a.t("新建文件夹 %s", candidate)).Disabled(a.busy)
 			option.Children(func() {
@@ -644,7 +685,7 @@ func (a *application) batchFolderOptions(c *ui.Context) {
 				components.Text(c, a.t("新建文件夹：%s", candidate)).SingleLine().Ellipsis("…").MinWidth(0).FontSize(scaledFontSize(c, 12))
 			})
 			if option.Clicked() {
-				a.batch.destination, a.batch.chosen, a.batch.folderQuery = candidate, true, ""
+				a.createBatchFolder()
 			}
 		} else if matches == 0 {
 			muted(c, a.t("没有找到文件夹"))
@@ -698,6 +739,10 @@ func (a *application) batchFolderOption(c *ui.Context, folder, label string, dep
 			Label(a.t("选择文件夹 %s", a.batchFolderLabel(folder))).Selected(chosen).Disabled(a.busy).TextColor(t.Text)
 		if chosen {
 			option.Background(t.Selection)
+			if a.batch.revealFolder == folder {
+				option.ScrollIntoView()
+				a.batch.revealFolder = ""
+			}
 		} else if option.Hovered() {
 			option.Background(t.Text.Alpha(.04))
 		}

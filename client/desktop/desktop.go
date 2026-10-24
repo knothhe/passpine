@@ -405,12 +405,28 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 		}
 	}
 	if r.Status != "ok" {
+		if requestAction == "cleanup-folders" {
+			a.refreshFolderNavigation()
+		}
 		if (requestAction == "fetch" || requestAction == "copy" && a.detailTransition.unlocking) && a.pendingSelection == "" {
 			a.clearDetailTransition()
 		}
 		a.errorText = r.Message
 		if a.errorText == "" {
 			a.errorText = r.Code
+		}
+		if requestAction == "create-folder" {
+			a.batch.folderCreation = nil
+			if r.Code == "operation_failed" {
+				a.errorText = a.t("无法创建文件夹，请检查目录权限和可用空间后重试。")
+			}
+		}
+		if requestAction == "cleanup-folders" {
+			if r.Data.RemovedFolders > 0 {
+				a.errorText = a.t("已清理 %d 个空文件夹，清理未完成，请重试。", r.Data.RemovedFolders)
+			} else if r.Code == "operation_failed" {
+				a.errorText = a.t("无法清理空文件夹，请检查目录权限后重试。")
+			}
 		}
 		a.invalidate()
 		return
@@ -533,6 +549,7 @@ func (a *application) clearSecrets() {
 	clearDataSecrets(&a.state)
 	if !a.state.Settings.BrowseWhileLocked {
 		a.state.Entries = nil
+		a.state.Folders = nil
 		a.entriesVersion++
 		a.sortedEntries = nil
 		a.searchPaths = nil
@@ -875,6 +892,9 @@ func (a *application) entries() []app.Entry {
 			a.searchPaths[i] = strings.ToLower(e.Path)
 		}
 		folders := map[string]bool{}
+		for _, folder := range a.state.Folders {
+			folders[folder] = true
+		}
 		for _, e := range a.sortedEntries {
 			if e.Folder != "" {
 				parts := strings.Split(e.Folder, "/")
@@ -1002,7 +1022,9 @@ func (a *application) vaultSelector(c *ui.Context) {
 	if a.mainContentWidth(c) < 540 {
 		width = 138
 	}
-	sel.Trigger.Width(width).MinWidth(100).Border(0, c.Theme().Border).Background(c.Theme().Background).Disabled(a.busy || a.editor.open).Label(a.t("切换密码库")).Gap(6).Children(func() {
+	// Keep the vault name steady during inspector reads. The menu choices
+	// and the change handler still reject switching while a request is busy.
+	sel.Trigger.Width(width).MinWidth(100).Border(0, c.Theme().Border).Background(c.Theme().Background).Disabled(a.busy && !a.detailReadPending() || a.editor.open).Label(a.t("切换密码库")).Gap(6).Children(func() {
 		components.Icon(c, lucide.FolderKey()).Size(14, 14)
 		components.Text(c, a.state.VaultName).SingleLine()
 	})
@@ -1013,12 +1035,12 @@ func (a *application) vaultSelector(c *ui.Context) {
 			for _, v := range a.state.Vaults {
 				v := v
 				found = found || v.ID == a.state.VaultID
-				sel.Item(v.ID).Label(a.t("切换到密码库 %s", v.Name)).Children(func() { components.Text(c, v.Name).SingleLine() })
+				sel.Item(v.ID).Disabled(a.busy).Label(a.t("切换到密码库 %s", v.Name)).Children(func() { components.Text(c, v.Name).SingleLine() })
 			}
 			if !found {
-				sel.Item(a.state.VaultID).Label(a.t("当前密码库")).Children(func() { components.Text(c, a.state.VaultName).SingleLine() })
+				sel.Item(a.state.VaultID).Disabled(a.busy).Label(a.t("当前密码库")).Children(func() { components.Text(c, a.state.VaultName).SingleLine() })
 			}
-			sel.Item("open-vault").Label(a.t("打开或创建密码库")).Children(func() {
+			sel.Item("open-vault").Disabled(a.busy).Label(a.t("打开或创建密码库")).Children(func() {
 				components.Icon(c, lucide.FolderPlus()).Size(14, 14)
 				components.Text(c, a.t("打开或创建密码库")).SingleLine()
 			})
@@ -1027,6 +1049,9 @@ func (a *application) vaultSelector(c *ui.Context) {
 	if sel.Trigger.Changed() {
 		id := a.vaultSelection
 		a.vaultSelection = a.state.VaultID
+		if a.busy {
+			return
+		}
 		if id == "open-vault" {
 			a.openSetup()
 		} else if id != a.state.VaultID {
