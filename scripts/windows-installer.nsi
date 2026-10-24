@@ -257,16 +257,6 @@ Function .onInit
 !endif
 FunctionEnd
 
-!macro RemoveHostRegistration PREFIX BROWSER
-  ReadRegStr $0 HKCU "${PREFIX}\NativeMessagingHosts\${HOST_NAME}" ""
-  StrCpy $1 "$LOCALAPPDATA\${APP_NAME}\NativeMessagingHosts\${BROWSER}\${HOST_NAME}.json"
-  ${If} $0 == $1
-    DeleteRegKey HKCU "${PREFIX}\NativeMessagingHosts\${HOST_NAME}"
-    Delete "$1"
-    RMDir "$LOCALAPPDATA\${APP_NAME}\NativeMessagingHosts\${BROWSER}"
-  ${EndIf}
-!macroend
-
 Section
   SetShellVarContext current
 !if "${APP_CHANNEL}" == "dev"
@@ -282,6 +272,7 @@ Section
 !endif
   Call ExtractApplicationFiles
   WriteINIStr "$INSTDIR\build-channel.ini" "build" "channel" "${APP_CHANNEL}"
+  WriteINIStr "$INSTDIR\build-channel.ini" "build" "directory" "$INSTDIR"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   ExecWait '$\"$INSTDIR\passpine-host.exe$\" --register' $0
   ${If} $0 != 0
@@ -304,23 +295,65 @@ SectionEnd
 Section "Uninstall"
   SetShellVarContext current
   ReadRegStr $2 HKCU "Software\${APP_NAME}" "InstallDir"
+  ReadINIStr $0 "$INSTDIR\build-channel.ini" "build" "channel"
+  ReadINIStr $1 "$INSTDIR\build-channel.ini" "build" "directory"
+  ${If} $2 != $INSTDIR
+  ${OrIf} $0 != "${APP_CHANNEL}"
+  ${OrIf} $1 != $INSTDIR
+    SetErrorLevel 5
+    Abort
+  ${EndIf}
+  # Reject junctions/symlinks in the installation and all ancestor paths.
+  StrCpy $3 "$INSTDIR"
+  check_uninstall_parent:
+    System::Call 'kernel32::GetFileAttributesW(w r3) i .r0'
+    IntOp $0 $0 & 0x400
+    ${If} $0 != 0
+      SetErrorLevel 5
+      Abort
+    ${EndIf}
+    ${GetParent} "$3" $4
+    StrCmp $4 "" uninstall_path_checked
+    StrCmp $4 $3 uninstall_path_checked
+    StrCpy $3 $4
+    Goto check_uninstall_parent
+  uninstall_path_checked:
+!if "${APP_CHANNEL}" == "dev"
+  ${If} ${FileExists} "$INSTDIR\passpine.exe"
+    ExecWait '$\"$INSTDIR\passpine.exe$\" --quit-for-uninstall' $0
+    ${If} $0 != 0
+      SetErrorLevel 6
+      Abort
+    ${EndIf}
+  ${EndIf}
+!endif
+  ${If} ${FileExists} "$INSTDIR\passpine-host.exe"
+    ExecWait '$\"$INSTDIR\passpine-host.exe$\" --unregister' $0
+    ${If} $0 != 0
+      SetErrorLevel 7
+      Abort
+    ${EndIf}
+  ${EndIf}
+  # Delete program files first; on failure keep the installation records and
+  # uninstaller so the same operation can be retried without losing ownership.
+  ClearErrors
+  Delete "$INSTDIR\passpine.exe"
+  Delete "$INSTDIR\passpine-host.exe"
+  ${If} ${Errors}
+    SetErrorLevel 8
+    Abort
+  ${EndIf}
   ${If} $2 == $INSTDIR
     ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${APP_NAME}"
     ${If} $0 == '$\"$INSTDIR\passpine.exe$\" --mygo-opened-at-login'
       DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${APP_NAME}"
       DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "${APP_NAME}"
     ${EndIf}
-  !insertmacro RemoveHostRegistration "Software\Google\Chrome" "chrome"
-  !insertmacro RemoveHostRegistration "Software\Microsoft\Edge" "edge"
-  !insertmacro RemoveHostRegistration "Software\BraveSoftware\Brave-Browser" "brave"
-  !insertmacro RemoveHostRegistration "Software\Mozilla" "firefox"
     DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
     DeleteRegKey HKCU "Software\${APP_NAME}"
     Delete "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk"
     RMDir "$SMPROGRAMS\${APP_NAME}"
   ${EndIf}
-  Delete "$INSTDIR\passpine.exe"
-  Delete "$INSTDIR\passpine-host.exe"
   Delete "$INSTDIR\build-channel.ini"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"

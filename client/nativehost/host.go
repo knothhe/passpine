@@ -311,10 +311,47 @@ func ServeStdio(dir string, args []string, r io.Reader, w io.Writer) error {
 	if !Authorized(args) {
 		return WriteFrame(w, failure("unauthorized"))
 	}
+	exit, stop := watchHelperExit(dir)
+	defer stop()
+	type frame struct {
+		data []byte
+		err  error
+	}
+	var frames chan frame
+	if exit != nil {
+		frames = make(chan frame)
+		readingDone := make(chan struct{})
+		defer close(readingDone)
+		go func() {
+			for {
+				data, err := ReadFrame(r)
+				select {
+				case frames <- frame{data, err}:
+				case <-readingDone:
+					clear(data)
+					return
+				}
+				if err != nil {
+					return
+				}
+			}
+		}()
+	}
 	client := NewRelayClient(dir)
 	defer client.Close()
 	for {
-		b, e := ReadFrame(r)
+		var b []byte
+		var e error
+		if frames == nil {
+			b, e = ReadFrame(r)
+		} else {
+			select {
+			case <-exit:
+				return nil
+			case next := <-frames:
+				b, e = next.data, next.err
+			}
+		}
 		if e == io.EOF {
 			return nil
 		}

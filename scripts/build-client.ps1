@@ -17,6 +17,7 @@ try {
     $version = $configuration.version
     Invoke-Checked node @('scripts/dependencies.mjs')
     Invoke-Checked node @('scripts/version.mjs', 'check')
+    Invoke-Checked node @('scripts/dev-icons.mjs')
     $arch = & go env GOARCH
     if ($LASTEXITCODE -ne 0) { throw 'Go is required.' }
     $platform = & go env GOOS
@@ -30,7 +31,9 @@ try {
     $resourceDir = Join-Path $output 'windows-resources'
     Push-Location (Join-Path $PSScriptRoot 'windows-resources')
     try {
-        Invoke-Checked go @('run', '.', '-icon', "$root\client\assets\app-icon-monochrome.png", '-out', $resourceDir, '-arch', $arch)
+        $icon = "$root\client\assets\app-icon-monochrome.png"
+        if ($configuration.channel -eq 'dev') { $icon = "$root\client\assets\dev\monochrome\app-icon-dev.png" }
+        Invoke-Checked go @('run', '.', '-icon', $icon, '-out', $resourceDir, '-arch', $arch)
     } finally { Pop-Location }
     $resource = Join-Path $root "client\cmd\passpine\rsrc_windows_$arch.syso"
     if (Test-Path -LiteralPath $resource) { throw "Refusing to overwrite an existing resource: $resource" }

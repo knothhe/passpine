@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/knothhe/passpine/client/buildinfo"
 	"github.com/knothhe/passpine/client/i18n"
@@ -11,6 +12,21 @@ import (
 var version = "development"
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--unregister" {
+		executable, err := os.Executable()
+		if err == nil {
+			err = nativehost.Unregister(executable)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) == 2 && os.Args[1] == "--build-info" {
+		_ = json.NewEncoder(os.Stdout).Encode(buildinfo.Current(version))
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "--build-channel" {
 		fmt.Println(buildinfo.ChannelName())
 		return

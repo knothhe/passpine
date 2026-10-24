@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -21,6 +22,22 @@ var updateFeedURL string
 var updatePublicKey string
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--build-info" {
+		_ = json.NewEncoder(os.Stdout).Encode(buildinfo.Current(version))
+		return
+	}
+	if len(os.Args) == 2 && os.Args[1] == "--quit-for-uninstall" {
+		if err := nativehost.QuitDevelopmentInstance(); err != nil {
+			log.Fatal(err)
+		}
+		if err := nativehost.RequestDevelopmentHelpersExit(); err != nil {
+			log.Fatal(err)
+		}
+		if err := desktop.PrepareDevelopmentUninstall(); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "--build-channel" {
 		fmt.Println(buildinfo.ChannelName())
 		return

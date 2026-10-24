@@ -1,14 +1,64 @@
 package desktop
 
 import (
+	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/about"
 	"github.com/knothhe/passpine/client/app"
+	"github.com/knothhe/passpine/client/buildinfo"
 	"github.com/knothhe/passpine/client/i18n"
 )
+
+func TestAboutCopiesBilingualBuildMetadataWithoutVaultData(t *testing.T) {
+	for _, language := range []string{"zh-CN", "en"} {
+		t.Run(language, func(t *testing.T) {
+			a := fixture()
+			secret, vaultName := a.detail.Password, a.state.VaultName
+			a.page, a.settingsState.Category, a.buildVersion = "settings", "about", "1.2.3-dev.abcdef"
+			a.settings = a.state.Settings
+			a.settings.Language = language
+			a.settings.FontScale = 120
+			a.settingsSaved, a.settingsObserved, a.settingsLoaded = a.settings, a.settings, true
+			priorCommit, priorModified, priorExecutor := buildinfo.Commit, buildinfo.Modified, buildinfo.Executor
+			buildinfo.Commit, buildinfo.Modified, buildinfo.Executor = strings.Repeat("a", 40), "true", "local"
+			defer func() {
+				buildinfo.Commit, buildinfo.Modified, buildinfo.Executor = priorCommit, priorModified, priorExecutor
+			}()
+			var copied string
+			a.clipboardWriter = func(value string, sensitive bool) error {
+				if sensitive {
+					t.Fatal("build metadata marked as credential")
+				}
+				copied = value
+				return nil
+			}
+			view := ui.NewTester(testView(a), 860, 620)
+			if err := view.Click(a.t("复制构建信息")); err != nil {
+				t.Fatal(err)
+			}
+			var metadata buildinfo.Metadata
+			if json.Unmarshal([]byte(copied), &metadata) != nil || metadata.Commit != buildinfo.Commit || metadata.Version != a.buildVersion || metadata.Channel != "dev" || metadata.Modified != "true" {
+				t.Fatalf("wrong copied metadata: %s", copied)
+			}
+			if strings.Contains(copied, secret) || strings.Contains(copied, vaultName) || !view.HasText(a.t("构建信息已复制")) {
+				t.Fatal("copy included vault data or omitted feedback")
+			}
+			managerResizeScreenshot(t, view, "about-build-"+language)
+			a.clipboardWriter = func(string, bool) error { return errors.New("clipboard unavailable") }
+			if err := view.Click(a.t("复制构建信息")); err != nil {
+				t.Fatal(err)
+			}
+			if !view.HasText(a.t(i18n.ClipboardWriteFailed)) {
+				t.Fatal("clipboard failure was not reported")
+			}
+		})
+	}
+}
 
 func TestAboutNavigationBeforeSetupDoesNotRequestGitStatus(t *testing.T) {
 	a := fixture()

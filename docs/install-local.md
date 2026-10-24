@@ -8,6 +8,21 @@
 | --- | --- | --- | --- |
 | 构建 | `make client:build` | `make browser:build` | `make` 或 `make build` |
 | 构建并安装 | `make client:install` | `make browser:install` | `make install` |
+| 卸载 Dev 客户端（保留数据） | `make client:uninstall` | 不卸载扩展 | `make uninstall` |
+
+## 卸载 Dev 客户端
+
+`make client:uninstall`（或 `make uninstall`）默认只处理 Dev 客户端；自定义安装目录时继续传入安装时使用的 `CLIENT_INSTALL_DIR`。不会构建程序或卸载浏览器扩展，不清除密码库、配置、密钥及凭据，也不移除正式版。
+
+macOS/Linux 的本地安装会在安装父目录写入 `.passpine-dev-install.json`，记录精确路径和程序/桌面资源的内容哈希。卸载先核对归属、通道、路径及内容，再请求该安装正常退出；未保存编辑沿用客户端的确认弹窗，写入失败或等待超时会停止本次卸载。通过独立控制端点匹配完整可执行路径，不会向另一安装发送退出请求；Linux 通过 `/proc/<pid>/exe` 识别仍在运行的程序。Dev 浏览器辅助进程的消息循环收到仅匹配自身路径、有效期一分钟且晚于本次启动的私有退出记录后，清理 relay 连接并正常结束进程，不依赖关闭阻塞中的标准输入。快速重新安装后启动的辅助进程忽略旧退出记录。
+
+只删除仍指向该安装的 Native Host 清单和自有桌面资源；发生部分清理失败时保留安装记录，修正问题后重跑同一命令。记录缺失、内容被替换、符号链接或安装与数据目录重叠时保留文件并报错。旧版和手动复制的应用没有记录，请先用 `make client:install` 在相同位置重新安装一次，再使用卸载入口。
+
+macOS 注销开机自启前会检查系统服务状态；未注册或找不到服务时无需注销，已注册或等待批准的服务仍须清理成功。早期 Dev 卸载实现会对不存在的服务报 `Operation not permitted`；由于退出命令来自已安装的程序，需先运行一次 `make client:install` 更新该程序，再重试 `make client:uninstall`，仅更新源码或构建目录不会替换旧安装。
+
+Windows 沿用 NSIS 卸载器，Make 入口读取当前用户的 Dev 安装记录，检查通道、目录及 reparse point，再协调退出和卸载。注册项只有仍归属当前安装时才清理；失败保留可重试的安装记录。卸载会撤销对应客户端的开机自启注册。
+
+现有 CI 已接入 `node scripts/verify-dev-installation.mjs --run`，仅在临时 runner 上执行真实 Dev 安装、原生启动、正常退出、重复卸载和数据保留检查；Linux 使用 Xvfb。脚本接入不代表尚未运行的目标系统已验收，结果以对应 workflow run 为准。
 
 ## 客户端
 

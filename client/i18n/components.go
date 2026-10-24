@@ -5,6 +5,7 @@ import (
 	"io/fs"
 
 	mygoi18n "github.com/egoist/mygo/i18n"
+	_ "github.com/egoist/mygo/locales/zh-Hans"
 )
 
 // Onevra resolves its internal labels through MyGo's application catalog.

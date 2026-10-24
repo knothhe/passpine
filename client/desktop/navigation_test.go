@@ -205,10 +205,15 @@ func TestNativeWindowCloseDismissesEditorAndGeneratorFirst(t *testing.T) {
 		t.Fatal("native close dismissed the application instead of the clean editor")
 	}
 	event = &mygo.CloseEvent{}
+	callbacks := make(chan func(), 1)
+	a.runOnMain = func(f func()) { callbacks <- f }
+	a.quit.quit = func() {}
 	a.handleMainWindowClose(event)
-	if event.DefaultPrevented() {
-		t.Fatal("normal window close remained blocked after the editor was dismissed")
+	awaitMain(t, callbacks)
+	if !event.DefaultPrevented() || !a.quit.ready {
+		t.Fatal("normal window close did not use the shutdown barrier")
 	}
+	a = fixture()
 	a.editEntry()
 	a.editor.password = "changed"
 	a.editor.compose()
