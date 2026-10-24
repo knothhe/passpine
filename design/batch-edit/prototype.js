@@ -24,6 +24,8 @@
     { id: "nas", name: "NAS 家庭存储", folder: "家庭/设备", username: "admin", website: "https://nas.example.test" },
     { id: "oldli", name: "Linear", folder: "归档", username: "archive@example.test", website: "https://linear.app" },
     { id: "long", name: "家庭资料与长期订阅记录", folder: "生活/家庭资料", username: "family@example.test", website: "https://example.test" },
+    { id: "st", name: "Stripe", folder: "工作/财务", username: "billing@example.test", website: "https://dashboard.stripe.com" },
+    { id: "hr", name: "招聘平台", folder: "工作/招聘", username: "talent@example.test", website: "https://jobs.example.test" },
   ];
   const paths = {
     sidebar: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
@@ -76,6 +78,8 @@
   const visible = () => collection().filter(item => path(item).toLocaleLowerCase().includes(s.query.trim().toLocaleLowerCase()));
   const folders = () => [...new Set(items.flatMap(item => item.folder.split("/").filter(Boolean).map((_, i, a) => a.slice(0, i + 1).join("/"))))].sort();
   const busy = () => Boolean(s.progress);
+  // Folders with this many direct subfolders get a collapse toggle; the tree still opens fully expanded.
+  const collapseThreshold = 4;
   // Entry names are user data; only the separator and the overflow template are copy.
   const nameList = entries => {
     const names = [...new Set(entries.map(item => item.name))];
@@ -88,18 +92,18 @@
     items = seed.map(item => ({ ...item }));
     trashItems = [];
     s = { scene, mode: scene !== "browse", scope: "all", query: "", selected: new Set(), active: "gh", dialog: null,
-      destination: null, folderQuery: "", result: null, progress: null, toast: null, undo: null, sidebar: false, reveal: false };
+      destination: null, folderQuery: "", collapsed: new Set(), result: null, progress: null, toast: null, undo: null, sidebar: false, reveal: false };
     anchor = null;
     if (!["browse", "empty"].includes(scene)) s.selected = new Set(defaultIDs);
-    if (["move", "conflict"].includes(scene)) { s.dialog = "move"; s.destination = scene === "conflict" ? "归档" : "家庭/设备"; }
+    if (["move", "conflict"].includes(scene)) s.destination = scene === "conflict" ? "归档" : "家庭/设备";
     if (scene === "conflict") s.selected.add("gh2");
-    if (s.dialog) s.returnAction = s.dialog;
-    if (scene === "progress") s.progress = { action: "move", ids: [...s.selected], done: 2, total: 4 };
+    if (scene === "progress") { s.destination = "家庭/设备"; s.progress = { action: "move", ids: [...s.selected], done: 2, total: 4 }; }
     if (scene === "partial") applyPartial();
     if (scene === "success") applySuccess("move", defaultIDs, "工作/归档");
     if (["trash", "trash-success"].includes(scene)) applySuccess("trash", defaultIDs);
     if (updateURL && review) history.replaceState(null, "", `?${new URLSearchParams({ scene, lang: language, theme })}`);
     render();
+    document.querySelector(".folder-option.selected")?.scrollIntoView({ block: "nearest" });
   }
 
   function applySuccess(action, ids, destination = "") {
@@ -107,7 +111,7 @@
     if (action === "move") ids.forEach(id => { if (byID(id)) byID(id).folder = destination; });
     else { trashItems.push(...originals); items = items.filter(item => !ids.includes(item.id)); }
     s.mode = false; s.selected.clear(); s.active = null; s.dialog = null; s.progress = null; s.result = null;
-    s.lastDestination = destination;
+    s.lastDestination = destination; s.destination = null; s.folderQuery = "";
     s.undo = action === "trash" ? originals : null;
     s.toast = action === "move"
       ? { key: "movedSuccess", values: { count: originals.length, folder: folderLabel(destination) }, action: "destination", actionKey: "view" }
@@ -174,10 +178,24 @@
     if (!count && !p) return `<div class="batch-panel"><div class="panel-toolbar"></div><div class="batch-heading"><h2>${t("chooseItems")}</h2><p class="batch-subtitle">${t("chooseItemsDescription")}</p></div></div>`;
     const running = action => p?.action === action;
     const progress = action => running(action) ? 'aria-busy="true"' : "";
-    const moveLabel = running("move") ? t("progressMoving", { done: p.done, total: p.total }) : t("moveTo");
+    const plan = movePlan();
+    const folderOptions = ["", ...folders()];
+    const query = s.folderQuery.trim().toLocaleLowerCase();
+    const candidate = s.folderQuery.trim().replace(/^\/+|\/+$/g, "");
+    const canCreate = candidate && !folderOptions.includes(candidate) && !candidate.split("/").some(segment => [".", ".."].includes(segment));
+    // Searching flattens the tree to full paths, since a deep match needs its parents to be told apart.
+    const shown = query ? folderOptions.filter(folder => folderLabel(folder).toLocaleLowerCase().includes(query)) : folderOptions;
+    const moveTotal = s.destination === null ? count : plan.ready.length;
+    const moveLabel = running("move") ? t("progressMoving", { done: p.done, total: p.total }) : t("moveCount", { count: moveTotal });
     const trashLabel = running("trash") ? t("progressTrashing", { done: p.done, total: p.total }) : t("trashAction");
-    return `<div class="batch-panel"><div class="panel-toolbar"></div><div class="batch-heading"><h2>${t("selectedCount", { count: p ? p.total : count })}</h2></div>
-      <div class="batch-actions">${button("move", moveLabel, "primary", running("move") ? "spinner" : "folder", busy(), progress("move"))}${button("trash", trashLabel, "secondary danger-text", running("trash") ? "spinner" : "trash", busy(), progress("trash"))}</div></div>`;
+    return `<div class="batch-panel selection-panel"><div class="panel-toolbar"></div>
+      <div class="selection-heading"><h2>${t("selectedCount", { count: p ? p.total : count })}</h2>${button("trash", trashLabel, "quiet danger-text", running("trash") ? "spinner" : "trash", busy(), progress("trash"))}</div>
+      <section class="move-section" aria-labelledby="move-label"><h3 class="section-label" id="move-label">${t("moveSection")}</h3>
+        <div class="folder-search search-wrap">${icon("search")}<input id="folder-search" placeholder="${t("folderSearch")}" aria-label="${t("folderSearchLabel")}" value="${esc(s.folderQuery)}" ${busy() ? "disabled" : ""}></div>
+        <div class="folder-list ${query ? "flat" : ""}" role="group" aria-label="${t("chooseDestination")}">${query ? shown.map(folder => folderOption(folder, folderLabel(folder), 0, false)).join("") : folderTree()}${canCreate ? `<button class="folder-option folder-create" data-folder="${esc(candidate)}">${icon("folderPlus")}<span>${esc(t("createFolder", { folder: candidate }))}</span></button>` : ""}${!shown.length && !canCreate ? `<p class="muted">${t("noFolders")}</p>` : ""}</div>
+        ${moveNotices(plan)}
+        <div class="move-footer">${button("confirm-move", moveLabel, "primary", running("move") ? "spinner" : "", busy() || s.destination === null || !plan.ready.length, progress("move"))}</div>
+      </section></div>`;
   }
 
   function detailPanel() {
@@ -215,21 +233,27 @@
     ].join("");
   }
 
+  function folderOption(folder, label, depth, collapsible) {
+    const chosen = s.destination === folder, open = !s.collapsed.has(folder);
+    const toggle = collapsible
+      ? `<button class="folder-toggle" data-toggle-folder="${esc(folder)}" aria-expanded="${open}" aria-label="${esc(t(open ? "collapseFolder" : "expandFolder", { folder }))}">${icon("chevron")}</button>`
+      : `<span class="folder-toggle" aria-hidden="true"></span>`;
+    return `<div class="folder-node" style="--depth:${depth}">${toggle}<button class="folder-option ${chosen ? "selected" : ""}" data-folder="${esc(folder)}" aria-pressed="${chosen}" ${busy() ? "disabled" : ""} aria-label="${esc(t("chooseFolder", { folder: folderLabel(folder) }))}">${icon("folder")}<span class="folder-option-path">${esc(label)}</span>${chosen ? icon("check") : ""}</button></div>`;
+  }
+
+  function folderTree() {
+    const all = folders();
+    const childCount = folder => all.filter(other => other.startsWith(`${folder}/`) && !other.slice(folder.length + 1).includes("/")).length;
+    const hidden = folder => [...s.collapsed].some(parent => folder.startsWith(`${parent}/`));
+    return [folderOption("", t("rootFolder"), 0, false), ...all.filter(folder => !hidden(folder)).map(folder => {
+      const parts = folder.split("/");
+      return folderOption(folder, parts.at(-1), parts.length - 1, childCount(folder) >= collapseThreshold);
+    })].join("");
+  }
+
   function modal() {
-    if (!s.dialog) return "";
-    if (s.dialog === "check") return `<dialog class="modal" aria-labelledby="modal-title"><header class="modal-header"><h2 id="modal-title">${t("checkBothTitle")}</h2></header><div class="modal-body"><div class="path-preview"><p class="field-label">${t("originalPath")}</p><p>${esc(path(byID("li")))}</p><p class="field-label">${t("destinationPath")}</p><p>${esc(`${s.result.destination}/${byID("li").name}`)}</p></div></div><footer class="modal-footer">${button("cancel-dialog", t("back"), "primary")}</footer></dialog>`;
-    const count = selected().length;
-    const plan = movePlan();
-    const folderOptions = ["", ...folders()];
-    const candidate = s.folderQuery.trim().replace(/^\/+|\/+$/g, "");
-    const canCreate = candidate && !folderOptions.includes(candidate) && !candidate.split("/").some(segment => [".", ".."].includes(segment));
-    const shown = folderOptions.filter(folder => folderLabel(folder).toLocaleLowerCase().includes(s.folderQuery.trim().toLocaleLowerCase()));
-    const moveTotal = s.destination === null ? count : plan.ready.length;
-    return `<dialog class="modal move-modal" aria-labelledby="modal-title"><header class="modal-header"><h2 id="modal-title">${t("moveTitle", { count })}</h2></header><div class="modal-body">
-      <div class="folder-search search-wrap">${icon("search")}<input id="folder-search" placeholder="${t("folderSearch")}" aria-label="${t("folderSearchLabel")}" value="${esc(s.folderQuery)}"></div>
-      <div class="folder-list" role="group" aria-label="${t("chooseDestination")}">${shown.map(folder => `<button class="folder-option ${s.destination === folder ? "selected" : ""}" data-folder="${esc(folder)}" aria-pressed="${s.destination === folder}">${icon("folder")}<span class="folder-option-path">${esc(folderLabel(folder))}</span>${s.destination === folder ? icon("check") : ""}</button>`).join("")}${canCreate ? `<button class="folder-option folder-create" data-folder="${esc(candidate)}">${icon("folderPlus")}<span>${esc(t("createFolder", { folder: candidate }))}</span></button>` : ""}${!shown.length && !canCreate ? `<p class="muted">${t("noFolders")}</p>` : ""}</div>
-      ${moveNotices(plan)}</div>
-      <footer class="modal-footer">${button("cancel-dialog", t("cancel"), "secondary", "", false, 'id="cancel-dialog"')}${button("confirm-move", t("moveCount", { count: moveTotal }), "primary", "", s.destination === null || !plan.ready.length)}</footer></dialog>`;
+    if (s.dialog !== "check") return "";
+    return `<dialog class="modal" aria-labelledby="modal-title"><header class="modal-header"><h2 id="modal-title">${t("checkBothTitle")}</h2></header><div class="modal-body"><div class="path-preview"><p class="field-label">${t("originalPath")}</p><p>${esc(path(byID("li")))}</p><p class="field-label">${t("destinationPath")}</p><p>${esc(`${s.result.destination}/${byID("li").name}`)}</p></div></div><footer class="modal-footer">${button("cancel-dialog", t("back"), "primary")}</footer></dialog>`;
   }
 
   function toastView() {
@@ -263,10 +287,7 @@
     if (focusID && document.getElementById(focusID) && (!modalNode || wasDialog)) {
       const next = document.getElementById(focusID); next.focus({ preventScroll: true });
       if (range && next instanceof HTMLInputElement) next.setSelectionRange(...range);
-    } else if (modalNode && !wasDialog) {
-      document.querySelector(".folder-option.selected")?.scrollIntoView({ block: "nearest" });
-      document.getElementById("folder-search")?.focus({ preventScroll: true });
-    }
+    } else if (modalNode && !wasDialog) modalNode.querySelector("button")?.focus({ preventScroll: true });
   }
 
   function toast(key, values = {}) {
@@ -278,8 +299,7 @@
     toastTimer = setTimeout(() => { s.toast = null; s.undo = null; render(); }, ms);
   }
 
-  function closeDialog() { s.dialog = null; render(); document.querySelector(`[data-action="${s.returnAction || "move"}"]`)?.focus({ preventScroll: true }); }
-  function enterDialog(kind) { s.dialog = kind; s.returnAction = kind; s.result = null; if (kind === "move") { s.destination = null; s.folderQuery = ""; } render(); }
+  function closeDialog() { s.dialog = null; render(); document.querySelector('[data-action="check-both"]')?.focus({ preventScroll: true }); }
 
   function toggleEntry(id, event) {
     if (busy()) return;
@@ -321,13 +341,12 @@
       case "theme": theme = theme === "dark" ? "light" : "dark"; render(); break;
       case "reset": init("select"); break;
       case "sidebar": s.sidebar = !s.sidebar; render(); break;
-      case "mode": s.mode = !s.mode; s.selected.clear(); s.result = null; render(); break;
+      case "mode": s.mode = !s.mode; s.selected.clear(); s.result = null; s.destination = null; s.folderQuery = ""; render(); break;
       case "all": {
         const ids = visible().map(item => item.id), all = ids.every(id => s.selected.has(id));
         s.mode = true; s.result = null; ids.forEach(id => all ? s.selected.delete(id) : s.selected.add(id)); render(); break;
       }
       case "clear-search": s.query = ""; render(); document.getElementById("search")?.focus(); break;
-      case "move": enterDialog("move"); break;
       case "trash": startOperation("trash"); break;
       case "trash-one": s.mode = true; s.selected = new Set([s.active]); startOperation("trash"); break;
       case "cancel-dialog": closeDialog(); break;
@@ -346,7 +365,7 @@
         s.scope = destination || "__root__"; s.query = ""; s.mode = false; s.result = null; s.toast = null; s.selected.clear(); s.active = items.find(item => item.folder === destination)?.id; render(); break;
       }
       case "result-close": s.result = null; s.mode = false; s.selected.clear(); s.active = null; render(); break;
-      case "check-both": s.dialog = "check"; s.returnAction = "check-both"; render(); break;
+      case "check-both": s.dialog = "check"; render(); break;
       case "retry": {
         const r = s.result;
         const retry = r.failed.filter(failure => !failure.review);
@@ -382,6 +401,11 @@
     // Searching only filters the list; the selection survives it.
     document.getElementById("search")?.addEventListener("input", event => { s.query = event.target.value; s.result = null; render(); });
     document.getElementById("folder-search")?.addEventListener("input", event => { s.folderQuery = event.target.value; render(); });
+    document.querySelectorAll("[data-toggle-folder]").forEach(node => node.addEventListener("click", () => {
+      const folder = node.dataset.toggleFolder;
+      s.collapsed.has(folder) ? s.collapsed.delete(folder) : s.collapsed.add(folder); render();
+      document.querySelector(`[data-toggle-folder="${CSS.escape(folder)}"]`)?.focus({ preventScroll: true });
+    }));
     document.querySelectorAll("[data-folder]").forEach(node => node.addEventListener("click", () => {
       s.destination = node.dataset.folder; s.folderQuery = ""; render();
       document.querySelector(`[data-folder="${CSS.escape(s.destination)}"]`)?.focus({ preventScroll: true });
