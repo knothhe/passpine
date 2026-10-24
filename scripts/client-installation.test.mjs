@@ -2,8 +2,20 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { installationLayout, recordInstallation, uninstallInstallation, installedProcesses } from './client-installation.mjs';
+
+test('Windows GUI client commands wait for output and preserve nonzero exit codes without LASTEXITCODE', { skip: process.platform !== 'win32' && 'Requires Windows PowerShell and a native GUI executable' }, t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-gui-command-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const output = execFileSync('powershell.exe', [
+    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+    fileURLToPath(new URL('./test-fixtures/windows-client-command.ps1', import.meta.url)), directory,
+  ], { encoding: 'utf8', timeout: 60000 });
+  assert.match(output, /Windows GUI client command checks passed/);
+});
 
 function fixture(t, platform = 'linux') {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-dev-uninstall-')));
