@@ -6,7 +6,7 @@
     "dev": "vite --host 127.0.0.1 --port 5175",
     "typecheck": "tsc --noEmit",
     "test": "vitest run && node --experimental-strip-types --test scripts/test-sync-release.mjs",
-    "build": "pnpm run typecheck && vite build",
+    "build": "pnpm run typecheck && vite build && node scripts/prerender.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 4175",
     "sync:releases": "node --experimental-strip-types scripts/sync-release.mjs",
     "deploy": "pnpm run sync:releases && pnpm run build && wrangler deploy"

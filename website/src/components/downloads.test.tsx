@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { DownloadSection } from "../App";
+import { DownloadSection } from "../pages/home";
 import { en, zh } from "../constants/copy";
 import { bundledRelease } from "../lib/release-snapshot";
 import type { Device, Release } from "../lib/downloads";

@@ -1,6 +1,6 @@
 # 隐私与权限后台填写参考
 
-版本 0.1.2；核对日期 2026-10-22。已读取构建后的 `browser/.output/chrome-mv3/manifest.json`，不是仅依据源配置推测。此文件供发布者填写后台；面向用户的政策见 [PRIVACY.md](PRIVACY.md)。
+版本 0.1.7；核对日期 2026-10-23（初版按 0.1.2 于 2026-10-22 编写）。已读取 0.1.7 Chrome ZIP 内的 `manifest.json`，不是仅依据源配置推测；权限与 0.1.2 相同。0.1.7 新增的客户端通道选择（`clientTarget`）只在开发者解包安装时可选并写入 `storage.local`，商店安装固定连接正式客户端，不写入该值；读取安装类型的 `management.getSelf` 不需要额外权限。此文件供发布者填写后台；面向用户的政策见 [PRIVACY.md](PRIVACY.md)。
 
 ## 单一用途
 
