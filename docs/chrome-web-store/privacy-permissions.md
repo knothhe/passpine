@@ -1,6 +1,6 @@
 # 隐私与权限后台填写参考
 
-版本 0.1.7；核对日期 2026-10-23（初版按 0.1.2 于 2026-10-22 编写）。已读取 0.1.7 Chrome ZIP 内的 `manifest.json`，不是仅依据源配置推测；权限与 0.1.2 相同。0.1.7 新增的客户端通道选择（`clientTarget`）只在开发者解包安装时可选并写入 `storage.local`，商店安装固定连接正式客户端，不写入该值；读取安装类型的 `management.getSelf` 不需要额外权限。此文件供发布者填写后台；面向用户的政策见 [PRIVACY.md](PRIVACY.md)。
+版本 0.1.7；核对日期 2026-10-24（初版按 0.1.2 于 2026-10-22 编写）。本次核对工作区构建产物 `browser/.output/chrome-mv3/manifest.json`；新增网页快捷键使用可选的 HTTP / HTTPS 网站访问。此前商店 ZIP 的证据仍见素材记录，发布前需重新打包。0.1.7 新增的客户端通道选择（`clientTarget`）只在开发者解包安装时可选并写入 `storage.local`，商店安装固定连接正式客户端，不写入该值；读取安装类型的 `management.getSelf` 不需要额外权限。此文件供发布者填写后台；面向用户的政策见 [PRIVACY.md](PRIVACY.md)。
 
 ## 单一用途
 
@@ -16,11 +16,12 @@ English: Connect the user's local Passpine vault to the browser so they can find
 | --- | --- | --- |
 | `nativeMessaging` | Communicate with the separately installed local Passpine client through the com.knothhe.passpine Native Messaging host. The client owns the vault and unlock session, retrieves and encrypts entries, generates passwords, and performs native clipboard operations. | `entrypoints/background.ts` 的 `connectNative(HOST)`；`src/lib/native.ts`；`client/nativehost/host.go` |
 | `activeTab` | Access the active tab after the user invokes Passpine to display its hostname, match accounts, and verify that filling still targets the page the user selected. This avoids requesting persistent access to all websites. | `background.ts` 的 `activeTab`、`currentTab`、`snapshot`；`src/lib/model.ts` 的 `tabContext` |
-| `scripting` | Inject the packaged fillPage function into the top frame of the active page only when the user requests filling. It locates visible login fields, writes the selected username, password, or one-time code, and does not submit the form. | `background.ts` 的 `executeScript`；`src/lib/fill.ts` |
-| `storage` | Save extension language, appearance, popup keyboard shortcuts, and account-to-website association decisions in local browser storage. Associations use a SHA-256 key derived from the vault ID, entry path, and exact hostname. Passwords and decrypted entry contents are not persisted in extension storage. | `background.ts` 的 `associations`、`setAssociation`；`src/lib/model.ts` 的 `associationKey`；偏好模块 |
+| `scripting` | Register a packaged shortcut listener after optional website access is granted, and inject the packaged fillPage function into the top frame of the active page when the user requests filling. It locates visible login fields, writes the selected username, password, or one-time code, and does not submit the form. | `background.ts` 的 `executeScript`；`src/lib/fill.ts` |
+| `storage` | Save extension language, appearance, page and popup keyboard shortcuts, and account-to-website association decisions in local browser storage. Associations use a SHA-256 key derived from the vault ID, entry path, and exact hostname. Passwords and decrypted entry contents are not persisted in extension storage. | `background.ts` 的 `associations`、`setAssociation`；`src/lib/model.ts` 的 `associationKey`；偏好模块 |
+| `optional_host_permissions` (`http://*/*`, `https://*/*`) | Optional website access enables a packaged listener for user-configured page shortcuts and filling on explicit shortcut activation. It skips editable fields and does not record or upload typed input. Content scripts cannot read vault entries or receive decrypted credentials. Users may revoke this access in settings. | `page-shortcuts.ts`、`page-shortcut-registration.ts`、`entrypoints/page-shortcuts.content.ts`；`background.ts` 的专用消息处理 |
 | `clipboardWrite` | Let the user copy the extension ID from the connection settings page for setup and troubleshooting. Credential copying uses the local client's clipboard handler so the client's expiry setting can apply. The extension does not read the clipboard. | `components/Options.tsx` 的 `navigator.clipboard.writeText(extensionId)`；`src/lib/client.ts`；`client/app/service.go` 的 `copy`、`copy-generated` |
 
-路径未带 `client/` 前缀的证据均相对 `browser/`。本包未声明 `host_permissions`、`optional_host_permissions`、`optional_permissions`、`tabs`、`history`、`clipboardRead` 或常驻 `content_scripts`。`activeTab` 仍会处理当前网址，不能据此写“完全不访问浏览数据”。
+路径未带 `client/` 前缀的证据均相对 `browser/`。本次构建未声明必需的 `host_permissions`、`tabs`、`history` 或 `clipboardRead`。`optional_host_permissions` 仅列出 `http://*/*` 与 `https://*/*`；用户授权后动态注册网页快捷键脚本，撤销时停止监听。manifest 不静态注册全站脚本。`activeTab` 仍会处理当前网址，不能据此写“完全不访问浏览数据”。
 
 ## 远程代码
 
@@ -57,7 +58,7 @@ Chrome 要求披露本地处理的数据，不能因为开发者没有服务器�
 | 密码、用户名、备注、OTP、自定义字段 | 用户查看、编辑或保存；复制/填充限用户名、密码和验证码；需有效解锁会话 | 本机扩展与客户端；填充时仅将所选用户名、密码、验证码交给当前顶层网页，复制时将所选字段交给系统剪贴板 | 账号内容在库中为 `.gpg`；扩展详情在内存，隐藏、锁定、断连、切库时清理状态。页面/剪贴板不是密码库加密存储 | `App.tsx`；`session.ts`；`background.ts`；`client/vault/crypto.go` |
 | 私钥与私钥口令 | 客户端创建/导入/解锁 | 留在原生客户端流程，不由扩展建立独立私钥会话 | 受口令保护的私钥位于应用数据目录；解锁密钥在客户端会话内；可选系统解锁由客户端/系统处理 | `client/vault/vault.go`；`client/vault/crypto.go`；`client/app/service.go` 的浏览器请求白名单 |
 | 当前网址、表单结构 | 用户调用扩展时匹配；用户填充时读取输入框结构 | 本机浏览器；填充值可被当前网页脚本读取或按网页逻辑处理 | URL 在运行内存；不持久保存完整 URL。`associations` 保存非匿名的哈希派生键及布尔决定，未设自动过期 | `model.ts`；`fill.ts`；`background.ts` |
-| 语言、主题、字号、弹窗快捷键 | 用户设置；默认跟随系统/黑白主题 | `browser.storage.local`，不使用 `storage.sync` | 持续保存至修改、清除该扩展数据或卸载 | `language.ts`；`appearance.ts`；`popup-shortcuts.ts` |
+| 语言、主题、字号、网页与弹窗快捷键 | 用户设置；默认跟随系统/黑白主题 | `browser.storage.local`，不使用 `storage.sync` | 持续保存至修改、清除该扩展数据或卸载 | `language.ts`；`appearance.ts`；`popup-shortcuts.ts`；`page-shortcuts.ts` |
 | 复制值 | 用户点击复制；凭证复制由客户端处理 | 操作系统剪贴板，其他有权限的软件可能读取 | 客户端默认 30 秒后在值未被替换时清空所复制内容；系统剪贴板历史和其他软件副本不受保证 | `client/app/service.go`；`client/desktop/desktop.go`；`Options.tsx` |
 | 操作记录 | 客户端默认开启，可关闭 | 仅本机 `activity.json`，无实现中的上传端点 | 默认 7 天/最多 1,000 条；客户端运行中定期裁剪，关闭时不会后台运行删除 | `client/app/activity.go`；`client/app/service.go` |
 | Git 同步 | 默认关闭自动同步；用户配置远端并手动同步，或开启自动同步 | 用户配置的 Git 托管方及其认证工具；客户端执行系统 Git | 仓库保留加密 `.gpg`、`.gpg-id` 及可见路径/Git 元数据；远端保留与删除由用户及托管方控制 | `client/app/git.go`；`client/vault/git.go` |

@@ -22,12 +22,12 @@
 
 | 事实 | 来源 |
 | --- | --- |
-| MV3、版本、权限、无站点常驻注入、CSP | `browser/.output/chrome-mv3/manifest.json`；生成源为 `browser/wxt.config.ts` |
+| MV3、版本、必需与可选权限、CSP | `browser/.output/chrome-mv3/manifest.json`；生成源为 `browser/wxt.config.ts` |
 | 中英文包元数据、短描述 | `browser/public/_locales/en/messages.json`、`browser/public/_locales/zh_CN/messages.json` |
 | 当前网站匹配、关联、原生请求及用户触发填充 | `browser/entrypoints/background.ts`、`browser/src/lib/model.ts`、`browser/src/lib/fill.ts` |
 | 编辑表单内生成器入口、自定义字段维护和详情展示范围 | `browser/src/components/EditorForm.tsx`、`browser/src/components/Generator.tsx`、`browser/src/components/App.tsx` |
 | `otp` 字段生成 TOTP 并交给扩展展示/填充 | `client/vault/model.go` 的 `ParseDocument` / `TOTP`、`client/app/service.go` 的 `dataDocument`、`browser/entrypoints/background.ts` |
-| 本地扩展偏好 | `browser/src/lib/appearance.ts`、`browser/src/lib/language.ts`、`browser/src/lib/popup-shortcuts.ts` |
+| 本地扩展偏好 | `browser/src/lib/appearance.ts`、`browser/src/lib/language.ts`、`browser/src/lib/popup-shortcuts.ts`、`browser/src/lib/page-shortcuts.ts` |
 | 会话失效及界面清理 | `browser/src/lib/session.ts`、`browser/src/components/App.tsx` |
 | 原生传输、本机端点、固定 Chromium ID | `client/nativehost/host.go`、`client/nativehost/registration.go` |
 | 密钥创建/加密、恢复记录与 Git 范围 | `client/vault/vault.go`、`client/vault/crypto.go`、`client/vault/recovery.go`、`client/vault/git.go` |
