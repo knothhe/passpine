@@ -234,15 +234,15 @@ a.text-button { text-decoration: none; }
 .batch-actions .button { min-height: 34px; }
 /* Moving happens in the panel itself: heading with the secondary trash action, then the folder tree. */
 .selection-panel { display: flex; flex: 1; flex-direction: column; max-width: 608px; min-height: 0; }
-.selection-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; }
+.selection-heading { margin-top: 16px; }
+.selection-panel > .batch-actions { margin-top: 16px; }
 .selection-heading h2 { font-size: 24px; font-weight: 700; line-height: 32px; }
 .button.quiet { border-color: transparent; background: transparent; }
 .button.quiet:hover { background: var(--hover); }
-.move-section { display: flex; flex: 1; flex-direction: column; min-height: 0; margin-top: 20px; }
+.move-section { display: flex; flex: 1; flex-direction: column; min-height: 0; margin-top: 24px; }
 .section-label { margin-bottom: 10px; color: var(--muted); font-size: 11px; font-weight: 500; line-height: 17px; }
 .move-section .folder-search { margin: 0 0 8px; }
 .move-section > .inline-notice { margin-top: 10px; }
-.move-footer { display: flex; flex: none; justify-content: flex-end; margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
 .empty-state { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; min-height: 290px; padding: 50px 36px; text-align: center; }
 .empty-symbol { display: flex; align-items: center; justify-content: center; margin-bottom: 14px; color: var(--muted); }
 .empty-symbol .icon { width: 30px; height: 30px; }

@@ -189,12 +189,12 @@
     const moveLabel = running("move") ? t("progressMoving", { done: p.done, total: p.total }) : t("moveCount", { count: moveTotal });
     const trashLabel = running("trash") ? t("progressTrashing", { done: p.done, total: p.total }) : t("trashAction");
     return `<div class="batch-panel selection-panel"><div class="panel-toolbar"></div>
-      <div class="selection-heading"><h2>${t("selectedCount", { count: p ? p.total : count })}</h2>${button("trash", trashLabel, "quiet danger-text", running("trash") ? "spinner" : "trash", busy(), progress("trash"))}</div>
+      <div class="selection-heading"><h2>${t("selectedCount", { count: p ? p.total : count })}</h2></div>
+      <div class="batch-actions">${button("confirm-move", moveLabel, "primary", running("move") ? "spinner" : "", busy() || s.destination === null || !plan.ready.length, progress("move"))}${button("trash", trashLabel, "quiet danger-text", running("trash") ? "spinner" : "trash", busy(), progress("trash"))}</div>
       <section class="move-section" aria-labelledby="move-label"><h3 class="section-label" id="move-label">${t("moveSection")}</h3>
         <div class="folder-search search-wrap">${icon("search")}<input id="folder-search" placeholder="${t("folderSearch")}" aria-label="${t("folderSearchLabel")}" value="${esc(s.folderQuery)}" ${busy() ? "disabled" : ""}></div>
         <div class="folder-list ${query ? "flat" : ""}" role="group" aria-label="${t("chooseDestination")}">${query ? shown.map(folder => folderOption(folder, folderLabel(folder), 0, false)).join("") : folderTree()}${canCreate ? `<button class="folder-option folder-create" data-folder="${esc(candidate)}">${icon("folderPlus")}<span>${esc(t("createFolder", { folder: candidate }))}</span></button>` : ""}${!shown.length && !canCreate ? `<p class="muted">${t("noFolders")}</p>` : ""}</div>
         ${moveNotices(plan)}
-        <div class="move-footer">${button("confirm-move", moveLabel, "primary", running("move") ? "spinner" : "", busy() || s.destination === null || !plan.ready.length, progress("move"))}</div>
       </section></div>`;
   }
 

@@ -557,8 +557,23 @@ func (a *application) batchView(c *ui.Context) {
 	}
 	ui.Column(c).Key("batch-panel").Fill().MaxWidth(608).Padding(24).Children(func() {
 		ui.Box(c).MinHeight(32)
-		ui.Row(c).FillWidth().Margin(20, 0, 0, 0).AlignItems(ui.Center).Gap(12).Children(func() {
-			components.Text(c, a.t("已选 %d 项", count)).Grow(1).MinWidth(0).FontSize(scaledFontSize(c, 24)).Bold()
+		components.Text(c, a.t("已选 %d 项", count)).Margin(20, 0, 0, 0).FillWidth().FontSize(scaledFontSize(c, 24)).Bold()
+		// Both actions sit together under the count: moving is the primary one
+		// and needs a folder below, while trash is the quieter alternative.
+		ui.Row(c).Key("batch-actions").FillWidth().Margin(16, 0, 0, 0).AlignItems(ui.Center).Gap(8).Children(func() {
+			label := a.t("移动 %d 项", len(chosen))
+			if a.batch.chosen {
+				label = a.t("移动 %d 项", len(ready))
+			}
+			moving := progress != nil && progress.action == "move"
+			if moving {
+				label = a.t("正在移动 %d/%d", progress.done, progress.total)
+			}
+			// The running action keeps full contrast so its progress stays readable;
+			// startBatchMove ignores clicks while busy.
+			if components.Button(c, label, components.ButtonPrimary).Disabled(!moving && (a.busy || !a.batch.chosen || len(ready) == 0)).Clicked() {
+				a.startBatchMove()
+			}
 			trashLabel := a.t("移到回收站")
 			if progress != nil && progress.action == "trash" {
 				trashLabel = a.t("正在移到回收站 %d/%d", progress.done, progress.total)
@@ -572,7 +587,7 @@ func (a *application) batchView(c *ui.Context) {
 				a.startBatchTrash()
 			}
 		})
-		components.Text(c, a.t("移动到")).Margin(20, 0, 8, 0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+		components.Text(c, a.t("移动到")).Margin(24, 0, 8, 0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 		search := textBox(c, &a.batch.folderQuery, components.TextBoxOptions{LeadingIcon: lucide.Search()}).FillWidth().Label(a.t("搜索目标文件夹")).Placeholder(a.t("搜索或新建文件夹")).Disabled(a.busy)
 		if search.Changed() {
 			a.lastInput = time.Now()
@@ -593,21 +608,6 @@ func (a *application) batchView(c *ui.Context) {
 				a.batchNotice(c, false, a.t("没有可移动的条目，请换一个文件夹。"))
 			}
 		}
-		ui.Row(c).FillWidth().Margin(12, 0, 0, 0).Padding(12, 0, 0, 0).Justify(ui.End).BorderWidth(1, 0, 0, 0).BorderColor(c.Theme().Border).Children(func() {
-			label := a.t("移动 %d 项", len(chosen))
-			if a.batch.chosen {
-				label = a.t("移动 %d 项", len(ready))
-			}
-			moving := progress != nil && progress.action == "move"
-			if moving {
-				label = a.t("正在移动 %d/%d", progress.done, progress.total)
-			}
-			// The running action keeps full contrast so its progress stays readable;
-			// startBatchMove ignores clicks while busy.
-			if components.Button(c, label, components.ButtonPrimary).Disabled(!moving && (a.busy || !a.batch.chosen || len(ready) == 0)).Clicked() {
-				a.startBatchMove()
-			}
-		})
 	})
 }
 
