@@ -232,17 +232,86 @@ func TestCommandsRoundTripThroughVault(t *testing.T) {
 func TestEditUsesEditorAndRejectsUnchanged(t *testing.T) {
 	h := newHarness(t)
 	h.must("one\n", "insert", "-e", "note")
-	h.editor = "sed -i s/one/two/"
-	if runtime.GOOS == "darwin" {
-		h.editor = "sed -i '' s/one/two/"
+	// Run a native Go editor fixture from PATH. Unix sed/true commands and
+	// MSYS rename semantics are not portable to Windows temporary directories.
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
 	}
+	binary, err := os.ReadFile(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools := filepath.Join(t.TempDir(), "editor tools")
+	if err := os.Mkdir(tools, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	editor := "passpine-test-editor"
+	if runtime.GOOS == "windows" {
+		editor += ".exe"
+	}
+	if err := os.WriteFile(filepath.Join(tools, editor), binary, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", tools+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("PASSPINE_TEST_CLI_EDITOR", "1")
+	marker := filepath.Join(t.TempDir(), "edited-file")
+	t.Setenv("PASSPINE_TEST_CLI_EDITOR_FILE", marker)
+	assertCleaned := func() {
+		t.Helper()
+		file, err := os.ReadFile(marker)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(string(file)); !os.IsNotExist(err) {
+			t.Fatalf("plaintext editor file was not removed: %v", err)
+		}
+	}
+	h.editor = editor + " -test.run=^TestCLIEditorProcess$ -- replace"
 	h.must("", "edit", "note")
+	assertCleaned()
 	if out := h.must("", "show", "note"); out != "two\n" {
 		t.Fatalf("edited = %q", out)
 	}
-	h.editor = "true"
-	if _, err := h.run("", "edit", "note"); err == nil {
-		t.Fatal("unchanged edit succeeded")
+	h.editor = editor + " -test.run=^TestCLIEditorProcess$ -- unchanged"
+	if out, err := h.run("", "edit", "note"); err != exitError(1) || !strings.Contains(out, "Password for note unchanged.") {
+		t.Fatalf("unchanged edit = %q, %v", out, err)
+	}
+	assertCleaned()
+	if out := h.must("", "show", "note"); out != "two\n" {
+		t.Fatalf("unchanged editor modified the vault: %q", out)
+	}
+}
+
+func TestCLIEditorProcess(t *testing.T) {
+	if os.Getenv("PASSPINE_TEST_CLI_EDITOR") != "1" {
+		return
+	}
+	if len(os.Args) < 4 || os.Args[len(os.Args)-3] != "--" {
+		t.Fatal("missing editor mode and file")
+	}
+	mode, file := os.Args[len(os.Args)-2], os.Args[len(os.Args)-1]
+	if err := os.WriteFile(os.Getenv("PASSPINE_TEST_CLI_EDITOR_FILE"), []byte(file), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	switch mode {
+	case "replace":
+		if string(contents) != "one\n" {
+			t.Fatalf("editor received %q", contents)
+		}
+		if err := os.WriteFile(file, []byte("two\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	case "unchanged":
+		if string(contents) != "two\n" {
+			t.Fatalf("unchanged editor received %q", contents)
+		}
+	default:
+		t.Fatalf("unknown editor mode: %q", mode)
 	}
 }
 
@@ -264,6 +333,9 @@ func TestWritesCommitToGitStores(t *testing.T) {
 }
 
 func TestPassAliasInstallNeverReplacesOtherCommands(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows rejects command-link installation; covered by TestCommandLinksAreUnsupportedOnWindows")
+	}
 	dir := t.TempDir()
 	other := filepath.Join(dir, passAlias)
 	if err := os.WriteFile(other, []byte("#!/bin/sh\n"), 0o755); err != nil {

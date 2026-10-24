@@ -37,6 +37,8 @@ make release
 
 `.github/workflows/ci.yml` 仅作为 Release 的可复用工作流，必须传入已有发布 tag；普通分支 push 和 pull request 不触发 GitHub CI。`.github/workflows/release.yml` 在推送 `v*` tag 时自动运行，也可手动输入已有 tag 重试。构建目标为 macOS arm64、Windows amd64 和 Linux amd64。macOS 使用系统 Swift 工具链；Windows 安装 NSIS；Linux 安装 GTK 3 和 WebKitGTK 4.1。浏览器打包集中在 Linux job。
 
+发版前的 `pnpm test` 在 macOS 和 Linux 上都会执行隔离的 Linux 安装脚本回归，使用临时程序、模拟平台和桌面数据库命令，检查脚本依赖、Dev 图标、安装归属记录及特殊路径转义。CLI 编辑回归使用原生 Go 测试进程，不依赖 `sed`、`true` 或 MSYS 文件重命名；Windows 单独验证命令链接操作被明确拒绝且不修改现有文件。模拟与交叉编译不能代替目标系统运行，Release 矩阵仍在各平台执行完整测试。
+
 | 附件 | 内容 |
 | --- | --- |
 | `Passpine-<版本>-macos-arm64.zip` | Apple Silicon 应用包，含客户端、Host 和系统解锁辅助程序 |
@@ -119,7 +121,9 @@ make release VERSION_BUMP=0.1.1 RELEASE_FLAGS="--resume --apply"
 
 `--resume` 要求当前版本一致、同版本 annotated tag 指向 HEAD、远程 tag 不冲突；首次发布通过 initial 标记识别，升版校验版本提交。不升版、不重复本地测试，不强推或移动 tag。旧首次发布 tag 没有 initial 标记时，需单独核查原发布，不修改 tag。
 
-tag 已推送但 CI 失败时，在 Actions 中重跑失败 jobs。发布步骤失败时优先只重跑失败 job，复用成功构建 job 的原始附件；重建 ZIP 可能因时间戳或签名不同而与已上传文件冲突。也可从 Release 工作流的 Run workflow 输入已有 tag 重新执行完整流程，适用于尚未上传附件的失败发布。
+tag 已推送但 CI 因临时网络或 runner 故障失败、无需修改源码时，在 Actions 中重跑失败 jobs。发布步骤失败时优先只重跑失败 job，复用成功构建 job 的原始附件；重建 ZIP 可能因时间戳或签名不同而与已上传文件冲突。也可从 Release 工作流的 Run workflow 输入已有 tag 重新执行完整流程，适用于尚未上传附件的失败发布。
+
+若失败原因需要修改源码或测试，先提交修复并通过本地检查，再按正常流程发布新的 patch 版本。已有 tag 始终指向原提交；仅修改 `main` 后重跑旧 tag，仍会运行旧代码。不要移动 tag，也不要将新提交的产物混入旧版本。
 
 如果只有 `homebrew` job 失败，Release 已经公开，安装包不受影响。修正错误后只重跑该失败 job，即可重新检出最新 `main` 并补齐配方提交，无需重建或再次发布。并发维护者提交导致非快进 push 被拒绝时同样重跑 job；脚本不会强推覆盖远程修改。若启用 `main` 分支保护或仓库规则，需允许该机器人更新 cask，否则 job 会如实失败，不自动放宽规则。
 
