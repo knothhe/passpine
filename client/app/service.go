@@ -380,7 +380,7 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 	// Metadata polling is not user activity. Desktop edits also call Touch,
 	// while browser credential actions are recorded here before taking mu.
 	switch r.Action {
-	case "fetch", "copy", "save", "delete", "draft", "generate", "copy-generated", "recovery", "restore", "purge", "unlock", "lock", "switch", "create", "open", "settings", "export", "verify-backup":
+	case "fetch", "copy", "save", "delete", "move", "trash", "draft", "generate", "copy-generated", "recovery", "restore", "purge", "unlock", "lock", "switch", "create", "open", "settings", "export", "verify-backup":
 		s.lastActivity.Store(time.Now().UnixNano())
 	}
 	if r.Action == "clone" {
@@ -429,7 +429,7 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 		extra.DeviceUnlockNotice = s.enrollDevice(r.Passphrase, epoch)
 	}
 	switch r.Action {
-	case "save", "delete", "restore", "switch", "create", "open", "git-sync", "unlock":
+	case "save", "delete", "move", "trash", "restore", "switch", "create", "open", "git-sync", "unlock":
 		s.entriesVersion++
 		s.cachedAt = time.Time{}
 	}
@@ -449,7 +449,7 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 	}
 	if err == nil && s.active != nil {
 		switch r.Action {
-		case "fetch", "copy", "save", "delete", "draft", "generate", "recovery", "restore":
+		case "fetch", "copy", "save", "delete", "move", "trash", "draft", "generate", "recovery", "restore":
 			s.active.Activity()
 		}
 	}
@@ -728,6 +728,27 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 			s.autoSync()
 		}
 		return Data{TrashID: rec.ID}, e
+	// Batch organization acts on entries chosen from the list, whose revisions
+	// the desktop never read. Each request moves or trashes the latest version.
+	case "move":
+		revision, e := s.active.Revision(r.Entry)
+		if e == nil {
+			e = s.active.Move(r.Entry, r.Destination, revision)
+		}
+		if e == nil {
+			s.autoSync()
+		}
+		return Data{Entry: r.Destination, OriginalEntry: r.Entry}, e
+	case "trash":
+		revision, e := s.active.Revision(r.Entry)
+		var rec vault.RecoveryRecord
+		if e == nil {
+			rec, e = s.active.Trash(r.Entry, revision)
+		}
+		if e == nil {
+			s.autoSync()
+		}
+		return Data{TrashID: rec.ID}, e
 	case "draft":
 		rec, e := s.active.SaveDraftRecord(r.ID, r.Entry, r.Destination, r.Contents, r.Revision)
 		return Data{ID: rec.ID}, e
@@ -909,6 +930,8 @@ func classify(e error) (string, string) {
 		return "not_configured", "请先在客户端创建或打开密码库"
 	case errors.Is(e, vault.ErrConflict):
 		return "revision_conflict", "条目已发生变化，请重新打开后编辑"
+	case errors.Is(e, vault.ErrSourceRemains):
+		return "source_remains", "目标已保存，原条目未移除"
 	case errors.Is(e, vault.ErrExists):
 		return "already_exists", "目标位置已存在条目"
 	case errors.Is(e, vault.ErrPath):
@@ -1082,7 +1105,7 @@ func (s *Service) log(action, source, outcome string) {
 
 func needsUnlock(action string) bool {
 	switch action {
-	case "fetch", "copy", "save", "delete", "draft", "recovery", "restore", "purge", "export", "verify-backup":
+	case "fetch", "copy", "save", "delete", "move", "trash", "draft", "recovery", "restore", "purge", "export", "verify-backup":
 		return true
 	}
 	return false

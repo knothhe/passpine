@@ -85,6 +85,7 @@ type application struct {
 	reveal                                                               bool
 	revealedFields                                                       map[string]bool
 	editor                                                               editorState
+	batch                                                                batchState
 	deleteOpen, discardOpen, purgeOpen                                   bool
 	purgeID                                                              string
 	recovery                                                             []app.RecoveryItem
@@ -367,6 +368,7 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 	if a.state.VaultID != r.Data.VaultID {
 		a.vaultSelection = r.Data.VaultID
 		a.clearDetailTransition()
+		a.batch = batchState{}
 	}
 	if a.state.VaultID != r.Data.VaultID || len(a.state.Entries) != len(r.Data.Entries) {
 		a.cacheReady = false
@@ -467,6 +469,7 @@ func (a *application) lock() {
 	a.state.Locked = true
 	a.generation++
 	a.busy = false
+	a.batch = batchState{}
 	go func() { a.service.Execute(app.Request{Action: "lock"}) }()
 	a.invalidate()
 }

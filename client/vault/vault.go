@@ -837,7 +837,7 @@ func (v *Vault) SaveRename(from, to, raw, expectedRevision string) (Document, er
 		}
 		if from != to {
 			if e := safeRemove(v.config.Directory, from+".gpg"); e != nil {
-				return fmt.Errorf("destination saved; source could not be removed: %w", e)
+				return fmt.Errorf("%w: %w", ErrSourceRemains, e)
 			}
 		}
 		return nil
@@ -846,6 +846,20 @@ func (v *Vault) SaveRename(from, to, raw, expectedRevision string) (Document, er
 		return Document{}, e
 	}
 	return ParseDocument(to, raw, revision(encrypted)), nil
+}
+
+// Revision identifies the current ciphertext of an entry without decrypting it,
+// so batch actions can act on the latest version of entries the user selected
+// from the list. Move and Trash verify it again under the store lock.
+func (v *Vault) Revision(name string) (string, error) {
+	if e := ValidatePath(name); e != nil {
+		return "", e
+	}
+	data, e := safeRead(v.config.Directory, name+".gpg")
+	if e != nil {
+		return "", e
+	}
+	return revision(data), nil
 }
 
 func (v *Vault) Move(from, to, expectedRevision string) error {

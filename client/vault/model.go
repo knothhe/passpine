@@ -32,6 +32,9 @@ var (
 	ErrPassphrase    = errors.New("incorrect passphrase or unusable private key")
 	ErrNotConfigured = errors.New("vault has not been configured")
 	ErrBusy          = errors.New("vault is busy in another process")
+	// ErrSourceRemains reports a move whose destination was written but whose
+	// source file is still present, so both copies need review.
+	ErrSourceRemains = errors.New("destination saved; source could not be removed")
 )
 
 type Config struct {

@@ -320,3 +320,47 @@ func TestClosedServiceCannotStartClone(t *testing.T) {
 		t.Fatal(r)
 	}
 }
+
+func TestBatchMoveAndTrashUseLatestRevision(t *testing.T) {
+	s := testService(t)
+	id := must(t, s, Request{Action: "status"}).VaultID
+	first := must(t, s, Request{Action: "save", Entry: "dev/github", Contents: "one\n", Mode: "create"})
+	must(t, s, Request{Action: "save", Entry: "work/figma", Contents: "two\n", Mode: "create"})
+	must(t, s, Request{Action: "save", Entry: "archive/figma", Contents: "old\n", Mode: "create"})
+	// The list never carries revisions, so an entry edited after it was listed
+	// still moves, and the edit travels with it.
+	edited := must(t, s, Request{Action: "save", Entry: first.Entry, Contents: "one-edited\n", Revision: first.Revision, Mode: "edit"})
+	moved := must(t, s, Request{Action: "move", Entry: "dev/github", Destination: "home/devices/github"})
+	if moved.Entry != "home/devices/github" || moved.OriginalEntry != "dev/github" {
+		t.Fatal(moved)
+	}
+	if got := must(t, s, Request{Action: "fetch", Entry: "home/devices/github"}); got.Contents != edited.Contents {
+		t.Fatalf("moved entry lost its latest contents: %q", got.Contents)
+	}
+	if r := s.Execute(Request{Action: "move", Entry: "work/figma", Destination: "archive/figma"}); r.Code != "already_exists" {
+		t.Fatalf("move replaced an existing entry: %#v", r)
+	}
+	trashed := must(t, s, Request{Action: "trash", Entry: "work/figma"})
+	if trashed.TrashID == "" {
+		t.Fatal("trash returned no recovery record")
+	}
+	must(t, s, Request{Action: "restore", ID: trashed.TrashID})
+	paths := []string{}
+	for _, entry := range must(t, s, Request{Action: "list"}).Entries {
+		paths = append(paths, entry.Path)
+	}
+	if strings.Join(paths, ",") != "archive/figma,home/devices/github,work/figma" {
+		t.Fatalf("unexpected entries after batch actions: %v", paths)
+	}
+	for _, action := range []string{"move", "trash"} {
+		raw, _ := json.Marshal(Request{Protocol: 1, Action: action, VaultID: id, Entry: "work/figma", Destination: "x/figma"})
+		var out Response
+		if e := json.Unmarshal(s.handleBrowser(raw), &out); e != nil || out.Code != "unsupported_action" {
+			t.Fatalf("browser reached desktop-only %s: %#v", action, out)
+		}
+	}
+	must(t, s, Request{Action: "lock"})
+	if r := s.Execute(Request{Action: "move", Entry: "work/figma", Destination: "x/figma"}); r.Code != "locked" {
+		t.Fatalf("move ran while locked: %#v", r)
+	}
+}
