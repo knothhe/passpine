@@ -1,6 +1,6 @@
 # Chrome Web Store copy · English
 
-Version: 0.1.2. Listing locale: English / `en`. Field notes are not part of the description to paste.
+Version: 0.1.7. Listing locale: English / `en`. Field notes are not part of the description to paste.
 
 ## Name
 
