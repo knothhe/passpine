@@ -53,12 +53,18 @@
     external: '<path d="M14 3h7v7M21 3l-9 9M10 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/>',
     restore: '<path d="M3 10a9 9 0 1 1 1 8M3 4v6h6M12 7v5l3 2"/>',
     spinner: '<path d="M12 3a9 9 0 1 1-9 9"/>',
+    chevron: '<path d="m9 6 6 6-6 6"/>',
+    branch: '<circle cx="6" cy="18" r="2"/><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><path d="M6 8v8M18 8a6 6 0 0 1-6 6H8"/>',
+    sync: '<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/>',
+    shield: '<path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6Z"/><path d="m9 12 2 2 4-4"/>',
+    openLink: '<path d="M7 17 17 7M9 7h8v8"/>',
   };
   const esc = value => String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   const t = (key, values = {}) => catalogs[language][key].replace(/\{(\w+)\}/g, (_, name) => String(values[name] ?? ""));
   const icon = name => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.info}</svg>`;
   const path = item => item.folder ? `${item.folder}/${item.name}` : item.name;
   const folderLabel = folder => folder || t("rootFolder");
+  const domain = website => { try { return new URL(website).hostname.replace(/^www\./, ""); } catch { return ""; } };
   const defaultIDs = ["cf", "gh", "fg", "li"];
   const root = document.getElementById("root");
   let items, trashItems, s, timer, toastTimer, anchor = null;
@@ -153,42 +159,46 @@
     const title = s.scope === "all" ? t("allEntries") : s.scope === "trash" ? t("trash") : s.scope === "__root__" ? t("rootFolder") : s.scope;
     const all = rows.length > 0 && rows.every(item => s.selected.has(item.id));
     const some = rows.some(item => s.selected.has(item.id));
-    return `<section class="library" aria-labelledby="list-title"><header class="library-heading"><h1 id="list-title">${esc(title)}</h1><div class="heading-buttons">${s.scope !== "trash" ? `<button class="text-button" data-action="mode" ${busy() ? "disabled" : ""}>${t(s.mode ? "cancel" : "select")}</button>${s.mode ? "" : iconButton("demo", "newEntry", "plus")}` : ""}</div></header>
+    return `<section class="library" aria-labelledby="list-title"><header class="library-heading"><div class="library-title"><h1 id="list-title">${esc(title)}</h1><p class="library-count" aria-label="${t("entryCountLabel")}">${t(s.query ? "resultCount" : "entryCount", { count: rows.length, total: collection().length })}</p></div><div class="heading-buttons">${s.scope !== "trash" ? `<button class="text-button" data-action="mode" ${busy() ? "disabled" : ""}>${t(s.mode ? "cancel" : "select")}</button>${s.mode ? "" : iconButton("demo", "newEntry", "plus")}` : ""}</div></header>
       <div class="search-wrap">${icon("search")}<input id="search" aria-label="${t("searchLabel")}" placeholder="${t("search")}" value="${esc(s.query)}" ${busy() ? "disabled" : ""}>${s.query ? iconButton("clear-search", "clearSearch", "close") : ""}</div>
       ${s.mode ? `<div class="selection-toolbar"><button class="text-button select-all" data-action="all" role="checkbox" aria-checked="${all ? "true" : some ? "mixed" : "false"}" title="${t("selectAllHint")}" ${busy() || !rows.length ? "disabled" : ""}>${checkbox(all ? "checked" : some ? "mixed" : "")}<span>${t("selectAll")}</span></button></div>` : ""}
       <div class="entry-list ${s.mode ? "selecting" : ""}" id="entry-list" tabindex="0" aria-label="${esc(title)}">${rows.length ? rows.map(item => {
         const checked = s.mode && s.selected.has(item.id), active = !s.mode && item.id === s.active;
         return `<button class="entry-row ${checked ? "checked" : ""} ${active ? "selected" : ""}" data-entry="${item.id}" ${s.mode ? `role="checkbox" aria-checked="${checked}"` : `aria-pressed="${active}"`} aria-label="${esc(t(s.mode ? "selectEntry" : "openEntry", { path: path(item) }))}" ${busy() ? "disabled" : ""}>
-          ${s.mode ? checkbox(checked ? "checked" : "") : `<span class="avatar" aria-hidden="true">${esc(item.name.slice(0, 2).toUpperCase())}</span>`}<span class="entry-text"><span class="entry-name">${esc(item.name)}</span><span class="entry-path" title="${esc(path(item))}">${esc(path(item))}</span></span>${s.mode || s.scope === "trash" ? "" : `<span class="row-copy" data-copy="${item.id}" role="presentation">${icon("copy")}</span>`}</button>`;
-      }).join("") : `<div class="empty-state">${icon("search")}<strong>${t(s.scope === "trash" && !s.query ? "trashEmpty" : "emptyResults")}</strong><p>${t(s.scope === "trash" && !s.query ? "trashHelp" : "emptyResultsDescription")}</p></div>`}</div>
-      <footer class="library-footer"><span>${t(s.query ? "resultCount" : "entryCount", { count: rows.length, total: collection().length })}</span></footer></section>`;
+          ${s.mode ? checkbox(checked ? "checked" : "") : ""}<span class="entry-text"><span class="entry-name">${esc(item.name)}</span><span class="entry-path" title="${esc(path(item))}">${esc(active ? item.username : path(item))}</span></span>${active ? `<span class="row-chevron">${icon("chevron")}</span>` : s.mode || s.scope === "trash" ? "" : `<span class="row-copy" data-copy="${item.id}" role="presentation">${icon("copy")}</span>`}</button>`;
+      }).join("") : `<div class="empty-state">${icon("search")}<strong>${t(s.scope === "trash" && !s.query ? "trashEmpty" : "emptyResults")}</strong><p>${t(s.scope === "trash" && !s.query ? "trashHelp" : "emptyResultsDescription")}</p></div>`}</div></section>`;
   }
 
   function batchPanel() {
     const count = s.selected.size, p = s.progress;
-    if (!count && !p) return `<div class="batch-panel"><div class="batch-heading"><h2>${t("chooseItems")}</h2><p class="batch-subtitle">${t("chooseItemsDescription")}</p></div></div>`;
+    if (!count && !p) return `<div class="batch-panel"><div class="panel-toolbar"></div><div class="batch-heading"><h2>${t("chooseItems")}</h2><p class="batch-subtitle">${t("chooseItemsDescription")}</p></div></div>`;
     const running = action => p?.action === action;
     const progress = action => running(action) ? 'aria-busy="true"' : "";
     const moveLabel = running("move") ? t("progressMoving", { done: p.done, total: p.total }) : t("moveTo");
     const trashLabel = running("trash") ? t("progressTrashing", { done: p.done, total: p.total }) : t("trashAction");
-    return `<div class="batch-panel"><div class="batch-heading"><h2>${t("selectedCount", { count: p ? p.total : count })}</h2></div>
+    return `<div class="batch-panel"><div class="panel-toolbar"></div><div class="batch-heading"><h2>${t("selectedCount", { count: p ? p.total : count })}</h2></div>
       <div class="batch-actions">${button("move", moveLabel, "primary", running("move") ? "spinner" : "folder", busy(), progress("move"))}${button("trash", trashLabel, "secondary danger-text", running("trash") ? "spinner" : "trash", busy(), progress("trash"))}</div></div>`;
   }
 
   function detailPanel() {
     const item = s.scope === "trash" ? trashItems.find(entry => entry.id === s.active) : byID(s.active);
-    if (!item) return `<div class="empty-state"><div class="empty-symbol">${icon(s.scope === "trash" ? "trash" : "key")}</div><h2>${t(s.scope === "trash" ? "trashEmpty" : "noDetail")}</h2><p>${t(s.scope === "trash" ? "trashHelp" : "noDetailDescription")}</p></div>`;
-    if (s.scope === "trash") return `<div class="batch-panel"><div class="detail-heading"><div><h2>${esc(item.name)}</h2><p class="detail-path">${esc(path(item))}</p></div></div><p class="muted">${t("trashHelp")}</p>${button("restore", t("restore"), "primary", "restore")}</div>`;
-    return `<div class="batch-panel"><header class="detail-heading"><div><h2>${esc(item.name)}</h2><p class="detail-path">${esc(path(item))}</p></div><div class="detail-actions">${iconButton("reveal", s.reveal ? "hidePassword" : "showPassword", "eye")}${iconButton("demo", "editEntry", "edit")}${iconButton("trash-one", "trashAction", "trash")}</div></header>
-      <div class="field-row"><div><p class="field-label">${t("password")}</p><span class="field-value secret-value">${s.reveal ? "Example-only-2026" : "••••••••••••••"}</span></div>${iconButton("copy", "copyPassword", "copy")}</div>
-      <div class="field-row"><div><p class="field-label">${t("username")}</p><span class="field-value">${esc(item.username)}</span></div>${iconButton("copy", "copyUsername", "copy")}</div>
-      <div class="field-row"><div><p class="field-label">${t("website")}</p><span class="field-value">${esc(item.website)}</span></div></div><div class="detail-notes"><p class="field-label">${t("notes")}</p><p>${t("demoNotes")}</p></div>${button("demo", t("openWebsite"), "secondary", "external")}</div>`;
+    if (!item) return `<div class="empty-state"><div class="empty-symbol">${icon(s.scope === "trash" ? "trash" : "shield")}</div><h2>${t(s.scope === "trash" ? "trashEmpty" : "noDetail")}</h2><p>${t(s.scope === "trash" ? "trashHelp" : "noDetailDescription")}</p>${s.scope === "trash" ? "" : `<button class="text-button empty-action" data-action="demo">${t("newEntry")}</button>`}</div>`;
+    const crumbs = `<nav class="breadcrumb" aria-label="${t("entryPath")}">${icon("folder")}${(item.folder ? item.folder.split("/") : [t("rootFolder")]).map(part => `<span>${esc(part)}</span>${icon("chevron")}`).join("")}<span class="current">${esc(item.name)}</span></nav>`;
+    if (s.scope === "trash") return `<div class="batch-panel"><div class="panel-toolbar">${crumbs}</div><div class="entry-title"><h2>${esc(item.name)}</h2><p>${t("trashHelp")}</p></div><div class="batch-actions">${button("restore", t("restore"), "primary", "restore")}</div></div>`;
+    const copyButton = key => `<button class="copy-button" data-action="copy" aria-label="${t(key)}">${icon("copy")}<span>${t("copy")}</span></button>`;
+    return `<div class="batch-panel"><div class="panel-toolbar">${crumbs}<div class="detail-actions">${iconButton("reveal", "showAllFields", "eye")}${iconButton("demo", "editEntry", "edit")}${iconButton("trash-one", "trashAction", "trash")}</div></div>
+      <div class="entry-title"><h2>${esc(item.name)}</h2><p>${esc(domain(item.website))}</p></div>
+      <div class="field-row"><div><p class="field-label">${t("username")}</p><span class="field-value">${esc(item.username)}</span></div>${copyButton("copyUsername")}</div>
+      <div class="field-row"><div><p class="field-label">${t("password")}</p><span class="field-value secret-value">${s.reveal ? "Example-only-2026" : "••••••••••••"}</span></div>${iconButton("reveal", s.reveal ? "hidePassword" : "showPassword", "eye")}${copyButton("copyPassword")}</div>
+      <div class="field-row"><div><p class="field-label">${t("website")}</p><span class="field-value">${esc(item.website)}</span></div>${iconButton("demo", "openWebsite", "openLink")}${copyButton("copyWebsite")}</div>
+      <div class="detail-notes"><p class="field-label">${t("notes")}</p><p>${t("demoNotes")}</p></div>
+      <p class="file-row"><span>${t("encryptedFile")}</span><code>${esc(path(item))}.gpg</code></p></div>`;
   }
 
   function resultPanel() {
     const r = s.result;
     const retryable = r.failed.some(failure => !failure.review);
-    return `<div class="batch-panel"><div class="result-summary">${icon("warning")}<h2>${t("partialTitle", { success: r.success, failed: r.failed.length })}</h2></div><div class="result-list">${r.failed.map(failure => {
+    return `<div class="batch-panel"><div class="panel-toolbar"></div><div class="result-summary">${icon("warning")}<h2>${t("partialTitle", { success: r.success, failed: r.failed.length })}</h2></div><div class="result-list">${r.failed.map(failure => {
       const item = byID(failure.id);
       return `<div class="result-row"><strong class="entry-name">${esc(item.name)}</strong><span class="entry-path">${esc(path(item))}</span><p class="result-description">${t(failure.reason)}</p>${failure.review ? `<button class="text-button" data-action="check-both">${t("checkBoth")}${icon("arrow")}</button>` : ""}</div>`;
     }).join("")}</div><div class="batch-actions">${retryable ? button("retry", t("retryFailed"), "primary", "restore") : ""}${button("result-close", t("finish"), retryable ? "secondary" : "primary")}</div></div>`;
@@ -239,7 +249,7 @@
     document.documentElement.dataset.theme = theme;
     document.documentElement.lang = language;
     document.title = t("pageTitle");
-    root.innerHTML = `${reviewBar()}<section class="app-window" aria-label="${t("brand")}"><header class="titlebar"><div class="titlebar-left">${iconButton("demo", "previous", "back", true)}${iconButton("demo", "next", "arrow", true)}<button class="icon-button sidebar-toggle" data-action="sidebar" aria-label="${t("toggleSidebar")}">${icon("sidebar")}</button><strong class="app-title">${t("passwordLibrary")}</strong></div><div class="titlebar-right"><span class="vault-name">${icon("folder")}${t("personalVault")}${icon("down")}</span><span class="sync-label">${t("savedLocally")}</span>${iconButton("demo", "lock", "lock")}</div></header><div class="workspace">${navigation()}${s.sidebar ? `<button class="sidebar-backdrop" data-action="sidebar" aria-label="${t("toggleSidebar")}"></button>` : ""}${list()}<section class="inspector" aria-live="polite"><div class="inspector-scroll">${s.result ? resultPanel() : s.mode ? batchPanel() : detailPanel()}</div></section></div>${toastView()}</section>${modal()}`;
+    root.innerHTML = `${reviewBar()}<section class="app-window" aria-label="${t("brand")}"><header class="titlebar"><div class="titlebar-left"><div class="titlebar-controls">${iconButton("demo", "previous", "back", true)}${iconButton("demo", "next", "arrow", true)}<button class="icon-button" data-action="sidebar" aria-label="${t("toggleSidebar")}" title="${t("toggleSidebar")}">${icon("sidebar")}</button></div><strong class="app-title">${t("passwordLibrary")}</strong></div><div class="titlebar-right"><button class="vault-switcher" data-action="demo" aria-label="${t("switchVault")}">${icon("folder")}<span>${t("personalVault")}</span>${icon("down")}</button><button class="status-button" data-action="demo">${icon("branch")}<span>${t("gitNotInitialized")}</span></button><button class="status-button" data-action="demo" aria-label="${t("syncVault")}">${icon("sync")}<span>${t("sync")}</span></button>${iconButton("demo", "lock", "lock")}</div></header><div class="workspace">${navigation()}${s.sidebar ? `<button class="sidebar-backdrop" data-action="sidebar" aria-label="${t("toggleSidebar")}"></button>` : ""}<div class="main-card">${list()}<section class="inspector" aria-live="polite"><div class="inspector-scroll">${s.result ? resultPanel() : s.mode ? batchPanel() : detailPanel()}</div></section></div></div>${toastView()}</section>${modal()}`;
     const modalNode = document.querySelector("dialog");
     if (modalNode) {
       modalNode.showModal();
