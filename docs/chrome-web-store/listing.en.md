@@ -38,9 +38,9 @@ Help and issue reporting: https://github.com/knothhe/passpine/issues
 | Field | Suggested value |
 | --- | --- |
 | Category | Productivity; verify against the current dashboard options |
-| Homepage | https://github.com/knothhe/passpine |
+| Homepage | https://passpine.knothhe.com/ |
 | Support URL | https://github.com/knothhe/passpine/issues |
-| Privacy policy | The website page `/privacy` (see [PRIVACY.md](PRIVACY.md)); fill in its HTTPS URL once the website is deployed on its final domain |
+| Privacy policy | https://passpine.knothhe.com/privacy (see [PRIVACY.md](PRIVACY.md)) |
 | Distribution / pricing | Publisher decision; repository code does not establish future commercial terms |
 
 Confirm that the repository and Issues page are publicly accessible before submitting. Do not use a local file path or unpublished branch URL as the live privacy-policy URL.
