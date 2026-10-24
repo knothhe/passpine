@@ -4,6 +4,10 @@
   "compatibility_date": "2026-10-22",
   "workers_dev": true,
   "assets": {
-    "directory": "./dist"
+    "directory": "./dist",
+    // `privacy.html` is served at `/privacy`; unknown paths get `404.html`
+    // with a 404 status instead of falling back to the home page.
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
   }
 }
