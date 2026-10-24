@@ -27,9 +27,9 @@ make release
 3. 创建 `v<版本>` annotated tag，以 atomic push 一次推送 `main` 和该 tag。本地尚未推送的分支提交也会随 `main` 一起推送。
 4. tag push 触发 `.github/workflows/release.yml`，复用 CI，在各目标系统运行检查并构建。完整检出历史与 tags，核对 tag、HEAD 及版本文件一致。
 5. 收齐五份普通安装附件，校验正式通道、包内版本、构建提交、大小与 SHA-256，再验证普通安装包与各平台目标文件清单并签署 Feed。创建 Release 草稿，上传并核对五个普通安装附件和 Feed 共六个远程附件后公开 Release。任何构建失败都不会进入发布步骤。
-6. Release 成功公开后，独立的 `homebrew` job 读取本次发布 tag 的公开 macOS 安装包，再次校验大小与 SHA-256，更新 `Casks/passpine.rb`，以 `github-actions[bot]` 身份提交并推送到 `main`。没有变化不创建提交，重跑旧 tag 不降级已有 cask；无需手动执行 `make homebrew:sync`。
+6. Release 成功公开后，独立的 `homebrew` job 调用 `.github/workflows/homebrew.yml`，读取本次发布 tag 的公开 macOS 安装包，再次校验大小与 SHA-256，更新 `knothhe/homebrew-tap` 的 `Casks/passpine.rb`，并同步本仓库中的旧 tap 兼容配方。两处均以 `github-actions[bot]` 身份提交到 `main`。没有变化不创建提交，重跑旧 tag 不降级已有 cask；无需手动执行 `make homebrew:sync`。
 
-本地命令完成表示 tag 已推送，最终发布结果以 Actions 的 Release 工作流为准。仓库需启用 GitHub Actions；`publish` 和 `homebrew` job 使用内置 `GITHUB_TOKEN` 的 `contents: write`，检查和构建 job 只有 `contents: read`。仅 `homebrew` checkout 保留 Git 推送凭据，不额外配置 PAT；更新签名私钥仍只提供给 `publish`。发布要求已固定的 Ed25519 公钥与对应 CI 签名私钥，详见 [客户端更新](updates.md)。
+本地命令完成表示 tag 已推送，最终发布结果以 Actions 的 Release 工作流为准。仓库需启用 GitHub Actions；`publish` 使用内置 `GITHUB_TOKEN` 的 `contents: write`，`homebrew` 的内置 token 只更新本仓库兼容配方，检查和构建 job 只有 `contents: read`。跨仓库推送使用专门的 `HOMEBREW_TAP_SSH_KEY`，只在 Homebrew job 中提供给 tap checkout；无需 PAT。更新签名私钥仍只提供给 `publish`。发布要求已固定的 Ed25519 公钥与对应 CI 签名私钥，详见 [客户端更新](updates.md)。
 
 预览仍要求工作区干净，默认只读查询远程 refs；首次发布到标准 GitHub 目标还会查询已有 Release。预览不运行测试或验证写入权限。应先审核并提交工作流、脚本和配置，再正式发布。
 
@@ -72,11 +72,21 @@ node scripts/release-notes.mjs knothhe/passpine v0.1.1
 
 ### 同步 Homebrew cask
 
-仓库的 `Casks/passpine.rb` 提供 macOS 正式客户端，用户通过显式 URL 将本仓库添加为 tap。cask 版本独立于待发布的源码版本，始终指向已公开的安装包。
+[knothhe/homebrew-tap](https://github.com/knothhe/homebrew-tap) 的 `Casks/passpine.rb` 提供 macOS 正式客户端，使用 `brew install --cask knothhe/tap/passpine` 即可自动添加 tap 并安装。本仓库保留相同配方，兼容旧的 `knothhe/passpine` 安装命令。cask 版本独立于待发布的源码版本，始终指向已公开的安装包。
 
-日常发布由 Release workflow 自动更新 cask，不需要额外命令。`homebrew` job 等待 `publish` 成功后运行，检出并快进到最新 `main`，按本次确切 tag 查询公开稳定版，而不是查询可能已变化的 latest。各版本的 cask job 共用串行队列，旧版本即使后完成也不会覆盖较新版本。
+日常发布由 Release workflow 自动更新 cask，不需要额外命令。三平台检查、构建及发布成功后，`homebrew` job 才运行，检出两个仓库的 `main`，按本次确切 tag 查询公开稳定版，而不是查询可能已变化的 latest。各版本与手动触发的 cask job 共用串行队列，旧版本即使后完成也不会覆盖较新版本。普通分支 push/PR 不触发应用 CI 或配方同步。
 
-脚本核对 Apple Silicon 包的名称、地址、上传状态、大小及 GitHub SHA-256，再下载并验证内容后原子更新 cask。只暂存并提交 `Casks/passpine.rb`，普通 push 到 `main`，不创建或移动 tag、不修改 Release、不强推。相同版本出现不同安装包哈希时停止，防止静默替换既有配方。自动提交只更新 tap，用户下次 `brew update` 即可获取新版本。
+脚本核对 Apple Silicon 包的名称、地址、上传状态、大小及 GitHub SHA-256，再下载并验证内容后原子更新 cask。每个目标仓库都先检查工作区干净、快进到远程 `main`，只暂存并提交 `Casks/passpine.rb`；已有 Formula、文档和其他配方保持原样。普通 push 到 `main`，不创建或移动 tag、不修改 Release、不强推。相同版本出现不同安装包哈希时停止，防止静默替换既有配方。自动提交只更新 tap，用户下次 `brew update` 即可获取新版本。
+
+跨仓库认证使用 `knothhe/homebrew-tap` 的专用可写 SSH deploy key，私钥保存为 `knothhe/passpine` 的 Actions Secret `HOMEBREW_TAP_SSH_KEY`。此 key 只授权该 tap 仓库；`GITHUB_TOKEN` 仍仅对 Passpine 仓库有效。更换认证时，在 tap 的 Settings → Deploy keys 登记公钥并允许写入，将对应私钥存入上述 Secret；不把私钥提交到仓库或传给应用构建与发布签名步骤。
+
+已公开版本需要补同步时，可在 Actions 的 **Sync Homebrew** 工作流中输入确切 tag，或执行：
+
+```sh
+gh workflow run homebrew.yml --repo knothhe/passpine --ref main -f tag=v0.1.10
+```
+
+此入口复用相同的校验、队列及提交脚本，不构建客户端、不升版、不重发 Release。
 
 保留以下本地维护入口，供检查或修复配方使用；它不是发版的必需步骤：
 
@@ -127,7 +137,7 @@ tag 已推送但 CI 因临时网络或 runner 故障失败、无需修改源码�
 
 若失败原因需要修改源码或测试，先提交修复并通过本地检查，再按正常流程发布新的 patch 版本。已有 tag 始终指向原提交；仅修改 `main` 后重跑旧 tag，仍会运行旧代码。不要移动 tag，也不要将新提交的产物混入旧版本。
 
-如果只有 `homebrew` job 失败，Release 已经公开，安装包不受影响。修正错误后只重跑该失败 job，即可重新检出最新 `main` 并补齐配方提交，无需重建或再次发布。并发维护者提交导致非快进 push 被拒绝时同样重跑 job；脚本不会强推覆盖远程修改。若启用 `main` 分支保护或仓库规则，需允许该机器人更新 cask，否则 job 会如实失败，不自动放宽规则。
+如果只有 `homebrew` job 失败，Release 已经公开，安装包不受影响。旧运行结束后，可重跑该失败 job，或从当前 `main` 手动运行 **Sync Homebrew** 并指定原 tag，补齐配方提交，无需重建或再次发布。主 tap 已更新而兼容 tap 失败时，重试会跳过相同配方并继续补齐。并发维护者提交导致非快进 push 被拒绝时同样处理；脚本不会强推覆盖远程修改。若启用任一目标仓库的 `main` 分支保护或仓库规则，需允许相应认证更新 cask，否则 job 会如实失败，不自动放宽规则。
 
 上传中断时 Release 保持草稿。重试保留正文和已上传的匹配附件，只补传缺失文件。远程同名附件必须大小、SHA-256 和状态一致，脚本不会覆盖或删除附件。已公开且完整的 Release 只返回 URL；已公开但缺少附件、同名内容冲突或 GitHub 查询失败均停止，需人工核查，不通过修改 tag 重发。Actions artifacts 过期后，应先核查草稿和已有附件再重新构建。
 

@@ -1,7 +1,6 @@
 import type { PrivacySectionId } from "./routes.ts";
 
-export const homebrewInstallCommand = `brew tap knothhe/passpine https://github.com/knothhe/passpine
-brew install --cask knothhe/passpine/passpine`;
+export const homebrewInstallCommand = "brew install --cask knothhe/tap/passpine";
 
 // Policy sections are structured so both languages keep the same shape.
 export type PolicyListItem = string | { term: string; text: string };
@@ -201,7 +200,7 @@ export const zh = {
     installGuide: "安装与系统要求",
     homebrew: "通过 Homebrew 安装",
     homebrewNote:
-      "适用于 Apple Silicon · macOS 13 及以上。先添加 tap，再安装正式版。",
+      "适用于 Apple Silicon · macOS 13 及以上。命令会自动添加 knothhe/tap 并安装正式版。",
     extensionTitle: "把 Passpine 带进浏览器",
     extensionBody:
       "先安装并运行桌面客户端，再按指南加载扩展。当前提供本地安装包。",
@@ -667,7 +666,7 @@ export const en: Copy = {
     installGuide: "Installation and system requirements",
     homebrew: "Install with Homebrew",
     homebrewNote:
-      "For Apple Silicon · macOS 13 or later. Add the tap, then install the stable app.",
+      "For Apple Silicon · macOS 13 or later. The command adds knothhe/tap and installs the stable app.",
     extensionTitle: "A companion for your browser",
     extensionBody:
       "Install and run the desktop app first, then load the extension using the guide. Local installation packages are available now.",
