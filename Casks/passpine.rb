@@ -1,6 +1,6 @@
 cask "passpine" do
-  version "0.1.9"
-  sha256 "daf68b04c3d5fe6dd1b487c46dba5f654034f4bb9a724b8e1c7b8b7f64f0ca84"
+  version "0.1.10"
+  sha256 "2baa5890d1c3b085501062d2c862a26797dd8905b28003b21e215122aff2e965"
 
   url "https://github.com/knothhe/passpine/releases/download/v#{version}/Passpine-#{version}-macos-arm64.zip"
   name "Passpine"
