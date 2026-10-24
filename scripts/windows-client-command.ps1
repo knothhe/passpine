@@ -18,7 +18,8 @@ function Invoke-PasspineClientCommand {
         if (-not $process.Start()) { throw 'Could not start the Dev client command.' }
         $output = $process.StandardOutput.ReadToEndAsync()
         $errors = $process.StandardError.ReadToEndAsync()
-        if (-not $process.WaitForExit(30000)) { throw 'The Dev client command did not finish. No files were removed.' }
+        # The client allows up to 65 seconds for graceful shutdown.
+        if (-not $process.WaitForExit(90000)) { throw 'The Dev client command did not finish. No files were removed.' }
         return [PSCustomObject]@{
             ExitCode = $process.ExitCode
             Output = $output.GetAwaiter().GetResult().Trim()
