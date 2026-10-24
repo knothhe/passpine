@@ -69,6 +69,9 @@ browser\:build\:firefox: browser/node_modules/.modules.yaml FORCE
 browser\:build\:edge: FORCE
 	$(MAKE) browser:build:chrome
 
+browser\:zip: browser/node_modules/.modules.yaml FORCE
+	pnpm --dir browser run zip
+
 browser\:install: FORCE
 	node scripts/install-local.mjs $(if $(BROWSER),--browser "$(BROWSER)") $(INSTALL_ARGS)
 

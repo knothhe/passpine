@@ -15,8 +15,10 @@ pnpm install --frozen-lockfile
 pnpm run typecheck
 pnpm test
 make -C .. browser:build
-pnpm run zip
+make -C .. browser:zip
 ```
+
+在仓库根目录运行 `make browser:zip`，等同于 `pnpm run package:browser`，会构建并打包 Chrome 和 Firefox，不会上传商店。
 
 本地与 CI 均使用 `.output/passpine-<版本>-chrome.zip` 和对应的 Firefox ZIP，不额外生成 sources ZIP；Edge 复用 Chrome 包。扩展不区分 Dev / 正式构建身份，本地构建不受桌面正式发布限制。正式发布仍由 GitHub Actions 在发布 tag 上完成，见[版本与发布](../docs/versioning.md)。扩展包可解包加载，Firefox 商店签名和自动上架尚未接入。
 
