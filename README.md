@@ -72,3 +72,7 @@ bash scripts/check.sh                            # 运行检查与测试
 - [架构与安全设计](docs/ARCHITECTURE.md)
 - [版本与发布](docs/versioning.md)
 - [功能与验证记录](docs/VALIDATION.md)
+
+## 开源协议
+
+本项目采用 [MIT License](LICENSE)。
