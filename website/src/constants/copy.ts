@@ -372,7 +372,7 @@ export const zh = {
         title: "扩展权限",
         blocks: [
           paragraph(
-            "扩展只申请以下权限。它没有申请访问所有网站的主机权限，也没有常驻在网页中的内容脚本。",
+            "扩展基础功能使用以下权限。网页快捷键为可选功能：你在设置页启用并授权后，扩展才在 HTTP / HTTPS 网页运行快捷键监听脚本；可随时关闭并撤销网站访问。",
           ),
           table(
             ["权限", "用途"],
@@ -387,11 +387,15 @@ export const zh = {
               },
               {
                 name: "scripting",
-                text: "仅在你要求填充时，向当前页面顶层注入扩展自带的填充函数，找到可见的登录字段并写入所选值，不提交表单。",
+                text: "在你要求填充时向当前页面顶层注入自带的填充函数，不提交表单；网页快捷键获授权后，用于注册和运行快捷键监听脚本。",
               },
               {
                 name: "storage",
                 text: "在浏览器本地保存语言、外观、快捷键和网站关联决定。",
+              },
+              {
+                name: "optional_host_permissions",
+                text: "可选的 http://*/* 与 https://*/* 网站访问，用于在普通网页监听已配置的快捷键，以及在你主动触发时匹配、填充账号。快捷键监听器跳过文字编辑，不记录或上传输入内容，也不接收密码库条目或解密凭证。填充的值仍可被当前网页读取。",
               },
               {
                 name: "clipboardWrite",
@@ -836,7 +840,7 @@ export const en: Copy = {
         title: "Extension permissions",
         blocks: [
           paragraph(
-            "The extension requests only the permissions below. It requests no host permissions for all websites and has no content scripts that stay running in pages.",
+            "The core extension uses the permissions below. Page shortcuts are optional: only after you enable them and grant website access does a shortcut listener run on HTTP / HTTPS pages. You can turn them off and revoke access at any time.",
           ),
           table(
             ["Permission", "Purpose"],
@@ -851,11 +855,15 @@ export const en: Copy = {
               },
               {
                 name: "scripting",
-                text: "Only when you ask to fill, inject the extension’s packaged fill function into the page’s top frame to find visible login fields and write the selected value. It never submits the form.",
+                text: "Inject the packaged fill function into the page’s top frame when you request filling, without submitting forms. After you grant page shortcuts access, also register and run the shortcut listener.",
               },
               {
                 name: "storage",
                 text: "Save language, appearance, shortcuts, and website associations in local browser storage.",
+              },
+              {
+                name: "optional_host_permissions",
+                text: "Optional http://*/* and https://*/* website access to listen for configured shortcuts and match or fill an account when you trigger them. The shortcut listener skips text editing, does not record or upload typed content, and receives no vault entries or decrypted credentials. Filled values can still be read by the current page.",
               },
               {
                 name: "clipboardWrite",

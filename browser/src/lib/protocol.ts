@@ -26,10 +26,11 @@ export function trustedSender(sender: { id?: string; url?: string; tab?: unknown
   if (sender.id !== runtimeId || !sender.url) return false;
   try {
     const page = new URL(sender.url).href;
+    const options = new URL(page); options.hash = '';
     // Options are opened in a browser tab, so their trusted extension sender
     // may include tab metadata. The exact extension URL still excludes scripts
     // injected into arbitrary websites.
-    if (page === new URL('options.html', rootURL).href) return true;
+    if (options.href === new URL('options.html', rootURL).href) return true;
     return sender.tab === undefined && page === new URL('popup.html', rootURL).href;
   } catch { return false; }
 }

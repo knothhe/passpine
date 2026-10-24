@@ -14,6 +14,9 @@ for (const path of paths) {
   assert.equal(manifest.description, '__MSG_extensionDescription__', 'Extension description must use the unified localized description');
   assert.equal(manifest.action?.default_title, '__MSG_extensionName__', 'Toolbar title must use the unified localized name');
   assert.equal(manifest.key, identity.key, 'Manifest must use the unified extension public key');
+  assert.deepEqual(manifest.host_permissions ?? [], [], 'Website access must remain optional');
+  assert.deepEqual(manifest.optional_host_permissions, ['http://*/*', 'https://*/*'], 'Page shortcuts request optional website access');
+  assert(!manifest.content_scripts?.length, 'Page shortcut scripts must be registered only after permission is granted');
   if (manifest.browser_specific_settings?.gecko) assert.equal(manifest.browser_specific_settings.gecko.id, identity.firefoxID, 'Firefox identity must match the unified extension identity');
   assert.deepEqual(manifest.commands?.['_execute_action']?.suggested_key, { default: 'Ctrl+Shift+L', mac: 'Command+Shift+L' }, 'Opening Passpine must retain its default shortcuts');
   assert.deepEqual(manifest.commands?.['fill-best']?.suggested_key, { default: 'Ctrl+Shift+F', mac: 'Command+Shift+F' }, 'Filling an account must retain its default shortcuts');
