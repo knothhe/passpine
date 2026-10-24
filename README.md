@@ -4,6 +4,17 @@
 
 无需用过 pass 或安装 GnuPG：创建密码库时，Passpine 会自动生成受口令保护的 OpenPGP 私钥。已有 pass 密码库也可通过系统 GPG 或密钥文件导入。
 
+## macOS 安装
+
+Apple Silicon Mac（macOS 13 及以上）可通过 Homebrew 安装正式客户端：
+
+```sh
+brew tap knothhe/passpine https://github.com/knothhe/passpine
+brew install --cask knothhe/passpine/passpine
+```
+
+也可从 [GitHub Releases](https://github.com/knothhe/passpine/releases) 下载。正式版发布成功后，GitHub Actions 会自动更新 Homebrew 配方。Homebrew 更新、卸载及首次启动说明见[安装说明](docs/install-local.md#macos-homebrew-正式版)。
+
 ## 构建与安装
 
 需要 Make、Go 1.27.1+、Node.js 22.12+ 和 pnpm 12.11.2；macOS 还需 Xcode Command Line Tools。Git 同步使用系统 Git 和已有认证凭据。

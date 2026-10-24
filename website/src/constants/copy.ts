@@ -1,5 +1,8 @@
 import type { PrivacySectionId } from "./routes.ts";
 
+export const homebrewInstallCommand = `brew tap knothhe/passpine https://github.com/knothhe/passpine
+brew install --cask knothhe/passpine/passpine`;
+
 // Policy sections are structured so both languages keep the same shape.
 export type PolicyListItem = string | { term: string; text: string };
 export type PolicyBlock =
@@ -196,6 +199,9 @@ export const zh = {
         "Linux 需要 GTK 3 与 WebKitGTK 4.1。下载压缩包后，按安装指南运行安装脚本。",
     },
     installGuide: "安装与系统要求",
+    homebrew: "通过 Homebrew 安装",
+    homebrewNote:
+      "适用于 Apple Silicon · macOS 13 及以上。先添加 tap，再安装正式版。",
     extensionTitle: "把 Passpine 带进浏览器",
     extensionBody:
       "先安装并运行桌面客户端，再按指南加载扩展。当前提供本地安装包。",
@@ -655,6 +661,9 @@ export const en: Copy = {
         "Linux requires GTK 3 and WebKitGTK 4.1. Extract the archive and follow the guide to run the installer.",
     },
     installGuide: "Installation and system requirements",
+    homebrew: "Install with Homebrew",
+    homebrewNote:
+      "For Apple Silicon · macOS 13 or later. Add the tap, then install the stable app.",
     extensionTitle: "A companion for your browser",
     extensionBody:
       "Install and run the desktop app first, then load the extension using the guide. Local installation packages are available now.",

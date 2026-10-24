@@ -732,6 +732,30 @@ p {
   margin-top: 22px;
   color: #595959;
 }
+.homebrew-install {
+  margin-top: 16px;
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.homebrew-install summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+.homebrew-install p {
+  margin-top: 10px;
+  color: var(--muted);
+}
+.homebrew-install pre {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #f4f4f5;
+  font: 11px/1.8 ui-monospace, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .release-status {
   font-size: 11px;
   color: #595959;
