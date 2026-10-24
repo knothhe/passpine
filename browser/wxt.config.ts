@@ -26,6 +26,7 @@ export default defineConfig({
     description: localizedDescription,
     default_locale: 'en',
     permissions: ['nativeMessaging', 'activeTab', 'scripting', 'storage', 'clipboardWrite'],
+    optional_host_permissions: ['http://*/*', 'https://*/*'],
     icons: toolbarIcons,
     action: { default_icon: toolbarIcons, default_title: localizedName },
     commands: extensionCommands,

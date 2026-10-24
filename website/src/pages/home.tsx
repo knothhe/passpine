@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { ExternalLink, SiteLayout } from "../components/site-chrome";
-import type { Copy } from "../constants/copy";
+import { homebrewInstallCommand, type Copy } from "../constants/copy";
 import { promoVideo } from "../constants/media";
 import { routes, sectionHref } from "../constants/routes";
 import {
@@ -261,6 +261,15 @@ export function DownloadSection({
                 ))}
             </div>
             <p className="install-note">{c.downloads.notes[platform]}</p>
+            {platform === "macos" && (
+              <details className="homebrew-install">
+                <summary>{c.downloads.homebrew}</summary>
+                <p>{c.downloads.homebrewNote}</p>
+                <pre tabIndex={0} aria-label={c.downloads.homebrew}>
+                  <code>{homebrewInstallCommand}</code>
+                </pre>
+              </details>
+            )}
           </article>
         ))}
       </div>
