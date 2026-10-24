@@ -5,21 +5,22 @@
 Apple Silicon Mac（macOS 13 Ventura 及以上）安装 [Homebrew](https://brew.sh/) 后运行：
 
 ```sh
-brew tap knothhe/passpine https://github.com/knothhe/passpine
-brew install --cask knothhe/passpine/passpine
+brew install --cask knothhe/tap/passpine
 ```
 
-此仓库同时作为自定义 tap，因此首次添加必须提供完整仓库 URL。cask 下载 GitHub Releases 中的正式应用包，校验 SHA-256，安装 `Passpine.app` 并提供 `passpine` 命令，无需 Go、Node.js 或本地构建。当前正式版只提供 Apple Silicon 安装包，Intel Mac 不适用。
+完整名称会自动添加 [knothhe/tap](https://github.com/knothhe/homebrew-tap)，也可先执行 `brew tap knothhe/tap`。cask 下载 GitHub Releases 中的正式应用包，校验 SHA-256，安装 `Passpine.app` 并提供 `passpine` 命令，无需 Go、Node.js 或本地构建。当前正式版只提供 Apple Silicon 安装包，Intel Mac 不适用。
 
 打开 Passpine 后，在设置 → 浏览器中修复所需浏览器的连接，再按下文加载扩展。macOS 应用尚未进行 Developer ID 公证；若系统阻止首次打开，请在系统设置 → 隐私与安全性中核对来源后允许打开。
 
 ```sh
 brew update
-brew upgrade --cask --greedy knothhe/passpine/passpine
-brew uninstall --cask knothhe/passpine/passpine
+brew upgrade --cask --greedy knothhe/tap/passpine
+brew uninstall --cask knothhe/tap/passpine
 ```
 
 客户端支持自动更新；`--greedy` 允许 Homebrew 同时检查这类应用。普通卸载保留密码库、配置及密钥。Dev 客户端仍使用下方 Make 流程，安装与数据目录独立。
+
+旧的 `knothhe/passpine` tap 继续接收相同的配方更新，已有安装可以沿用旧命令。新安装使用 `knothhe/tap`。
 
 ## 从源码构建与安装 Dev 版
 

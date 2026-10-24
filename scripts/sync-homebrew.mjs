@@ -108,6 +108,9 @@ export async function publishHomebrew({ tag, root = projectRoot, gitEnv = proces
   const git = (...args) => execFileSync('git', args, {
     cwd: root, env: gitEnv, encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'pipe'],
   }).trim();
+  if (await fs.realpath(root) !== await fs.realpath(git('rev-parse', '--show-toplevel'))) {
+    throw new Error('Homebrew publication requires the tap checkout root.');
+  }
   if (git('branch', '--show-current') !== 'main' || git('status', '--porcelain', '--untracked-files=all')) {
     throw new Error('Homebrew publication requires a clean main checkout.');
   }
@@ -131,13 +134,13 @@ export async function publishHomebrew({ tag, root = projectRoot, gitEnv = proces
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
   try {
     const args = process.argv.slice(2);
-    if (args.length === 2 && args[0] === '--publish') {
+    if (args[0] === '--publish' && (args.length === 2 || (args.length === 4 && args[2] === '--tap-root'))) {
       if (process.env.GITHUB_ACTIONS !== 'true' || process.env.GITHUB_REPOSITORY !== repository) {
         throw new Error('Automatic cask publication is reserved for this repository\'s GitHub Actions.');
       }
-      console.log(JSON.stringify(await publishHomebrew({ tag: args[1] })));
+      console.log(JSON.stringify(await publishHomebrew({ tag: args[1], ...(args[3] && { root: path.resolve(args[3]) }) })));
     } else if (args.length) {
-      throw new Error('Usage: sync-homebrew.mjs [--publish vMAJOR.MINOR.PATCH]');
+      throw new Error('Usage: sync-homebrew.mjs [--publish vMAJOR.MINOR.PATCH [--tap-root CHECKOUT]]');
     } else {
       console.log(`Casks/passpine.rb is synchronized at ${await syncHomebrew()}.`);
     }

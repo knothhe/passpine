@@ -61,20 +61,42 @@ test('Release runs automatically only for version tags and passes the verified t
   assert.match(workflowBlock(release, ['jobs', 'build', 'with']), /^ +tag: \$\{\{ needs\.verify\.outputs\.tag \}\}\s*$/m);
 });
 
-test('Homebrew runs after successful publication and writes only to the main tap branch', () => {
+test('Release synchronizes Homebrew only after successful publication and passes only its deploy key', () => {
   const source = fs.readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
   const job = workflowBlock(source, ['jobs', 'homebrew']);
   assert.match(job, /^ +needs: \[verify, publish\]\s*$/m);
+  assert.match(job, /^ +uses: \.\/\.github\/workflows\/homebrew\.yml\s*$/m);
+  assert.match(workflowBlock(source, ['jobs', 'homebrew', 'with']), /^ +tag: \$\{\{ needs\.verify\.outputs\.tag \}\}\s*$/m);
+  const secrets = workflowBlock(source, ['jobs', 'homebrew', 'secrets']);
+  assert.deepEqual(mappingKeys(secrets), ['HOMEBREW_TAP_SSH_KEY']);
+  assert.match(secrets, /HOMEBREW_TAP_SSH_KEY: \$\{\{ secrets\.HOMEBREW_TAP_SSH_KEY \}\}/);
   assert.match(workflowBlock(source, ['jobs', 'homebrew', 'permissions']), /^ +contents: write\s*$/m);
-  assert.match(job, /^ +ref: main\s*$/m);
-  assert.match(job, /^ +persist-credentials: true\s*$/m);
-  assert.match(job, /^ +fetch-depth: 0\s*$/m);
-  assert.match(job, /RELEASE_TAG: \$\{\{ needs\.verify\.outputs\.tag \}\}/);
-  assert.match(job, /GH_TOKEN: \$\{\{ github\.token \}\}/);
-  assert.match(job, /run: node scripts\/sync-homebrew\.mjs --publish "\$RELEASE_TAG"/);
   assert.doesNotMatch(job, /always\(|continue-on-error|PASSPINE_UPDATE_PRIVATE_KEY/);
-  const concurrency = workflowBlock(source, ['jobs', 'homebrew', 'concurrency']);
-  assert.match(concurrency, /^ +group: homebrew-cask-main\s*$/m);
+});
+
+test('Homebrew shares one queued workflow for public-tap publication, compatibility, and manual repair', () => {
+  const source = fs.readFileSync(new URL('../.github/workflows/homebrew.yml', import.meta.url), 'utf8');
+  assert.deepEqual(mappingKeys(workflowBlock(source, ['on'])), ['workflow_call', 'workflow_dispatch']);
+  for (const trigger of ['workflow_call', 'workflow_dispatch']) {
+    const tag = workflowBlock(source, ['on', trigger, 'inputs', 'tag']);
+    assert.match(tag, /^ +required: true\s*$/m);
+    assert.match(tag, /^ +type: string\s*$/m);
+  }
+  assert.match(workflowBlock(source, ['on', 'workflow_call', 'secrets', 'HOMEBREW_TAP_SSH_KEY']), /^ +required: true\s*$/m);
+  const job = workflowBlock(source, ['jobs', 'sync']);
+  assert.equal([...job.matchAll(/^ +ref: main\s*$/gm)].length, 2);
+  assert.equal([...job.matchAll(/^ +persist-credentials: true\s*$/gm)].length, 2);
+  assert.equal([...job.matchAll(/^ +fetch-depth: 0\s*$/gm)].length, 2);
+  assert.match(job, /^ +repository: knothhe\/homebrew-tap\s*$/m);
+  assert.match(job, /^ +path: tap\s*$/m);
+  assert.match(job, /ssh-key: \$\{\{ secrets\.HOMEBREW_TAP_SSH_KEY \}\}/);
+  assert.match(job, /RELEASE_TAG: \$\{\{ inputs\.tag \}\}/);
+  assert.match(job, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(job, /run: node source\/scripts\/sync-homebrew\.mjs --publish "\$RELEASE_TAG" --tap-root "\$GITHUB_WORKSPACE\/tap"/);
+  assert.match(job, /run: node source\/scripts\/sync-homebrew\.mjs --publish "\$RELEASE_TAG"\s*$/m);
+  assert.doesNotMatch(job, /always\(|continue-on-error|PASSPINE_UPDATE_PRIVATE_KEY/);
+  const concurrency = workflowBlock(source, ['jobs', 'sync', 'concurrency']);
+  assert.match(concurrency, /^ +group: homebrew-tap-passpine-main\s*$/m);
   assert.match(concurrency, /^ +cancel-in-progress: false\s*$/m);
   assert.match(concurrency, /^ +queue: max\s*$/m);
 });

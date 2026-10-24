@@ -9,11 +9,10 @@
 Apple Silicon Mac（macOS 13 及以上）可通过 Homebrew 安装正式客户端：
 
 ```sh
-brew tap knothhe/passpine https://github.com/knothhe/passpine
-brew install --cask knothhe/passpine/passpine
+brew install --cask knothhe/tap/passpine
 ```
 
-也可从 [GitHub Releases](https://github.com/knothhe/passpine/releases) 下载。正式版发布成功后，GitHub Actions 会自动更新 Homebrew 配方。Homebrew 更新、卸载及首次启动说明见[安装说明](docs/install-local.md#macos-homebrew-正式版)。
+命令会自动添加 [knothhe/tap](https://github.com/knothhe/homebrew-tap)。也可从 [GitHub Releases](https://github.com/knothhe/passpine/releases) 下载。三平台构建及正式版发布成功后，GitHub Actions 会自动更新 Homebrew 配方。Homebrew 更新、卸载及首次启动说明见[安装说明](docs/install-local.md#macos-homebrew-正式版)。
 
 ## 构建与安装
 

@@ -76,15 +76,19 @@ async function gitFixture(t, version = '0.1.6') {
   const gitEnv = { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: gitConfig };
   const git = (cwd, ...args) => execFileSync('git', args, { cwd, env: gitEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   const remote = path.join(directory, 'remote.git');
-  const root = path.join(directory, 'checkout');
+  const root = path.join(directory, 'tap checkout');
   git(directory, 'init', '--bare', '--initial-branch=main', remote);
   git(directory, 'clone', remote, root);
   git(root, 'config', 'user.name', 'Homebrew Fixture');
   git(root, 'config', 'user.email', 'homebrew@example.test');
-  await fs.mkdir(path.join(root, 'Casks'));
-  await fs.writeFile(path.join(root, 'Casks/passpine.rb'), homebrewCask({ version, sha256: digest }));
+  if (version !== null) {
+    await fs.mkdir(path.join(root, 'Casks'));
+    await fs.writeFile(path.join(root, 'Casks/passpine.rb'), homebrewCask({ version, sha256: digest }));
+  }
+  await fs.mkdir(path.join(root, 'Formula'));
+  await fs.writeFile(path.join(root, 'Formula/scrollsplit.rb'), '# Existing formula\n');
   await fs.writeFile(path.join(root, 'README.md'), 'unrelated content\n');
-  git(root, 'add', '--', 'Casks/passpine.rb', 'README.md');
+  git(root, 'add', '--', ...(version !== null ? ['Casks/passpine.rb'] : []), 'Formula/scrollsplit.rb', 'README.md');
   git(root, 'commit', '-m', 'Initial tap');
   git(root, 'push', 'origin', 'main');
   const advanceMain = async () => {
@@ -125,6 +129,27 @@ test('retrying an older release does not downgrade a newer cask', async t => {
   assert.deepEqual(await publishHomebrew({ ...options, fetchImpl: () => { throw new Error('old package must not be downloaded'); } }),
     { version: '0.1.10', changed: false });
   assert.equal(git(remote, 'rev-parse', 'main'), head);
+});
+
+test('publication adds a missing cask to a separate tap without touching its formulae or source checkout', async t => {
+  const source = await gitFixture(t, '0.1.6');
+  const tap = await gitFixture(t, null);
+  const sourceHead = source.git(source.root, 'rev-parse', 'HEAD');
+  const result = await publishHomebrew(tap.options);
+  assert.equal(tap.git(tap.remote, 'rev-parse', 'main'), result.commit);
+  assert.equal(tap.git(tap.remote, 'show', '--format=', '--name-only', 'main'), 'Casks/passpine.rb');
+  assert.equal(tap.git(tap.remote, 'show', 'main:Formula/scrollsplit.rb'), '# Existing formula');
+  assert.equal(source.git(source.root, 'rev-parse', 'HEAD'), sourceHead);
+  assert.equal(source.git(source.root, 'status', '--porcelain'), '');
+  assert.deepEqual(await publishHomebrew(tap.options), { version: '0.1.7', changed: false });
+});
+
+test('a nested directory cannot publish into its parent repository', async t => {
+  const { options, root, remote, git } = await gitFixture(t);
+  const head = git(remote, 'rev-parse', 'main');
+  await assert.rejects(publishHomebrew({ ...options, root: path.join(root, 'Formula') }), /tap checkout root/);
+  assert.equal(git(remote, 'rev-parse', 'main'), head);
+  assert.equal(git(root, 'status', '--porcelain'), '');
 });
 
 test('a missing, draft, mismatched, or corrupted published package leaves main unchanged', async t => {
