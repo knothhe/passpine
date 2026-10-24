@@ -61,6 +61,24 @@ test('Release runs automatically only for version tags and passes the verified t
   assert.match(workflowBlock(release, ['jobs', 'build', 'with']), /^ +tag: \$\{\{ needs\.verify\.outputs\.tag \}\}\s*$/m);
 });
 
+test('Homebrew runs after successful publication and writes only to the main tap branch', () => {
+  const source = fs.readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
+  const job = workflowBlock(source, ['jobs', 'homebrew']);
+  assert.match(job, /^ +needs: \[verify, publish\]\s*$/m);
+  assert.match(workflowBlock(source, ['jobs', 'homebrew', 'permissions']), /^ +contents: write\s*$/m);
+  assert.match(job, /^ +ref: main\s*$/m);
+  assert.match(job, /^ +persist-credentials: true\s*$/m);
+  assert.match(job, /^ +fetch-depth: 0\s*$/m);
+  assert.match(job, /RELEASE_TAG: \$\{\{ needs\.verify\.outputs\.tag \}\}/);
+  assert.match(job, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(job, /run: node scripts\/sync-homebrew\.mjs --publish "\$RELEASE_TAG"/);
+  assert.doesNotMatch(job, /always\(|continue-on-error|PASSPINE_UPDATE_PRIVATE_KEY/);
+  const concurrency = workflowBlock(source, ['jobs', 'homebrew', 'concurrency']);
+  assert.match(concurrency, /^ +group: homebrew-cask-main\s*$/m);
+  assert.match(concurrency, /^ +cancel-in-progress: false\s*$/m);
+  assert.match(concurrency, /^ +queue: max\s*$/m);
+});
+
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-ci-release-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

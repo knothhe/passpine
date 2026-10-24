@@ -1,5 +1,28 @@
 # 本地安装
 
+## macOS Homebrew 正式版
+
+Apple Silicon Mac（macOS 13 Ventura 及以上）安装 [Homebrew](https://brew.sh/) 后运行：
+
+```sh
+brew tap knothhe/passpine https://github.com/knothhe/passpine
+brew install --cask knothhe/passpine/passpine
+```
+
+此仓库同时作为自定义 tap，因此首次添加必须提供完整仓库 URL。cask 下载 GitHub Releases 中的正式应用包，校验 SHA-256，安装 `Passpine.app` 并提供 `passpine` 命令，无需 Go、Node.js 或本地构建。当前正式版只提供 Apple Silicon 安装包，Intel Mac 不适用。
+
+打开 Passpine 后，在设置 → 浏览器中修复所需浏览器的连接，再按下文加载扩展。macOS 应用尚未进行 Developer ID 公证；若系统阻止首次打开，请在系统设置 → 隐私与安全性中核对来源后允许打开。
+
+```sh
+brew update
+brew upgrade --cask --greedy knothhe/passpine/passpine
+brew uninstall --cask knothhe/passpine/passpine
+```
+
+客户端支持自动更新；`--greedy` 允许 Homebrew 同时检查这类应用。普通卸载保留密码库、配置及密钥。Dev 客户端仍使用下方 Make 流程，安装与数据目录独立。
+
+## 从源码构建与安装 Dev 版
+
 本地命令构建和安装 **Dev 客户端及统一浏览器扩展**。正式客户端由 GitHub Actions 在发布 tag 上构建，从 GitHub Release 下载安装；客户端本地安装脚本拒绝正式通道。Dev 与正式客户端使用不同的应用、数据目录及 Native Host，可同时安装。Dev 不检查正式更新，也不自动发现 `~/.password-store`；开发时请使用测试密码库。扩展只有一组名称和 ID，默认连接正式客户端；本地解包加载时可在设置中切换 Dev 客户端，商店安装只连接正式客户端。
 
 需要 Make、Go 1.27.1+、Node.js 22.12+ 和 pnpm 12.11.2。macOS 还需要 Xcode Command Line Tools，构建会将 Swift 系统解锁辅助程序一并打包。在仓库根目录运行命令；Make 会按锁文件安装浏览器构建依赖。客户端和扩展通过不同前缀选择，无前缀的命令同时处理两者。
