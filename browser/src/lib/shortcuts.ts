@@ -20,7 +20,6 @@ export interface ShortcutAPI {
   getAll(): Promise<ShortcutCommand[]>;
   update?(details: { name: string; shortcut: string }): Promise<void>;
   reset?(name: string): Promise<void>;
-  openShortcutSettings?(): Promise<void>;
 }
 
 export function assignedShortcuts(commands: ShortcutCommand[]): Record<string, string> {
@@ -33,10 +32,6 @@ export function defaultShortcuts(mac: boolean): Record<string, string> {
 
 export function formatShortcut(shortcut: string, copy: Copy = systemCopy()): string {
   return shortcut.replace(/Command/g, copy.shortcuts.keyNames.Command).replace(/MacCtrl/g, 'Control').split('+').join(' + ');
-}
-
-export function shortcutsPageURL(userAgent: string): string {
-  return /Edg\//.test(userAgent) ? 'edge://extensions/shortcuts' : 'chrome://extensions/shortcuts';
 }
 
 type ShortcutKeyEvent = Pick<KeyboardEvent, 'key' | 'code' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'isComposing'>;
@@ -60,7 +55,7 @@ export function canonicalShortcut(shortcut: string): string {
 }
 
 export async function saveShortcut(api: ShortcutAPI, name: string, shortcut: string, copy: Copy = systemCopy()): Promise<Record<string, string>> {
-  if (!api.update) throw new Error(copy.shortcuts.changeInBrowser);
+  if (!api.update) throw new Error(copy.shortcuts.editUnavailable);
   const commands = await api.getAll();
   if (shortcut && commands.some(command => command.name !== name && command.shortcut && canonicalShortcut(command.shortcut) === canonicalShortcut(shortcut))) throw new Error(copy.shortcuts.conflict);
   await api.update({ name, shortcut });

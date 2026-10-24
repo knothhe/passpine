@@ -18,13 +18,15 @@ vi.mock('./ShortcutSettings', () => ({ ShortcutSettings: () => null }));
 vi.mock('./AppearanceSettings', () => ({ AppearanceSettings: () => null }));
 vi.mock('./LanguageSettings', () => ({ LanguageSettings: () => null }));
 beforeEach(() => {
+  history.replaceState(null, '', '/');
+  vi.stubGlobal('scrollTo', vi.fn());
   copy = chineseCopy;
   extension.management.getSelf.mockResolvedValue({ installType: 'normal' });
   extension.storage.local.get.mockResolvedValue({});
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); });
 
 it('shows only extension version and browser identity, with no dependency information', async () => {
   const extensionId = 'test-extension-用户标识';
@@ -47,13 +49,30 @@ it('switches between settings and About without restarting the client request', 
   const request = vi.fn(async () => ({ configured: false, locked: true, vaultId: '', vaultName: '', entries: [], matches: [], capabilities: [] }));
   const client = { demo: true, request, copy: vi.fn() } as unknown as Client;
   await act(async () => root.render(createElement(Options, { client, extensionId: 'test-extension' })));
-  const button = (label: string) => Array.from(container.querySelectorAll('nav button')).find(item => item.textContent === label) as HTMLButtonElement;
+  const button = (label: string) => Array.from(container.querySelectorAll('nav a')).find(item => item.textContent === label) as HTMLAnchorElement;
   await act(async () => button('关于').click());
   expect(document.title).toBe(chineseCopy.about.pageTitle);
   expect(container.textContent).toContain(chineseCopy.about.name);
-  expect(container.querySelectorAll('details')).toHaveLength(0);
-  await act(async () => button('设置').click());
-  expect(container.querySelector('h1')?.textContent).toBe(chineseCopy.options.title);
+  expect(container.querySelector('#settings-about h1')?.textContent).toBe(chineseCopy.about.title);
+  await act(async () => button(chineseCopy.options.connection).click());
+  expect(container.querySelector('#settings-connection h1')?.textContent).toBe(chineseCopy.options.connection);
+  expect(container.querySelector('#settings-about')?.hasAttribute('hidden')).toBe(true);
+  expect(location.hash).toBe('#connection');
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
+it('opens deep links and follows history navigation without reloading the connection', async () => {
+  history.replaceState(null, '', '/?section=about');
+  const request = vi.fn(async () => ({ configured: false, locked: true, vaultId: '', vaultName: '', entries: [], matches: [], capabilities: [] }));
+  const client = { demo: true, request, copy: vi.fn() } as unknown as Client;
+  await act(async () => root.render(createElement(Options, { client, extensionId: 'test-extension' })));
+  expect(container.querySelector('nav a[aria-current="page"]')?.textContent).toBe(chineseCopy.about.title);
+  await act(async () => { history.pushState(null, '', '#shortcuts'); window.dispatchEvent(new PopStateEvent('popstate')); });
+  expect(container.querySelector('nav a[aria-current="page"]')?.textContent).toBe(chineseCopy.shortcuts.title);
+  expect(container.querySelector('#settings-shortcuts')?.hasAttribute('hidden')).toBe(false);
+  copy = englishCopy;
+  await act(async () => root.render(createElement(Options, { client, extensionId: 'test-extension' })));
+  expect(document.title).toBe(englishCopy.options.sectionPageTitle(englishCopy.shortcuts.title));
   expect(request).toHaveBeenCalledTimes(1);
 });
 

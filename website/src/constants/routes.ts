@@ -39,7 +39,7 @@ export type PrivacySectionId = (typeof privacySectionIds)[number];
 // The date the policy was last revised, the release it was checked against,
 // and the maintainer's private contact address.
 export const privacyPolicy = {
-  updated: "2026-10-23",
+  updated: "2026-10-24",
   reviewedVersion: "0.1.7",
   contactEmail: "knothhe@gmail.com",
 };

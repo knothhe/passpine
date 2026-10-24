@@ -7,6 +7,7 @@ describe('extension boundary', () => {
   it('accepts only exact trusted extension UI pages', () => {
     expect(trustedSender({ id, url: `${root}popup.html` }, id, root)).toBe(true);
     expect(trustedSender({ id, url: `${root}options.html` }, id, root)).toBe(true);
+    expect(trustedSender({ id, url: `${root}options.html#shortcuts`, tab: {} }, id, root)).toBe(true);
     for (const sender of [{ id: 'other', url: `${root}popup.html` }, { id, url: 'https://evil.test' }, { id, url: `${root}popup.html`, tab: {} }, { id, url: `${root}popup.html?untrusted` }, { id, url: `${root}background.js` }]) expect(trustedSender(sender, id, root)).toBe(false);
   });
   it('whitelists protocol arguments and retains the original edit revision', () => {

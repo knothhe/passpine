@@ -13,9 +13,11 @@ const environment = vi.hoisted(() => ({
     scripting: { executeScript: vi.fn() },
     commands: { onCommand: { addListener: vi.fn() } },
     action: { openPopup: vi.fn() },
+    permissions: { contains: vi.fn() },
   },
 }));
 vi.mock('wxt/browser', () => ({ browser: environment.browser }));
+vi.mock('./page-shortcut-registration', () => ({ initializePageShortcuts: vi.fn() }));
 vi.mock('./appearance', () => ({ initializeToolbarAppearance: vi.fn() }));
 vi.mock('./native', () => ({ NativeConnection: class {
   private connected = false;
@@ -27,7 +29,7 @@ vi.mock('./native', () => ({ NativeConnection: class {
   disconnect = environment.disconnect;
 } }));
 
-type MessageListener = (message: unknown, sender: { id: string; url: string }, respond: (response: NativeResponse) => void) => boolean;
+type MessageListener = (message: unknown, sender: { id: string; url: string; tab?: { id: number; url: string } }, respond: (response: NativeResponse) => void) => boolean;
 const tab: TabContext = { id: 7, url: 'https://login.example.test/sign-in', hostname: 'login.example.test', secure: true };
 const account = 'Personal/account';
 let current: { id: number; url: string }, stored: Record<string, unknown>, listener: MessageListener;
@@ -56,6 +58,8 @@ beforeEach(async () => {
   state = { configured: true, vaultId: 'vault', vaultName: 'Personal', locked: false, entries: [{ path: account, name: 'account', folder: 'Personal' }], capabilities: [] };
   environment.native.mockImplementation(async (value: NativeRequest) => value.action === 'fetch' ? { contents: 'secret\nusername: alice\nurl: https://unrelated.test', revision: 'revision' } : state);
   environment.browser.runtime.getURL.mockReturnValue('chrome-extension://test-extension/');
+  environment.browser.permissions.contains.mockResolvedValue(true);
+  environment.browser.action.openPopup.mockResolvedValue(undefined);
   environment.browser.management.getSelf.mockResolvedValue({ installType: 'development' });
   environment.browser.tabs.query.mockImplementation(async () => [current]);
   environment.browser.storage.local.get.mockImplementation(async () => structuredClone(stored));
@@ -329,6 +333,41 @@ describe('selected desktop client isolation', () => {
     const reply = vi.fn();
     expect(listener({ type: 'passpine', clientTarget: 'dev', request: { action: 'lock' } }, { id: 'test-extension', url: 'https://attacker.test/' }, reply)).toBe(false);
     expect(reply).not.toHaveBeenCalled();
+    expect(environment.native).not.toHaveBeenCalled();
+  });
+});
+
+describe('page shortcut messages', () => {
+  const press = (command: string, shortcut: string, sender = { id: 'test-extension', url: tab.url, tab: { id: tab.id, url: tab.url } }): Promise<unknown> => new Promise(resolve => {
+    expect(listener({ type: 'passpine-page-shortcut', command, shortcut }, sender, resolve)).toBe(true);
+  });
+  it('opens the popup without exposing or reading credentials', async () => {
+    stored.pageShortcuts = { '_execute_action': 'Alt+O', 'fill-best': '' };
+    expect(await press('_execute_action', 'Alt+O')).toEqual({ handled: true });
+    expect(environment.browser.action.openPopup).toHaveBeenCalledTimes(1);
+    expect(environment.native).not.toHaveBeenCalled();
+  });
+  it('fills the sole matching account and returns no credentials to the content script', async () => {
+    stored.pageShortcuts = { '_execute_action': '', 'fill-best': 'Alt+F' };
+    state.entries = [{ path: 'login.example.test/account', name: 'account', folder: 'login.example.test' }];
+    expect(await press('fill-best', 'Alt+F')).toEqual({ handled: true });
+    expect(environment.native).toHaveBeenCalledWith(expect.objectContaining({ action: 'fetch', purpose: 'fill', entry: 'login.example.test/account' }));
+    expect(environment.browser.scripting.executeScript).toHaveBeenCalledWith(expect.objectContaining({ target: { tabId: tab.id, frameIds: [0] } }));
+  });
+  it('rejects stale keys, revoked access and a tab that is no longer active', async () => {
+    stored.pageShortcuts = { '_execute_action': 'Alt+O', 'fill-best': '' };
+    expect(await press('_execute_action', 'Alt+L')).toEqual({ handled: false });
+    environment.browser.permissions.contains.mockResolvedValueOnce(false);
+    expect(await press('_execute_action', 'Alt+O')).toEqual({ handled: false });
+    current = { id: 99, url: tab.url };
+    expect(await press('_execute_action', 'Alt+O')).toEqual({ handled: false });
+    expect(environment.browser.action.openPopup).not.toHaveBeenCalled();
+    expect(environment.native).not.toHaveBeenCalled();
+  });
+  it('rejects webpage credential requests and unknown shortcut actions', () => {
+    const sender = { id: 'test-extension', url: tab.url, tab: { id: tab.id, url: tab.url } };
+    expect(listener({ type: 'passpine', clientTarget: 'release', request: { action: 'fetch', vaultId: 'vault', entry: account } }, sender, vi.fn())).toBe(false);
+    expect(listener({ type: 'passpine-page-shortcut', command: 'fetch', shortcut: 'Alt+F' }, sender, vi.fn())).toBe(false);
     expect(environment.native).not.toHaveBeenCalled();
   });
 });

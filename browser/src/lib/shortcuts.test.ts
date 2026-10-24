@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { assignedShortcuts, captureShortcut, defaultShortcuts, FILL_COMMAND, OPEN_COMMAND, saveShortcut, shortcutsPageURL, type ShortcutAPI } from './shortcuts';
+import { assignedShortcuts, captureShortcut, defaultShortcuts, FILL_COMMAND, OPEN_COMMAND, saveShortcut, type ShortcutAPI } from './shortcuts';
 
 const keyEvent = (values: Partial<Parameters<typeof captureShortcut>[0]> = {}): Parameters<typeof captureShortcut>[0] => ({ key: 'K', code: 'KeyK', ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, isComposing: false, ...values });
 
@@ -56,8 +56,5 @@ describe('extension shortcuts', () => {
     expect(api.update).toHaveBeenCalledWith({ name: FILL_COMMAND, shortcut: '' });
   });
 
-  it('opens the matching Chromium browser shortcut page', () => {
-    expect(shortcutsPageURL('Mozilla Chrome/141 Safari/537.36')).toBe('chrome://extensions/shortcuts');
-    expect(shortcutsPageURL('Mozilla Chrome/141 Edg/141.0')).toBe('edge://extensions/shortcuts');
-  });
+
 });

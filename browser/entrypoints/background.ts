@@ -5,7 +5,9 @@ import { fillPage } from '../src/lib/fill';
 import { nativeRequest, trustedSender, validUIRequest } from '../src/lib/protocol';
 import { NativeConnection } from '../src/lib/native';
 import { hostForTarget, loadClientTarget, subscribeClientTarget, type ClientTarget } from '../src/lib/client-target';
-import { FILL_COMMAND } from '../src/lib/shortcuts';
+import { canonicalShortcut, FILL_COMMAND, OPEN_COMMAND } from '../src/lib/shortcuts';
+import { hasPageShortcutAccess, readPageShortcuts, type PageShortcutCommand } from '../src/lib/page-shortcuts';
+import { initializePageShortcuts } from '../src/lib/page-shortcut-registration';
 import { initializeToolbarAppearance } from '../src/lib/appearance';
 import { PROTOCOL, type EntryDocument, type FillResult, type NativeRequest, type SessionStatus, type Snapshot, type TabContext, type UIRequest, type VaultState } from '../src/lib/types';
 
@@ -16,6 +18,7 @@ interface NativeSession {
 
 export default defineBackground(() => {
   initializeToolbarAppearance();
+  initializePageShortcuts();
   let generation = 0;
   let selected: { target: Awaited<ReturnType<typeof loadClientTarget>>; connection: NativeConnection } | undefined;
   const invalidateTarget = () => {
@@ -123,7 +126,39 @@ export default defineBackground(() => {
     return native.request(nativeRequest(request));
   };
   const dispatch = async (request: UIRequest, expectedTarget: ClientTarget): Promise<unknown> => execute(request, await session(expectedTarget));
+  const runShortcut = async (command: PageShortcutCommand, expected?: TabContext) => {
+    if (expected) await currentTab(expected);
+    if (command === OPEN_COMMAND) { await browser.action.openPopup(); return; }
+    try {
+      const native = await session();
+      const state = await snapshot(native);
+      if (expected) {
+        await currentTab(expected);
+        if (!state.tab || !sameTab(expected, state.tab)) return;
+      }
+      // Ambiguous matches always go through the user's account selection.
+      if (state.matches.length === 1 && state.tab) await execute({ action: 'fill', vaultId: state.vaultId, entry: state.matches[0]!, tab: state.tab }, native);
+      else await browser.action.openPopup();
+    } catch {
+      if (expected) await currentTab(expected);
+      await browser.action.openPopup().catch(() => {});
+    }
+  };
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.type === 'passpine-page-shortcut') {
+      const expected = sender.id === browser.runtime.id && sender.tab ? tabContext(sender.tab) : undefined;
+      if (!expected || !sender.url || !/^https?:\/\//.test(sender.url) || ![OPEN_COMMAND, FILL_COMMAND].includes(message.command) || typeof message.shortcut !== 'string' || !message.shortcut) return false;
+      void (async () => {
+        if (!await hasPageShortcutAccess()) return false;
+        const shortcuts = await readPageShortcuts();
+        const command = message.command as PageShortcutCommand;
+        // Ignore late presses from a content script that still has old bindings.
+        if (canonicalShortcut(shortcuts[command]) !== canonicalShortcut(message.shortcut)) return false;
+        await runShortcut(command, expected);
+        return true;
+      })().then(handled => sendResponse({ handled }), () => sendResponse({ handled: false }));
+      return true;
+    }
     if (!trustedSender(sender, browser.runtime.id, browser.runtime.getURL('/')) || message?.type !== 'passpine' || !validUIRequest(message.request)) return false;
     const fail = (error: unknown) => sendResponse({ protocol: PROTOCOL, status: 'error', code: error instanceof PassPineError ? error.code : 'operation_failed', message: errorMessage(error) });
     if (message.clientTarget !== 'release' && message.clientTarget !== 'dev') {
@@ -135,12 +170,6 @@ export default defineBackground(() => {
   });
   browser.commands.onCommand.addListener(async command => {
     if (command !== FILL_COMMAND) return;
-    try {
-      const native = await session();
-      const state = await snapshot(native);
-      // Ambiguous matches always go through the user's account selection.
-      if (state.matches.length === 1 && state.tab) await execute({ action: 'fill', vaultId: state.vaultId, entry: state.matches[0]!, tab: state.tab }, native);
-      else await browser.action.openPopup();
-    } catch { await browser.action.openPopup().catch(() => {}); }
+    await runShortcut(FILL_COMMAND);
   });
 });

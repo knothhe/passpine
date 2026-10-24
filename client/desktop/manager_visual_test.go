@@ -52,6 +52,12 @@ func TestManagerVisualSurfacesShareThemeRoles(t *testing.T) {
 				view.SetDark(dark)
 				view.Advance(time.Second)
 				palette := clientPalette(style, dark)
+				if !dark {
+					white := ui.Hex("#ffffff")
+					if themeContrast(white, palette.Surface) >= themeContrast(white, palette.Background) {
+						t.Error("light content panes must be brighter than the navigation background")
+					}
+				}
 				for _, sample := range []struct {
 					name string
 					x, y int

@@ -95,6 +95,9 @@ website\:preview: website/node_modules/.modules.yaml FORCE
 website\:sync: website/node_modules/.modules.yaml FORCE
 	pnpm --dir website run sync:releases
 
+homebrew\:sync: FORCE
+	node scripts/sync-homebrew.mjs
+
 website\:deploy: website/node_modules/.modules.yaml FORCE
 	pnpm --dir website run deploy
 
