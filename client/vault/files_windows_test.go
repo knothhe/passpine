@@ -76,6 +76,21 @@ func TestWindowsSafeFilesRejectJunction(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(outside, "password.gpg")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("wrote outside root: %v", err)
 	}
+	if err := safeMkdirAll(root, "escape/nested/child"); !errors.Is(err, ErrPath) {
+		t.Fatalf("folder creation accepted a junction: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "nested")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("created a folder outside root: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(outside, "keep-empty"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if removed, err := safeRemoveEmptyFolder(root, "escape/keep-empty"); removed || !errors.Is(err, ErrPath) {
+		t.Fatalf("cleanup followed a junction: %v %v", removed, err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "keep-empty")); err != nil {
+		t.Fatalf("cleanup removed a folder outside root: %v", err)
+	}
 }
 
 func TestWindowsCheckoutPreservesConcurrentDestination(t *testing.T) {

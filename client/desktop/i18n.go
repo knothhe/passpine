@@ -49,7 +49,9 @@ var activityLabels = map[string]map[string]string{
 	"action": {
 		"lock": "锁定密码库", "unlock": "解锁密码库", "create": "创建密码库", "open": "打开密码库", "switch": "切换密码库",
 		"vault-rename": "重命名密码库", "generate": "生成密码", "settings": "更新设置", "browser-install": "注册浏览器连接",
-		"fetch": "读取条目", "copy": "复制字段", "copy-generated": "复制生成的密码", "save": "保存条目", "delete": "移到回收站", "move": "移动条目", "trash": "移到回收站", "draft": "保存草稿",
+		"create-folder":   "新建文件夹",
+		"cleanup-folders": "清理空文件夹",
+		"fetch":           "读取条目", "copy": "复制字段", "copy-generated": "复制生成的密码", "save": "保存条目", "delete": "移到回收站", "move": "移动条目", "trash": "移到回收站", "draft": "保存草稿",
 		"recovery": "查看恢复副本", "restore": "恢复条目", "purge": "删除恢复副本", "export": "导出恢复私钥", "verify-backup": "验证恢复备份",
 		"git-status": "检查 Git 状态", "git-init": "初始化 Git", "git-remote": "设置 Git 远端", "git-sync": "同步密码库", "git-commit": "提交加密条目", "clone": "下载密码库",
 	},

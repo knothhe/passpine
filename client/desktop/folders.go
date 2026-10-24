@@ -5,9 +5,54 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/knothhe/passpine/client/app"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
 )
+
+func (a *application) cleanupEmptyFolders() {
+	if a.busy || a.closing || a.editor.open || a.batch.active || a.updates.preparing {
+		return
+	}
+	a.closeNavigationOverlay()
+	if a.state.Locked {
+		a.beginUnlock("cleanup-folders")
+		return
+	}
+	a.call(app.Request{Action: "cleanup-folders", VaultID: a.state.VaultID}, func(data app.Data) {
+		a.refreshFolderNavigation()
+		if data.RemovedFolders == 0 {
+			a.inform(a.t("没有需要清理的空文件夹"))
+			return
+		}
+		a.notice = a.t("已清理 %d 个空文件夹", data.RemovedFolders)
+	})
+}
+
+func (a *application) refreshFolderNavigation() {
+	a.entries()
+	if strings.HasPrefix(a.filter, "folder:") && !containsFolder(a.folders, strings.TrimPrefix(a.filter, "folder:")) {
+		// Refresh the retained filter without replacing navigation made while
+		// cleanup was pending or cancelling that destination's queued reads.
+		if a.page != "entries" || a.setup {
+			a.filter = "all"
+			return
+		}
+		a.navigateManager("all")
+	}
+}
+
+func (a *application) folderCleanupButton(c *ui.Context) {
+	tooltip := a.t("清理密码库中真正为空的文件夹，保留所有文件及隐藏目录。")
+	if a.editor.open || a.batch.active {
+		tooltip = a.t("请先完成编辑或退出选择，再清理空文件夹。")
+	}
+	if iconButton(c, lucide.BrushCleaning(), a.t("清理空文件夹"), components.ButtonGhost).
+		Size(24, 24).Padding(5).Tooltip(tooltip).
+		Disabled(a.busy && !a.detailReadPending() || a.editor.open || a.batch.active || a.updates.preparing).Clicked() {
+		a.cleanupEmptyFolders()
+	}
+}
 
 // The list filter and editor share Onevra's select, search focus handling,
 // option styling and bounded scrolling. Values remain plain vault folder paths.

@@ -48,6 +48,44 @@ func directoryFD(root, relative string, create bool) (int, error) {
 	return fd, nil
 }
 
+func safeMkdirAll(root, name string) error {
+	fd, err := directoryFD(root, name, true)
+	if err != nil {
+		return err
+	}
+	return unix.Close(fd)
+}
+
+// Removing a directory is atomic with the kernel's emptiness check. In
+// particular, a file created after enumeration can never be removed here.
+func safeRemoveEmptyFolder(root, name string) (bool, error) {
+	fd, err := directoryFD(root, filepath.Dir(name), false)
+	if errors.Is(err, unix.ENOENT) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer unix.Close(fd)
+	var stat unix.Stat_t
+	if err = unix.Fstatat(fd, filepath.Base(name), &stat, unix.AT_SYMLINK_NOFOLLOW); errors.Is(err, unix.ENOENT) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	if stat.Mode&unix.S_IFMT != unix.S_IFDIR {
+		return false, ErrPath
+	}
+	err = unix.Unlinkat(fd, filepath.Base(name), unix.AT_REMOVEDIR)
+	if errors.Is(err, unix.ENOTEMPTY) || errors.Is(err, unix.EEXIST) || errors.Is(err, unix.ENOENT) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, unix.Fsync(fd)
+}
+
 func safeRead(root, name string) ([]byte, error) {
 	fd, e := directoryFD(root, filepath.Dir(name), false)
 	if e != nil {
