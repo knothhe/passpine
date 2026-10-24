@@ -1,39 +1,39 @@
 {
-  "tag_name": "v0.1.7",
-  "html_url": "https://github.com/knothhe/passpine/releases/tag/v0.1.7",
+  "tag_name": "v0.1.9",
+  "html_url": "https://github.com/knothhe/passpine/releases/tag/v0.1.9",
   "draft": false,
   "prerelease": false,
-  "published_at": "2026-10-23T14:12:22Z",
+  "published_at": "2026-10-24T08:57:30Z",
   "assets": [
     {
-      "name": "passpine-0.1.7-chrome.zip",
-      "size": 390512,
+      "name": "passpine-0.1.9-chrome.zip",
+      "size": 398502,
       "state": "uploaded",
-      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.7/passpine-0.1.7-chrome.zip"
+      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.9/passpine-0.1.9-chrome.zip"
     },
     {
-      "name": "passpine-0.1.7-firefox.zip",
-      "size": 390508,
+      "name": "passpine-0.1.9-firefox.zip",
+      "size": 398498,
       "state": "uploaded",
-      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.7/passpine-0.1.7-firefox.zip"
+      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.9/passpine-0.1.9-firefox.zip"
     },
     {
-      "name": "Passpine-0.1.7-linux-amd64.tar.gz",
-      "size": 9360814,
+      "name": "Passpine-0.1.9-linux-amd64.tar.gz",
+      "size": 9538572,
       "state": "uploaded",
-      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.7/Passpine-0.1.7-linux-amd64.tar.gz"
+      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.9/Passpine-0.1.9-linux-amd64.tar.gz"
     },
     {
-      "name": "Passpine-0.1.7-macos-arm64.zip",
-      "size": 9107128,
+      "name": "Passpine-0.1.9-macos-arm64.zip",
+      "size": 9727974,
       "state": "uploaded",
-      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.7/Passpine-0.1.7-macos-arm64.zip"
+      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.9/Passpine-0.1.9-macos-arm64.zip"
     },
     {
-      "name": "Passpine-0.1.7-windows-amd64-setup.exe",
-      "size": 8674000,
+      "name": "Passpine-0.1.9-windows-amd64-setup.exe",
+      "size": 8857209,
       "state": "uploaded",
-      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.7/Passpine-0.1.7-windows-amd64-setup.exe"
+      "browser_download_url": "https://github.com/knothhe/passpine/releases/download/v0.1.9/Passpine-0.1.9-windows-amd64-setup.exe"
     }
   ]
 }
