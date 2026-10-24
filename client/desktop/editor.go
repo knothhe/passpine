@@ -73,6 +73,8 @@ func (a *application) newEntry() {
 		a.openSetup()
 		return
 	}
+	// The File menu stays available while selecting; a new entry ends selection.
+	a.exitBatch()
 	if a.state.Locked {
 		a.navigate("entries", "")
 		a.selected = ""

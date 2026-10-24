@@ -469,7 +469,9 @@ func (a *application) lock() {
 	a.state.Locked = true
 	a.generation++
 	a.busy = false
-	a.batch = batchState{}
+	// Locking cancels a running or pending batch action but keeps the chosen
+	// entries, which are only paths and can still be acted on after unlocking.
+	a.batch.progress, a.batch.pending = nil, ""
 	go func() { a.service.Execute(app.Request{Action: "lock"}) }()
 	a.invalidate()
 }

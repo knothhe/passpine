@@ -12,6 +12,7 @@ import (
 // batchBackend keeps entry paths in memory and fails chosen entries with a code.
 type batchBackend struct {
 	mu       sync.Mutex
+	locked   bool
 	paths    []string
 	failures map[string]string
 	trash    map[string]string
@@ -26,7 +27,14 @@ func (b *batchBackend) Execute(r app.Request) app.Response {
 		return app.Response{Status: "error", Code: code}
 	}
 	data := app.Data{VaultID: "vault", Configured: true, Settings: app.DefaultSettings()}
-	data.Settings.Language = "zh-CN"
+	data.Settings.Language, data.Settings.BrowseWhileLocked = "zh-CN", true
+	if r.Action == "unlock" {
+		b.locked = false
+	}
+	data.Locked = b.locked
+	if b.locked && (r.Action == "move" || r.Action == "trash" || r.Action == "restore") {
+		return app.Response{Status: "error", Code: "locked", Data: data}
+	}
 	switch r.Action {
 	case "move":
 		b.rename(r.Entry, r.Destination)
@@ -233,13 +241,57 @@ func TestBatchSelectionEndsWithFolderChangesAndLock(t *testing.T) {
 	if len(a.selectedBatchEntries()) != 2 {
 		t.Fatal("clearing the search must keep the selection")
 	}
+	a.batch.pending = "move"
+	a.lock()
+	if !a.batch.active || len(a.batch.selected) != 2 || a.batch.pending != "" {
+		t.Fatal("locking should keep the chosen paths but cancel the pending action")
+	}
 	a.navigateManager("folder:工作")
 	if a.batch.active {
 		t.Fatal("switching folders should end selection mode")
 	}
-	a.enterBatch()
-	a.lock()
-	if a.batch.active {
-		t.Fatal("locking should end selection mode")
+}
+
+func TestLockedSelectionAsksToUnlockThenContinuesTheMove(t *testing.T) {
+	a, backend, settle := batchFixture(t, nil)
+	backend.locked = true
+	a.state.Locked = true
+	view := ui.NewTester(testView(a), 1180, 800)
+	view.Advance(time.Second)
+	if err := view.Click("选择"); err != nil || !a.batch.active {
+		t.Fatalf("selection should be available while browsing locked: %v", err)
+	}
+	a.batch.selected["开发/Cloudflare"], a.batch.selected["工作/Figma"] = true, true
+	view.Frame()
+	if err := view.Click("选择文件夹 家庭/设备"); err != nil {
+		t.Fatal(err)
+	}
+	if err := view.Click("移动 2 项"); err != nil {
+		t.Fatal(err)
+	}
+	if len(backend.actions("move")) != 0 || a.batch.pending != "move" || a.pendingUnlock.action != "batch" {
+		t.Fatal("moving while locked should wait for unlock without sending requests")
+	}
+	view.Frame()
+	if !view.HasText("解锁后将 2 项移动到“家庭/设备”。") || !view.HasText("返回选择") {
+		t.Fatalf("unlock view does not explain the pending move: %v", view.Texts())
+	}
+	if err := view.Click("返回选择"); err != nil || a.batch.pending != "" || a.pendingUnlock.action != "" || !view.HasText("已选 2 项") {
+		t.Fatalf("cancelling should return to the selection panel: %v", err)
+	}
+	a.startBatchMove()
+	a.passphrase = "test-passphrase"
+	a.unlock("")
+	settle()
+	moves := backend.actions("move")
+	destinations := map[string]bool{}
+	for _, move := range moves {
+		destinations[move.Destination] = true
+	}
+	if len(moves) != 2 || !destinations["家庭/设备/Cloudflare"] || !destinations["家庭/设备/Figma"] {
+		t.Fatalf("the move did not continue after unlocking: %#v", moves)
+	}
+	if a.batch.active || a.notice != "已将 2 项移动到“家庭/设备”" {
+		t.Fatalf("continued move did not finish normally: %q", a.notice)
 	}
 }
