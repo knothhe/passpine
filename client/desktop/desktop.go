@@ -36,6 +36,7 @@ type application struct {
 	quit                                                                 quitState
 	buildVersion                                                         string
 	updates                                                              updateUI
+	cli                                                                  cliSettingsState
 	aboutExpanded                                                        map[string]bool
 	service                                                              Backend
 	runOnMain                                                            func(func())

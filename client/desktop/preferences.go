@@ -26,6 +26,9 @@ func (read preferencesRead) valid(a *application) bool {
 func (a *application) preferencesPage() string { return a.page }
 
 func (a *application) loadPreferencesPage(page string) {
+	if page == "settings" && a.settingsState.Category == "cli" {
+		a.manageCLI("status")
+	}
 	if !a.settingsLoaded {
 		a.settings, a.settingsSaved, a.settingsObserved = a.state.Settings, a.state.Settings, a.state.Settings
 		a.settingsLoaded = true
