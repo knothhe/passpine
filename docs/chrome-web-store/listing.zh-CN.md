@@ -40,7 +40,7 @@ Passpine 将本机密码库连接到 Chrome，让你在浏览器中查找账号�
 | 类别 | 工作效率 / Productivity；提交时以后台当前类别列表为准 |
 | 主页 | https://github.com/knothhe/passpine |
 | 支持网址 | https://github.com/knothhe/passpine/issues |
-| 隐私政策 | 待发布；将 [PRIVACY.md](PRIVACY.md) 发布到可匿名访问的稳定 HTTPS 地址后填写 |
+| 隐私政策 | 官网 `/privacy` 页面（见 [PRIVACY.md](PRIVACY.md)）；官网部署到正式域名后填写其 HTTPS 地址 |
 | 分发/价格 | 发布者按实际运营安排填写；仓库不能证明未来收费计划 |
 
-不要把 `PRIVACY.md` 的本地路径或未发布分支链接当作已上线的政策地址。支持网址来自仓库 remote；提交前确认仓库公开且 Issues 已启用。
+不要把仓库文件路径或本地预览地址当作已上线的政策地址。支持网址来自仓库 remote；提交前确认仓库公开且 Issues 已启用。

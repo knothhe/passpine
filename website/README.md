@@ -11,7 +11,7 @@ make website:deps        # 根据 pnpm-lock.yaml 安装依赖
 make website:dev         # 开发服务器
 make website:check       # 类型检查、测试、生产构建
 make website:build       # 仅生产构建
-make website:preview     # 构建后启动本地预览
+make website:preview     # 构建后启动本地预览（Vite，不处理 _redirects）
 make website:sync        # 从 GitHub 更新已验证的 Release 快照
 ```
 
@@ -28,6 +28,24 @@ pnpm --dir website run sync:releases
 ```
 
 根目录提供 `pnpm run dev:website`、`build:website`、`test:website`、`preview:website`、`sync:website` 和 `deploy:website` 别名。网站版本和部署独立于桌面客户端、浏览器扩展的 SemVer 发布；默认 `make` 不构建或部署官网。常规开发、检查与构建使用仓库中的 Release 快照，不依赖 GitHub 网络访问。
+
+## 页面与路由
+
+每个页面都是独立的静态 HTML 文档，不使用前端路由，也不启用单页应用回退：
+
+| 路径 | 文档 | 入口 |
+| --- | --- | --- |
+| `/` | `index.html` | `src/entries/home.tsx` |
+| `/privacy` | `privacy.html` | `src/entries/privacy.tsx` |
+| 其他不存在的路径 | `404.html`（返回 404 状态） | `src/entries/not-found.tsx` |
+
+页面清单、首页区块锚点和隐私政策章节 ID 集中在 `src/constants/routes.ts`。页眉和页脚的区块链接统一写成 `/#features` 这类绝对路径，在任意页面都能回到首页对应位置。`public/_redirects` 提供 `/privacy-policy` → `/privacy` 和 `/download` → `/#download` 两个别名。新增页面时：在 `pageDocuments` 登记、新建同名 HTML 文档和入口、在 `copy.ts` 的 `meta` 中补齐两种语言的标题与描述。
+
+`build` 在 Vite 构建后运行 `scripts/prerender.mjs`，把每个页面以默认语言（简体中文，与文档的 `lang` 一致）渲染进 HTML，使未执行 JavaScript 的爬虫、商店审核工具和访客也能读到正文。浏览器加载后按访客语言重新渲染，并重新定位 URL 中的锚点。
+
+## 隐私政策
+
+`/privacy` 是浏览器扩展、桌面客户端和官网共用的公开隐私政策，可直接填入 Chrome Web Store 后台。正文位于 `copy.ts` 的 `privacy`，最后更新日期和核对所依据的版本位于 `routes.ts` 的 `privacyPolicy`。权限、存储、联网或第三方服务发生变化时，同步修改两种语言的正文并更新日期；测试会检查两种语言的章节结构一致，以及权限表与扩展声明的权限相符。
 
 ## 语言
 
@@ -53,7 +71,7 @@ pnpm --dir website run sync:releases
 
 ## 部署到 Cloudflare
 
-`wrangler.jsonc` 配置静态资源目录 `./dist`，Worker 名称为 `passpine-website`，默认使用账户的 `workers.dev` 域名。这里不预设真实域名，也不启用单页应用路径回退；页面内导航使用锚点。
+`wrangler.jsonc` 配置静态资源目录 `./dist`，Worker 名称为 `passpine-website`，默认使用账户的 `workers.dev` 域名。这里不预设真实域名。`html_handling` 将 `privacy.html` 发布在 `/privacy`（`/privacy.html` 与 `/privacy/` 会重定向到该地址），`not_found_handling: "404-page"` 让不存在的路径返回 `404.html` 和 404 状态，而不是回退到首页。
 
 首次在本地部署：
 

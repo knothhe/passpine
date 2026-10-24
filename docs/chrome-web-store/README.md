@@ -9,7 +9,7 @@
 | [listing.zh-CN.md](listing.zh-CN.md) | 简体中文名称、短描述、详细介绍和链接 |
 | [listing.en.md](listing.en.md) | English 商店介绍 |
 | [privacy-permissions.md](privacy-permissions.md) | 单一用途、逐项权限理由、远程代码、数据类型与代码证据 |
-| [PRIVACY.md](PRIVACY.md) | 中英文隐私政策草稿，发布后填写公开 URL |
+| [PRIVACY.md](PRIVACY.md) | 指向官网 `/privacy` 公开隐私政策的说明 |
 | [reviewer-instructions.md](reviewer-instructions.md) | 中英文审核步骤、配套客户端前提及虚构测试表单 |
 | [sources.md](sources.md) | 已访问的 Chrome 官方来源、当前要求及本地事实来源 |
 
@@ -24,7 +24,7 @@
 
 ## 提交前的必要补项
 
-1. **公开隐私政策。** 确认 [政策](PRIVACY.md)与实际运营一致，补充并验证私密联系渠道，移除维护者提示，发布到稳定的 HTTPS 地址并验证无需登录可访问，再将 URL 填入商店后台。现有公开支持入口为 [GitHub Issues](https://github.com/knothhe/passpine/issues)，不要在此提交秘密。
+1. **公开隐私政策。** 政策已作为官网 `/privacy` 页面实现（见 [PRIVACY.md](PRIVACY.md)）。部署官网并绑定正式域名后，验证该 HTTPS 地址无需登录即可访问，再填入商店后台。政策的联系章节提供 GitHub Issues（公开）和 knothhe@gmail.com（私密）两个渠道。现有公开支持入口为 [GitHub Issues](https://github.com/knothhe/passpine/issues)，不要在此提交秘密。
 2. **配套客户端下载。** 在审核说明填入本版本公开、可直接获取的安装包固定 URL，说明平台与安装限制。源码仓库链接不等于已验证可用的安装包。
 3. **商店扩展 ID。** 首次创建草稿后比较后台 Item ID 与当前开发 ID `obnlebeedcbbchadakacilopfdaifgjh`。若不同，按 [官方流程](https://developer.chrome.com/docs/extensions/reference/manifest/key)同步扩展公钥及客户端 Host 允许来源，重新构建、安装并测试真实连接。不能假定开发 key 已绑定商店条目。
 4. **最终实机验收。** 图片已生成并检查，均使用虚构数据。使用最终商店 ID 和对应客户端完成审核指南中的连接、复制、填充、锁定和恢复流程，并记录实际结果。
