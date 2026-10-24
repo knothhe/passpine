@@ -398,10 +398,10 @@ test('Linux development installer writes a desktop entry with escaped executable
   const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-install-')));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const root = path.join(directory, 'repo');
-  for (const dir of ['scripts', 'dist/dev', 'client/assets/dev/monochrome', 'browser', 'tools']) fs.mkdirSync(path.join(root, dir), { recursive: true });
-  for (const script of ['install-client.sh', 'client-installation.mjs', 'build-channel.mjs', 'version.mjs', 'release-notes.mjs', 'release.mjs', 'release-artifacts.mjs', 'update-artifacts.mjs']) {
-    fs.copyFileSync(path.join(scriptsDir, script), path.join(root, 'scripts', script));
-  }
+  for (const dir of ['dist/dev', 'client/assets/dev/monochrome', 'browser', 'tools']) fs.mkdirSync(path.join(root, dir), { recursive: true });
+  // Copy every script rather than a hand-kept list, so a new helper used by
+  // the installer cannot be missing from the fixture.
+  fs.cpSync(scriptsDir, path.join(root, 'scripts'), { recursive: true });
   for (const name of ['package.json', 'browser/package.json']) fs.writeFileSync(path.join(root, name), '{"version":"0.1.0"}\n');
   for (const binary of ['passpine', 'passpine-host']) fs.writeFileSync(path.join(root, 'dist/dev', binary), '#!/bin/sh\ncase "$1" in\n  --build-channel) printf "dev\\n" ;;\n  --register) printf "%s\\n" "$1" > "$PASSPINE_TEST_REGISTER_LOG" ;;\n  *) exit 99 ;;\nesac\n', { mode: 0o755 });
   // Every executable used by installation is a fixture; no user host or
