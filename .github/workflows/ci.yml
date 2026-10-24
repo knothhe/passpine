@@ -169,7 +169,9 @@ jobs:
 
       - name: Verify isolated Linux Dev install and uninstall
         if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum node scripts/verify-dev-installation.mjs --run
+        run: |
+          xvfb-run --auto-servernum env PASSPINE_NATIVE_SMOKE=1 go -C client test -run '^TestNativePreviewStartup$' ./cmd/passpine
+          xvfb-run --auto-servernum node scripts/verify-dev-installation.mjs --run
 
       - name: Verify isolated macOS and Windows Dev install and uninstall
         if: runner.os != 'Linux'

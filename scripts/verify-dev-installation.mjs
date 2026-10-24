@@ -55,6 +55,15 @@ try {
   if (crypto.createHash('sha256').update(fs.readFileSync(sentinel)).digest('hex') !== sentinelHash) throw new Error('Uninstall changed user data.');
   fs.writeFileSync(path.join(root, 'result.json'), JSON.stringify({ platform: process.platform, metadata, install: true, nativeStartup: true, gracefulExit: true, repeatedUninstall: true, userDataPreserved: true }, null, 2));
   console.log(`Dev installation acceptance passed: ${root}`);
+} catch (error) {
+  // This is the exact synthetic test child, never a user installation. A Go
+  // stack dump exposes native-loop deadlocks instead of leaving only a timeout.
+  if (process.platform === 'linux' && !exited) {
+    child.kill('SIGQUIT');
+    await Promise.race([new Promise(resolve => child.once('exit', resolve)), pause(2000)]);
+  }
+  console.error(fs.readFileSync(path.join(root, 'native.log'), 'utf8').slice(-128 * 1024));
+  throw error;
 } finally {
   // Never force-stop a user process. The exact test child is the only fallback.
   if (!exited) { try { run(layout.executable, ['--quit-for-uninstall']); } catch { /* Keep diagnostics on failure. */ } }
