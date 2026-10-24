@@ -232,6 +232,17 @@ a.text-button { text-decoration: none; }
 .batch-subtitle { margin-top: 4px; color: var(--muted); font-size: 12.5px; line-height: 20px; }
 .batch-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 24px; }
 .batch-actions .button { min-height: 34px; }
+/* Moving happens in the panel itself: heading with the secondary trash action, then the folder tree. */
+.selection-panel { display: flex; flex: 1; flex-direction: column; max-width: 608px; min-height: 0; }
+.selection-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; }
+.selection-heading h2 { font-size: 24px; font-weight: 700; line-height: 32px; }
+.button.quiet { border-color: transparent; background: transparent; }
+.button.quiet:hover { background: var(--hover); }
+.move-section { display: flex; flex: 1; flex-direction: column; min-height: 0; margin-top: 20px; }
+.section-label { margin-bottom: 10px; color: var(--muted); font-size: 11px; font-weight: 500; line-height: 17px; }
+.move-section .folder-search { margin: 0 0 8px; }
+.move-section > .inline-notice { margin-top: 10px; }
+.move-footer { display: flex; flex: none; justify-content: flex-end; margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
 .empty-state { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; min-height: 290px; padding: 50px 36px; text-align: center; }
 .empty-symbol { display: flex; align-items: center; justify-content: center; margin-bottom: 14px; color: var(--muted); }
 .empty-symbol .icon { width: 30px; height: 30px; }
@@ -273,8 +284,15 @@ dialog.modal::backdrop { background: var(--scrim); }
 .modal-footer { display: flex; flex: none; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 4px 24px 20px; background: var(--surface); }
 .modal-footer > .muted { flex: 1; font-size: 11px; }
 .folder-search { position: relative; margin: 0 0 9px; }
-.folder-list { max-height: 264px; overflow: hidden auto; margin: 0 -6px; padding: 0 6px; }
+.folder-list { flex: 1; min-height: 180px; overflow: hidden auto; margin: 0 -6px; padding: 0 6px 4px; }
 .folder-option { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 37px; border: 1px solid transparent; border-radius: 4px; padding: 7px 9px; background: transparent; font-size: 12px; line-height: 20px; }
+.folder-node { display: flex; align-items: center; gap: 2px; padding-left: calc(var(--depth, 0) * 20px); }
+.folder-node > .folder-option { flex: 1; min-width: 0; }
+.folder-toggle { display: inline-flex; flex: none; width: 20px; height: 28px; align-items: center; justify-content: center; border: 0; border-radius: 4px; padding: 0; background: transparent; color: var(--muted); }
+button.folder-toggle:hover { background: var(--hover); color: var(--fg); }
+.folder-toggle .icon { width: 13px; height: 13px; transition: transform 120ms ease; }
+.folder-toggle[aria-expanded="true"] .icon { transform: rotate(90deg); }
+.folder-list.flat .folder-toggle { display: none; }
 .folder-option > .icon:first-child { width: 16px; height: 16px; color: var(--muted); }
 .folder-option > :not(.icon) { flex: 1; min-width: 0; }
 .folder-option > .icon:last-child { width: 14px; height: 14px; }
