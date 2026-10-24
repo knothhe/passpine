@@ -67,6 +67,8 @@ pnpm --dir website run sync:releases
 
 快照存放在 `src/data/release.json`，通过与在线数据相同的校验规则读取。`make website:sync` 运行 `scripts/sync-release.mjs`，仅在获取并验证成功后更新快照。网络失败、GitHub 限流或数据无效时同步会报错，并保留原文件；部署命令会在构建前运行相同同步步骤，同步失败时终止部署。
 
+同步脚本优先使用环境变量 `GH_TOKEN`，其次使用 `GITHUB_TOKEN`；未设置 Token 时尝试通过本机已登录的 GitHub CLI（`gh api --hostname github.com`）请求，CLI 不可用或请求失败才使用匿名 API。匿名请求容易受到共享出口 IP 的限流，遇到 HTTP 403/429 时可先执行 `gh auth login --hostname github.com`，或在部署环境中配置仅有公开仓库读取权限的 Token。错误会显示 HTTP 状态码，以及 GitHub 提供的限流重置时间和重试间隔；显式配置的 Token 无效时直接报错。Token 仅用于 Node 同步进程，不写入快照或前端构建产物。
+
 安装后的平台依赖、签名限制和扩展加载步骤以[本地安装文档](../docs/install-local.md)为准。
 
 ## 部署到 Cloudflare
