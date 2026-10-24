@@ -1,7 +1,7 @@
 {
-  "version": "0.1.2",
-  "capturedAt": "2026-10-22T13:41:06.309Z",
-  "browser": "153.0.8010.12",
+  "version": "0.1.7",
+  "capturedAt": "2026-10-24T05:19:30.449Z",
+  "browser": "156.0.8078.4",
   "extensionId": "obnlebeedcbbchadakacilopfdaifgjh",
   "fixtures": "scripts/store-demo/main.go; all generated data is disposable; no personal vault/profile used",
   "records": [
