@@ -58,6 +58,6 @@ node scripts/capture-store-screenshots.mjs
 
 ## 扩展 ZIP
 
-[passpine-0.1.7-chrome.zip](package/passpine-0.1.7-chrome.zip) 是此次本地构建的 Chrome 安装包，`manifest.json` 位于 ZIP 根目录，已核对无源码、测试服务、浏览器 profile 或私钥。只有这个扩展 ZIP 用于商店 Package 上传；文案、政策和图片分别填写或上传。
+[passpine-0.1.7-chrome.zip](package/passpine-0.1.7-chrome.zip) 是历史本地构建记录，`manifest.json` 位于 ZIP 根目录，无源码、测试服务、浏览器 profile 或私钥。该旧包包含 `key`，会被 Chrome Web Store 拒绝，不用于上传。
 
-重新打包可执行 `pnpm --dir browser exec wxt zip`，将新版本 Chrome ZIP 复制到 `package/`，同步所有材料的版本号并重新核对。首次草稿创建后，仍需确认商店分配的 ID 与客户端允许来源一致。
+重新打包在仓库根目录执行 `pnpm run package:browser`，使用生成的 `browser/.output/passpine-<版本>-chrome.zip`；商店配置会省略 `key`，本地解包构建仍保留公钥。更新存档时将新版本 ZIP 复制到 `package/`，同步校验和及材料版本并重新核对。首次草稿创建后，仍需确认商店分配的 ID 与客户端允许来源一致。

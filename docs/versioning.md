@@ -52,7 +52,7 @@ Linux 矩阵还在 Xvfb 中运行原生启动回归，确认 Dev 卸载控制端
 
 Linux 下载包解压到单独目录，运行 `bash install.sh`，默认安装到 `~/.local/bin`，也可传入其他绝对安装目录。安装器创建桌面菜单入口并注册 Host；目标系统需要 GTK 3 和 WebKitGTK 4.1，无需 Node.js。CI 构建不会安装到用户目录。
 
-macOS 沿用 ad-hoc 签名，未接入 Developer ID 公证；Windows 未接入 Authenticode 签名。扩展 ZIP 不自动提交商店或获取 Firefox 签名。WXT 关闭额外 sources ZIP 生成，GitHub 自动提供的 Source code 下载项不受影响。
+macOS 沿用 ad-hoc 签名，未接入 Developer ID 公证；Windows 未接入 Authenticode 签名。扩展 ZIP 不自动提交商店或获取 Firefox 签名。Chrome ZIP 使用独立商店配置，manifest 必须省略 `key`；本地解包构建保留公钥以固定 ID。发布暂存及汇总均直接检查 ZIP，拒绝任何包含 `key` 字段的 Chrome 包；Firefox 继续校验固定公钥及 Gecko ID。WXT 关闭额外 sources ZIP 生成，GitHub 自动提供的 Source code 下载项不受影响。
 
 各 job 将附件暂存到 `dist/releases/<版本>/`，生成独立的 `manifest-<目标>.json`，记录 tag、HEAD、版本、文件名、大小和 SHA-256。发布步骤要求完整且匹配的目标集合，只上传确切文件。manifest 保存在 Actions artifacts 中，不上传到 Release。
 
