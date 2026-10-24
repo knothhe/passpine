@@ -186,6 +186,13 @@ func Run(service *app.Service, version string, updateConfigs ...update.Config) e
 		})
 	})
 	service.SetClipboard(a.copyToClipboard)
+	var control *nativehost.Server
+	var controlErr error
+	defer func() {
+		if control != nil {
+			control.Close()
+		}
+	}()
 	mygo.App.WhenReady(func() {
 		a.initializing = true
 		if mygo.App.WasOpenedAtLogin() {
@@ -209,15 +216,18 @@ func Run(service *app.Service, version string, updateConfigs ...update.Config) e
 			a.startUpdates(updateConfig)
 		})
 		go a.clock()
+		// Publishing the endpoint admits uninstall requests. Wait for the
+		// native event loop so an early request cannot shut down the service
+		// before the ready callback has initialized its window and work.
+		control, controlErr = nativehost.StartDevelopmentControl(service.DataDirectory(), func() { a.runOnMain(a.requestQuit) })
+		if controlErr != nil {
+			a.requestQuit()
+		}
 	})
-	control, err := nativehost.StartDevelopmentControl(service.DataDirectory(), func() { a.runOnMain(a.requestQuit) })
-	if err != nil {
+	if err := mygo.App.Run(); err != nil {
 		return err
 	}
-	if control != nil {
-		defer control.Close()
-	}
-	return mygo.App.Run()
+	return controlErr
 }
 
 func newApplication(service Backend) *application {

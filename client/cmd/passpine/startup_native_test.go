@@ -22,6 +22,15 @@ import (
 func TestMain(m *testing.M) {
 	if directory := os.Getenv("PASSPINE_NATIVE_SMOKE_CHILD"); directory != "" {
 		os.Args = []string{"passpine", "--preview", "--data-dir", directory}
+		// Register before production's ready callback. The uninstall endpoint
+		// must not admit a quit while native startup has yet to run.
+		mygo.App.WhenReady(func() {
+			endpoint := filepath.Join(directory, "control", "browser-endpoint.json")
+			if _, err := os.Lstat(endpoint); !os.IsNotExist(err) {
+				fmt.Fprintln(os.Stderr, "Dev control endpoint was published before native readiness", err)
+				os.Exit(1)
+			}
+		})
 		var once sync.Once
 		mygo.App.OnWindowCreated(func(w *mygo.Window) {
 			w.OnShow(func() {
