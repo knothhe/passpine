@@ -28,6 +28,9 @@ type batchState struct {
 	list        components.ListState
 	progress    *batchProgress
 	result      *batchResult
+	// pending is the move or trash waiting for the vault to unlock; selection
+	// itself needs only entry paths, so it works while browsing locked.
+	pending string
 }
 
 type batchProgress struct {
@@ -51,7 +54,7 @@ func (f batchFailure) retryable() bool {
 }
 
 func (a *application) enterBatch() {
-	if a.editor.open || a.state.Locked {
+	if a.editor.open || a.state.Locked && !a.state.Settings.BrowseWhileLocked {
 		return
 	}
 	a.batch = batchState{active: true, selected: map[string]bool{}, collapsed: map[string]bool{}}
@@ -62,7 +65,66 @@ func (a *application) exitBatch() {
 	if a.batch.progress != nil {
 		return
 	}
+	if a.pendingUnlock.action == "batch" {
+		a.pendingUnlock = unlockAction{}
+	}
 	a.batch = batchState{}
+}
+
+// requestBatchUnlock keeps the selection and destination, and runs the action
+// once the vault unlocks. Cancelling returns to the selection panel.
+func (a *application) requestBatchUnlock(action string) {
+	if a.busy {
+		return
+	}
+	a.batch.pending = action
+	a.beginUnlock("batch")
+}
+
+func (a *application) cancelBatchUnlock() {
+	a.batch.pending = ""
+	if a.pendingUnlock.action == "batch" {
+		a.pendingUnlock = unlockAction{}
+	}
+}
+
+func (a *application) resumeBatchAction() bool {
+	action := a.batch.pending
+	a.batch.pending = ""
+	if !a.batch.active || a.page != "entries" {
+		return false
+	}
+	switch action {
+	case "move":
+		a.startBatchMove()
+	case "trash":
+		a.startBatchTrash()
+	case "retry":
+		a.retryBatch()
+	default:
+		return false
+	}
+	return true
+}
+
+// batchUnlockDescription tells what unlocking will do, next to the unlock form.
+func (a *application) batchUnlockDescription() string {
+	switch a.batch.pending {
+	case "trash":
+		return a.t("解锁后将 %d 项移到回收站。", len(a.selectedBatchEntries()))
+	case "retry":
+		retryable := 0
+		if a.batch.result != nil {
+			for _, failure := range a.batch.result.failures {
+				if failure.retryable() {
+					retryable++
+				}
+			}
+		}
+		return a.t("解锁后将重试 %d 项。", retryable)
+	}
+	ready, _, _ := a.batchMovePlan()
+	return a.t("解锁后将 %d 项移动到“%s”。", len(ready), a.batchFolderLabel(a.batch.destination))
 }
 
 func (a *application) resetBatchDestination() {
@@ -210,6 +272,10 @@ func (a *application) startBatchMove() {
 	if a.busy {
 		return
 	}
+	if a.state.Locked {
+		a.requestBatchUnlock("move")
+		return
+	}
 	ready, conflicts, _ := a.batchMovePlan()
 	destination := a.batch.destination
 	requests := make([]app.Request, 0, len(ready))
@@ -236,6 +302,10 @@ func (a *application) startBatchMove() {
 
 func (a *application) startBatchTrash() {
 	if a.busy {
+		return
+	}
+	if a.state.Locked {
+		a.requestBatchUnlock("trash")
 		return
 	}
 	chosen := a.selectedBatchEntries()
@@ -291,7 +361,11 @@ func (a *application) finishBatch(result batchResult, remaining map[string]bool)
 
 func (a *application) retryBatch() {
 	result := a.batch.result
-	if result == nil || result.action != "move" {
+	if result == nil || result.action != "move" || a.busy {
+		return
+	}
+	if a.state.Locked {
+		a.requestBatchUnlock("retry")
 		return
 	}
 	requests := []app.Request{}

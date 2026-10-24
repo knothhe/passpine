@@ -44,6 +44,8 @@ func (a *application) resumeUnlockAction() bool {
 			a.newEntry()
 			return true
 		}
+	case "batch":
+		return a.resumeBatchAction()
 	case "export":
 		if isPreferencesPage(a.page) {
 			a.exportKey()

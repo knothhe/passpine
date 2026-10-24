@@ -30,7 +30,7 @@ func (a *application) listView(c *ui.Context) {
 					components.Text(c, a.entriesCountLabel()).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 				})
 			})
-			if !a.state.Locked {
+			if !a.state.Locked || a.state.Settings.BrowseWhileLocked {
 				label := a.t("选择")
 				if a.batch.active {
 					label = a.t("取消")

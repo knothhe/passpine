@@ -28,12 +28,12 @@ func (a *application) managerColumnsView(c *ui.Context) {
 			ui.Column(c).Key("entry-inspector-column").Grow(1).MinWidth(managerDetailMinWidth).FillHeight().Children(func() {
 				ui.Column(c).Key("entry-inspector-body").Fill().MinWidth(0).Clip().Children(func() {
 					ui.Box(c).Absolute().Left(0).Top(0).Bottom(0).Width(1).Background(c.Theme().Border)
-					if a.state.Locked {
+					if a.batch.active && (!a.state.Locked || a.batch.pending == "") {
+						a.batchView(c)
+					} else if a.state.Locked {
 						a.unlockView(c)
 					} else if a.editor.open {
 						a.editorView(c)
-					} else if a.batch.active {
-						a.batchView(c)
 					} else {
 						a.detailView(c)
 					}
