@@ -87,6 +87,9 @@ func TestRegistrationRejectsStaleOrExpandedIdentitiesAndRepairs(t *testing.T) {
 	}
 	path := filepath.Join(targets[0].directory, Name+".json")
 	for name, change := range map[string]func(*hostManifest){
+		"old unpacked identity": func(m *hostManifest) {
+			m.AllowedOrigins = []string{"chrome-extension://obnlebeedcbbchadakacilopfdaifgjh/"}
+		},
 		"moved helper":           func(m *hostManifest) { m.Path += ".old" },
 		"wrong host":             func(m *hostManifest) { m.Name += ".other" },
 		"wrong type":             func(m *hostManifest) { m.Type = "http" },

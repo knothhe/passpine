@@ -68,4 +68,4 @@ Chrome 要求披露本地处理的数据，不能因为开发者没有服务器�
 1. 发布者在后台采用的所有数据类型、Limited Use 认证必须与实际运营实践一致。
 2. 将隐私政策公开并验证匿名访问，补齐可用的私密联系渠道；现有 Issues 链接仅适合不含敏感数据的公开反馈。
 3. 本包会在用户选择后向 HTTP 网页填充，界面显示 HTTP 提示，但不会强制 HTTPS。提交时如实保留该限制，结合实际目标网站评估 Chrome 的安全处理规则，不宣称全部传输强制加密。
-4. 上传 ZIP 必须省略 `key`。查看商店分配的 Item ID；若与当前 `obnlebeedcbbchadakacilopfdaifgjh` 不一致，按 [官方 key 流程](https://developer.chrome.com/docs/extensions/reference/manifest/key)获取商店公钥，同步本地解包构建的公钥、原生 `ChromiumID` 和 Host `allowed_origins` 后重新构建安装及端到端测试；上传包继续省略 `key`。不能仅修改商店文案。
+4. 上传 ZIP 必须省略 `key`。查看商店分配的 Item ID；若与当前 `aphkddfagflppihmghlcjpnkkdgbflnp` 不一致，按 [官方 key 流程](https://developer.chrome.com/docs/extensions/reference/manifest/key)获取商店公钥，同步本地解包构建的公钥、原生 `ChromiumID` 和 Host `allowed_origins` 后重新构建安装及端到端测试；上传包继续省略 `key`。不能仅修改商店文案。

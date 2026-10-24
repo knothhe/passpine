@@ -1,8 +1,8 @@
 # Passpine 隐私政策 / Privacy Policy
 
-公开的隐私政策已作为官网页面发布在 **`/privacy`**（例如 `https://<官网域名>/privacy`），是浏览器扩展、桌面客户端和官网共用的唯一正文，中英文随访客语言切换，未执行 JavaScript 时也能读到预渲染的正文。在 Chrome Web Store 后台填写该页面的 HTTPS 地址。
+公开的隐私政策已发布在 **<https://passpine.knothhe.com/privacy>**，是浏览器扩展、桌面客户端和官网共用的唯一正文，中英文随访客语言切换，未执行 JavaScript 时也能读到预渲染的正文。2026-10-25 已验证匿名 HTTP 200 并填入 Chrome Web Store 草稿。
 
-The public privacy policy is published on the website at **`/privacy`**. It is the single source covering the browser extension, desktop client, and website, available in English and Simplified Chinese. Use that page's HTTPS URL in the Chrome Web Store dashboard.
+The public privacy policy is published at **<https://passpine.knothhe.com/privacy>**. It is the single source covering the browser extension, desktop client, and website, available in English and Simplified Chinese. Anonymous access and the saved dashboard URL were verified on 2026-10-25.
 
 - 正文 / Text：[`website/src/constants/copy.ts`](../../website/src/constants/copy.ts) 中的 `privacy`
 - 更新日期与核对版本 / Date and reviewed version：[`website/src/constants/routes.ts`](../../website/src/constants/routes.ts) 中的 `privacyPolicy`

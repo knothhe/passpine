@@ -4,8 +4,9 @@
 
 ## 发布者提交前补齐
 
+- **2026-10-25 身份迁移：** 商店与源码现统一为 `aphkddfagflppihmghlcjpnkkdgbflnp`，隔离 macOS 连接已验证。已公开的 v0.1.9 及此前客户端仍使用旧授权 ID；必须先发布含修复的客户端，再替换下方历史 v0.1.7 下载链接和版本号。商店 0.1.9 已由发布者提交审核；修复客户端发布成功后更新后台测试说明，不撤回已有审核。
 - 桌面客户端下载已填入下方英文说明，指向已发布的 [v0.1.7 Release](https://github.com/knothhe/passpine/releases/tag/v0.1.7)（2026-10-23 核对为正式版、非草稿）。提交更新版本的扩展时，同步改为对应版本的 Release 和文件名。
-- 核对商店 Item ID、实际安装 ID、客户端 Native Host `allowed_origins` 一致。当前仓库开发 ID 为 `obnlebeedcbbchadakacilopfdaifgjh`，Host 为 `com.knothhe.passpine`。见 [官方 key 文档](https://developer.chrome.com/docs/extensions/reference/manifest/key)。
+- 核对商店 Item ID、实际安装 ID、客户端 Native Host `allowed_origins` 一致。当前仓库开发 ID 为 `aphkddfagflppihmghlcjpnkkdgbflnp`，Host 为 `com.knothhe.passpine`。见 [官方 key 文档](https://developer.chrome.com/docs/extensions/reference/manifest/key)。
 - 使用最终商店分配的扩展 ID、最终 ZIP 和正式分发的桌面安装包，复跑以下步骤并记录平台、Chrome 版本、日期与结果。这组完整安装、填充、复制、锁定和恢复路径仍待验收；已完成的实拍与 Native Messaging 连通不能替代完整流程。下方英文说明会粘贴到后台，不在其中写入发布者自己的验收状态。
 - 本产品不需要开发者账户、云 API Key、付费服务或现有 password-store。审核人员应创建自己的临时库；本文件中的虚构口令只供临时验收，不用于真实账号。
 

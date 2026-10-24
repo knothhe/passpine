@@ -73,13 +73,15 @@ func TestPersistentRelayAndOrigin(t *testing.T) {
 	if count != 3 {
 		t.Fatal(count)
 	}
-	out.Reset()
-	if e = ServeStdio(dir, []string{"chrome-extension://attacker/"}, bytes.NewReader(nil), &out); e != nil {
-		t.Fatal(e)
-	}
-	b, _ := ReadFrame(&out)
-	if !bytes.Contains(b, []byte("unauthorized")) {
-		t.Fatal(string(b))
+	for _, origin := range []string{"chrome-extension://attacker/", "chrome-extension://obnlebeedcbbchadakacilopfdaifgjh/"} {
+		out.Reset()
+		if e = ServeStdio(dir, []string{origin}, bytes.NewReader(nil), &out); e != nil {
+			t.Fatal(e)
+		}
+		b, _ := ReadFrame(&out)
+		if !bytes.Contains(b, []byte("unauthorized")) || count != 3 {
+			t.Fatalf("unauthorized origin %s reached the vault: %s", origin, b)
+		}
 	}
 	if _, e = Start(dir, func(r json.RawMessage) json.RawMessage { return r }); e == nil {
 		t.Fatal("allowed second instance")

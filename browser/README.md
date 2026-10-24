@@ -24,7 +24,7 @@ make -C .. browser:zip
 
 [本地安装、配置与浏览器加载说明](../docs/install-local.md)
 
-客户端设置 → 浏览器会检测已安装的浏览器，可逐项注册或修复本机 Native Messaging Host。扩展统一使用 Chrome ID `obnlebeedcbbchadakacilopfdaifgjh`、Firefox ID `passpine@knothhe.com`，输出为 `.output/chrome-mv3` 和 `.output/firefox-mv3`，名称始终为 Passpine。
+客户端设置 → 浏览器会检测已安装的浏览器，可逐项注册或修复本机 Native Messaging Host。扩展统一使用 Chrome ID `aphkddfagflppihmghlcjpnkkdgbflnp`、Firefox ID `passpine@knothhe.com`，输出为 `.output/chrome-mv3` 和 `.output/firefox-mv3`，名称始终为 Passpine。
 
 默认连接正式 Host `com.knothhe.passpine`。本地解包加载时，设置页可选择 Dev Host `com.knothhe.passpine.dev`；商店安装仅显示正式客户端说明，连接层也会忽略残留的 Dev 设置。安装来源通过无需额外权限的 `management.getSelf()` 检查，查询失败时固定正式目标。切换后旧连接及弹窗会话失效，不自动回退或重放旧操作。
 

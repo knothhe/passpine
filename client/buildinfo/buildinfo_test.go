@@ -1,11 +1,47 @@
 package buildinfo
 
 import (
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 )
+
+func TestBrowserPublicKeyAndNativeClientMatchChromeWebStore(t *testing.T) {
+	const storeID = "aphkddfagflppihmghlcjpnkkdgbflnp"
+	data, err := os.ReadFile(filepath.Join("..", "..", "config", "browser-identities.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var identities struct {
+		Release struct {
+			Key        string `json:"key"`
+			ChromiumID string `json:"chromiumID"`
+		} `json:"release"`
+	}
+	if err := json.Unmarshal(data, &identities); err != nil {
+		t.Fatal(err)
+	}
+	key, err := base64.StdEncoding.DecodeString(identities.Release.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := x509.ParsePKIXPublicKey(key); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(key)
+	var derived [32]byte
+	for i, value := range digest[:16] {
+		derived[i*2], derived[i*2+1] = 'a'+(value>>4), 'a'+(value&15)
+	}
+	if string(derived[:]) != storeID || identities.Release.ChromiumID != storeID || ReleaseChromiumID != storeID {
+		t.Fatalf("Chrome Web Store identity mismatch: public key=%s, browser=%s, native client=%s, store=%s", derived, identities.Release.ChromiumID, ReleaseChromiumID, storeID)
+	}
+}
 
 func testChannel(t *testing.T, channel string) {
 	t.Helper()
