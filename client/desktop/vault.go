@@ -30,7 +30,21 @@ func (a *application) listView(c *ui.Context) {
 					components.Text(c, a.entriesCountLabel()).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 				})
 			})
-			if iconButton(c, lucide.Plus(), a.t("新建条目"), components.ButtonGhost).Tooltip(a.t("新建条目")).Clicked() {
+			if !a.state.Locked {
+				label := a.t("选择")
+				if a.batch.active {
+					label = a.t("取消")
+				}
+				c.Key("batch-mode")
+				if components.Button(c, label, components.ButtonGhost).Disabled(a.busy || a.editor.open).Clicked() {
+					if a.batch.active {
+						a.exitBatch()
+					} else {
+						a.enterBatch()
+					}
+				}
+			}
+			if !a.batch.active && iconButton(c, lucide.Plus(), a.t("新建条目"), components.ButtonGhost).Tooltip(a.t("新建条目")).Clicked() {
 				a.newEntry()
 			}
 		})
@@ -63,6 +77,13 @@ func (a *application) listView(c *ui.Context) {
 						a.lastInput = time.Now()
 					}
 				}
+			})
+		} else if a.batch.active {
+			ui.Column(c).FillWidth().Grow(1).MinHeight(0).Margin(-8, 0, 0, 0).Children(func() {
+				a.batchSelectAllRow(c)
+				components.List(c, &a.batch.list, len(a.filtered), func(i int) {
+					a.batchEntryRow(c, a.filtered[i])
+				}).Grow(1).FillWidth()
 			})
 		} else {
 			components.List(c, &a.list, len(a.filtered), func(i int) {

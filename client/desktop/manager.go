@@ -32,6 +32,8 @@ func (a *application) managerColumnsView(c *ui.Context) {
 						a.unlockView(c)
 					} else if a.editor.open {
 						a.editorView(c)
+					} else if a.batch.active {
+						a.batchView(c)
 					} else {
 						a.detailView(c)
 					}
@@ -125,6 +127,8 @@ func (a *application) navigateManager(filter string) {
 		return
 	}
 	if a.page != "entries" || a.filter != filter {
+		// Selection belongs to one folder's list; switching folders clears it.
+		a.exitBatch()
 		a.navigate("entries", filter)
 		a.query = ""
 		a.dropDetail()
@@ -145,6 +149,7 @@ func (a *application) navigateRecovery(kind int) {
 		return
 	}
 	if a.page != "recovery" || a.recoveryKind != kind {
+		a.exitBatch()
 		a.recoveryKind = kind
 		a.recovery = nil
 		a.recoverySelection, a.restoreDestination = "", ""
