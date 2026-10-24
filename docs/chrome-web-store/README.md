@@ -20,10 +20,12 @@
 ### 2026-10-25：商店身份与连接
 
 - 商店 Item ID 为 `aphkddfagflppihmghlcjpnkkdgbflnp`。从后台 Package → View public key 取得公钥，按 SHA-256 推导 ID，已同步 `config/browser-identities.json`、客户端 `ReleaseChromiumID`、本地预览与截图脚本。原生注册与来源校验只接受新 ID；旧开发 ID `obnlebeedcbbchadakacilopfdaifgjh` 的拒绝及注册修复已有回归覆盖。
-- 使用后台下载的 0.1.9 草稿 CRX 验证，SHA-256 为 `c0f0c04b0b0b48d26796652cfcaf43ef08511a371370b7df6ee254cfe2ec8b42`。其业务文件与当前商店 ZIP 一致；商店额外添加 `update_url` 和 `_metadata`。在临时解包副本中仅补入商店公钥，以固定未发布扩展的测试 ID；没有安装到个人浏览器。
+- 使用后台下载的 0.1.9 草稿 CRX 验证，SHA-256 为 `c0f0c04b0b0b48d26796652cfcaf43ef08511a371370b7df6ee254cfe2ec8b42`。其业务文件与当时本地 0.1.9 商店 ZIP 一致；商店额外添加 `update_url` 和 `_metadata`。在临时解包副本中仅补入商店公钥，以固定未发布扩展的测试 ID；没有安装到个人浏览器。
 - macOS arm64、Chrome for Testing 153.0.8010.12、全新临时 profile、真实 Go `app.Service` / Native Host、隔离加密库和五个虚构账号：设置页检查连接、真实工具栏弹窗列出账号、解密详情、锁定后拒绝读取以及客户端退出后的断连提示均通过。Go fixture 使用正式 Host 通道，不是已发布客户端安装包；测试配置、库与密钥已清理。
-- **公开客户端仍需更新。** 已发布的 v0.1.9 及此前客户端仍授权旧 ID。源码修正不会改变公开安装包，须按现有发布流程发布带本次修复的客户端、更新审核下载地址，并补做最终安装路径验收。发布者已将商店 0.1.9 提交审核；客户端下载地址将在修复版本发布成功后更新。Windows/Linux 原生连接未在本机验证。
-- 中英文介绍、各三张截图、图标、宣传图、权限与数据声明以及测试说明已保存到后台草稿。分发沿用免费、公开和全部地区。官网为 <https://passpine.knothhe.com/>，隐私政策为 <https://passpine.knothhe.com/privacy>；后者已用不带凭据的请求确认 HTTP 200 并包含政策正文，两项已填入后台。
+- **修复客户端已发布 v0.1.10。** [Release](https://github.com/knothhe/passpine/releases/tag/v0.1.10) 对应提交 `f619efcb1dabb053c69cf67e002fc50899452f2a`；[Release Actions](https://github.com/knothhe/passpine/actions/runs/40118735286) 的 macOS arm64、Linux amd64、Windows amd64 源码检查、构建及原生安装/启动/正常退出/重复卸载/数据保留验收，以及 `publish`、`homebrew` 均成功。六个附件已逐个匿名下载，大小与 SHA-256 和同一提交的 Actions 来源 manifest 一致；Feed 固定公钥验签、三端包引用、默认更新地址以及 Homebrew cask 的版本与哈希均通过核对。
+- 公开的 v0.1.10 macOS Native Host 已与后台下载的 0.1.9 CRX 在独立 Chrome for Testing profile 中复验连接、列出账号、解密详情、锁定拒绝读取和退出断连，全部通过；Host 的版本、正式通道、构建提交和 GitHub Actions 来源均核对一致。Windows/Linux 的真实浏览器扩展联通未在本机验证，原生系统验收以各 runner 结果为准。
+- v0.1.9 及此前客户端仍使用旧授权，升级后须在设置 → 浏览器注册或修复连接。商店扩展 0.1.9 保持 Pending review，Test instructions 已改为 v0.1.10 客户端链接，没有撤回、重新提交或替换扩展包。
+- 中英文介绍、各三张截图、图标、宣传图、权限与数据声明以及测试说明已保存到后台。分发沿用免费、公开和全部地区。官网为 <https://passpine.knothhe.com/>，隐私政策为 <https://passpine.knothhe.com/privacy>；后者已用不带凭据的请求确认 HTTP 200 并包含政策正文，两项已填入后台。
 
 ### 历史材料与构建
 
@@ -37,8 +39,8 @@
 ## 提交前的必要补项
 
 1. **公开隐私政策（已完成）。** <https://passpine.knothhe.com/privacy> 已验证无需登录可访问并填入后台，见 [PRIVACY.md](PRIVACY.md)。政策提供 GitHub Issues（公开）和 knothhe@gmail.com（私密）两个渠道，不要在 Issues 提交秘密。
-2. **截图与客户端下载。** 中英文截图已按 0.1.7 重拍（含新的“填充账号与密码 / Fill login”按钮），配套客户端下载地址已按 v0.1.7 Release 填入[审核说明](reviewer-instructions.md)。扩展尚未在商店发布，提交时若扩展版本已更新，同步重拍并更新这两项。
-3. **商店扩展 ID（源码与隔离连接已修正）。** 商店、解包构建与客户端现统一为 `aphkddfagflppihmghlcjpnkkdgbflnp`，上传 ZIP 继续省略 `key`。发布修正后的客户端后，已有安装须在设置 → 浏览器修复 Host 注册；旧版客户端的来源校验也需要更新，单独编辑注册 JSON 无法完成迁移。
+2. **截图与客户端下载。** 中英文截图仍为 0.1.7 的账号列表、详情和生成器实拍，这些界面在审核版 0.1.9 中未改动。[审核说明](reviewer-instructions.md)及后台客户端入口已更新为 v0.1.10；客户端与扩展按协议兼容，不要求产品版本号相同。
+3. **商店扩展 ID（源码与隔离连接已修正）。** 商店、解包构建与客户端现统一为 `aphkddfagflppihmghlcjpnkkdgbflnp`，上传 ZIP 继续省略 `key`。v0.1.10 已包含修正，已有安装升级后须在设置 → 浏览器修复 Host 注册；旧版客户端的来源校验也需要更新，单独编辑注册 JSON 无法完成迁移。
 4. **最终实机验收。** 图片已生成并检查，均使用虚构数据。使用最终商店 ID 和对应客户端完成审核指南中的连接、复制、填充、锁定和恢复流程，并记录实际结果。
 5. **后台信息。** 完成发布者账户要求、类别、分发范围、价格、数据类型、Limited Use 认证和测试说明。对 HTTP 填充等限制如实说明；根据实际网站和运营情况确认安全处理要求。
 
