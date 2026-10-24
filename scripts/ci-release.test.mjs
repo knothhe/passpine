@@ -132,7 +132,8 @@ function createPackage(root, name, version = '0.1.6') {
     const browser = name.startsWith('passpine-');
     const entry = browser ? 'manifest.json' : 'Passpine.app/Contents/Info.plist';
     fs.mkdirSync(path.dirname(path.join(input, entry)), { recursive: true });
-    fs.writeFileSync(path.join(input, entry), browser ? JSON.stringify({ version, key: browserIdentity.key, browser_specific_settings: { gecko: { id: browserIdentity.firefoxID } } }) : `<plist><key>CFBundleIdentifier</key><string>com.knothhe.passpine</string><key>CFBundleShortVersionString</key>\n<string>${version}</string><key>CFBundleVersion</key>\n<string>${version}</string></plist>`);
+    const manifest = { version, ...(name.endsWith('-firefox.zip') ? { key: browserIdentity.key, browser_specific_settings: { gecko: { id: browserIdentity.firefoxID } } } : {}) };
+    fs.writeFileSync(path.join(input, entry), browser ? JSON.stringify(manifest) : `<plist><key>CFBundleIdentifier</key><string>com.knothhe.passpine</string><key>CFBundleShortVersionString</key>\n<string>${version}</string><key>CFBundleVersion</key>\n<string>${version}</string></plist>`);
     execFileSync('zip', ['-q', filename, entry], { cwd: input });
   }
   const bytes = fs.readFileSync(filename);
@@ -208,9 +209,9 @@ test('publication rejects changed packages, another commit and duplicate or unex
   assert.throws(() => collectPackages('v0.1.6', directory, root), /checksum mismatch/);
 });
 
-test('release validation rejects Dev browser and macOS identities with a stable version', archiveTest, t => {
+test('release validation rejects Dev Firefox and macOS identities with a stable version', archiveTest, t => {
   const { root } = fixture(t);
-  for (const name of ['passpine-0.1.6-chrome.zip', 'passpine-0.1.6-firefox.zip', 'Passpine-0.1.6-macos-arm64.zip']) {
+  for (const name of ['passpine-0.1.6-firefox.zip', 'Passpine-0.1.6-macos-arm64.zip']) {
     createPackage(root, name);
     const archive = path.join(root, 'packages', name);
     validatePackage(archive, '0.1.6');
@@ -220,13 +221,28 @@ test('release validation rejects Dev browser and macOS identities with a stable 
     const contents = fs.readFileSync(source, 'utf8');
     if (browser) {
       const manifest = JSON.parse(contents);
-      if (name.endsWith('firefox.zip')) manifest.browser_specific_settings.gecko.id = 'passpine-dev@knothhe.com';
-      else manifest.key = 'dev-public-key';
+      manifest.browser_specific_settings.gecko.id = 'passpine-dev@knothhe.com';
       fs.writeFileSync(source, JSON.stringify(manifest));
     } else fs.writeFileSync(source, contents.replace('com.knothhe.passpine</string>', 'com.knothhe.passpine.dev</string>'));
     fs.rmSync(archive);
     execFileSync('zip', ['-qr', archive, '.'], { cwd: path.join(root, 'input') });
     assert.throws(() => validatePackage(archive, '0.1.6'), /release identity/);
+  }
+});
+
+test('Chrome release archives accept an omitted key and reject any key field', archiveTest, t => {
+  const { root } = fixture(t);
+  const name = 'passpine-0.1.6-chrome.zip';
+  createPackage(root, name);
+  const archive = path.join(root, 'packages', name);
+  validatePackage(archive, '0.1.6');
+  const source = path.join(root, 'input', 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(source, 'utf8'));
+  for (const key of [browserIdentity.key, 'dev-public-key', '', null]) {
+    fs.writeFileSync(source, JSON.stringify({ ...manifest, key }));
+    fs.rmSync(archive);
+    execFileSync('zip', ['-q', archive, 'manifest.json'], { cwd: path.join(root, 'input') });
+    assert.throws(() => validatePackage(archive, '0.1.6'), /must omit manifest\.key/);
   }
 });
 
