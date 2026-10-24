@@ -1,6 +1,7 @@
 param([string]$InstallDirectory = '')
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'windows-client-command.ps1')
 $registration = 'HKCU:\Software\Passpine Dev'
 if (-not (Test-Path -LiteralPath $registration)) {
     if ($InstallDirectory) {
@@ -22,10 +23,10 @@ $marker = Join-Path $directory 'build-channel.ini'
 if (-not (Test-Path -LiteralPath $marker) -or (Get-Content -LiteralPath $marker -Raw) -notmatch '(?m)^channel=dev\s*$') { throw 'The installed channel is not Dev.' }
 $client = Join-Path $directory 'passpine.exe'
 if (Test-Path -LiteralPath $client) {
-    $channel = & $client --build-channel
-    if ($LASTEXITCODE -ne 0 -or $channel -ne 'dev') { throw 'Refusing a non-Dev executable.' }
-    & $client --quit-for-uninstall
-    if ($LASTEXITCODE -ne 0) { throw 'Finish pending edits and quit the Dev application before retrying.' }
+    $channel = Invoke-PasspineClientCommand -FilePath $client -Argument '--build-channel'
+    if ($channel.ExitCode -ne 0 -or $channel.Output -ne 'dev') { throw 'Refusing a non-Dev executable.' }
+    $quit = Invoke-PasspineClientCommand -FilePath $client -Argument '--quit-for-uninstall'
+    if ($quit.ExitCode -ne 0) { throw 'Finish pending edits and quit the Dev application before retrying.' }
 }
 $running = Get-Process | Where-Object { $_.Path -and ($_.Path -eq $client -or $_.Path -eq (Join-Path $directory 'passpine-host.exe')) }
 if ($running) { throw 'The installed Dev process or helper is still running. Close it and retry.' }
