@@ -161,6 +161,9 @@ func (a *application) navigateSettingsCategory(category string) {
 		a.hidePreferences()
 	}
 	a.settingsState.Category, a.settingsState.Query = category, ""
+	if category == "cli" {
+		a.manageCLI("status")
+	}
 	a.closeNavigationOverlay()
 	a.invalidate()
 }

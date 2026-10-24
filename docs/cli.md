@@ -10,7 +10,11 @@ passpine generate -n web/example 32
 
 ## 安装与 pass 别名
 
-Linux 安装脚本已将 `passpine` 放入 `~/.local/bin`。macOS 需要先在终端运行一次应用包内的程序以创建命令链接：
+macOS / Linux 可在客户端 **设置 → 命令行** 中管理命令链接。进入命令行设置会检查当前应用的主命令与 `pass` 别名，点击右上角的**刷新状态**按钮可重新读取；**安装命令** 默认只安装主命令，勾选 **同时安装 pass 别名** 后再安装，会同时创建 `pass`。更改此选择本身不会修改命令链接，也不会删除已有别名。
+
+**卸载** 会移除指向当前应用的主命令和 `pass` 符号链接，保留其他程序、其他通道的链接和应用可执行文件。Dev 版使用 `passpine-dev`，正式版使用 `passpine`；两者共用的 `pass` 别名不会互相覆盖。预览模式不操作命令链接；Windows 显示暂不支持说明。
+
+Linux 安装脚本已将 `passpine` 放入 `~/.local/bin`，设置中会将该可执行文件标为“已安装”，状态提示会说明“由应用安装器提供”，不会通过此页面的卸载操作删除它。macOS 也可以在终端运行一次应用包内的程序以创建命令链接（按实际安装位置调整路径）：
 
 ```sh
 "/Applications/Passpine.app/Contents/MacOS/passpine" cli install

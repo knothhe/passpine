@@ -173,7 +173,7 @@ func (a *application) updateError(code string) string {
 }
 
 func (a *application) updateInstallBlocked() bool {
-	return a.closing || a.busy || a.gitActionPending || a.state.GitSyncing || a.settingsSaving || a.settingsDirty || a.gitRemoteSaving || !a.gitRemoteSaveAt.IsZero() || a.editor.open && a.editor.dirty() || a.discardOpen || a.generator.open || a.backupOpen || a.purgeOpen || a.deleteOpen
+	return a.closing || a.busy || a.cli.operation != "" || a.gitActionPending || a.state.GitSyncing || a.settingsSaving || a.settingsDirty || a.gitRemoteSaving || !a.gitRemoteSaveAt.IsZero() || a.editor.open && a.editor.dirty() || a.discardOpen || a.generator.open || a.backupOpen || a.purgeOpen || a.deleteOpen
 }
 
 func (a *application) requestUpdateInstall() {
