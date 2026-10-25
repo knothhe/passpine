@@ -23,7 +23,7 @@ const requireThat = (condition, message) => { if (!condition) throw new Error(me
 const sha256 = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 
 export function readSigningConfig(filename = defaultConfigPath) {
-  requireThat(fs.existsSync(filename), 'macOS release signing is not configured: run `node scripts/macos-signing.mjs generate` once and store the identity in the Actions secrets.');
+  requireThat(fs.existsSync(filename), 'macOS release signing is not configured: run `node scripts/macos-signing.mjs` once to create or choose the identity and upload the Actions secrets.');
   const config = JSON.parse(fs.readFileSync(filename, 'utf8'));
   requireThat(config && typeof config === 'object' && Object.keys(config).sort().join(',') === 'certificateSHA256,schema', 'macOS signing configuration must contain only schema and certificateSHA256.');
   requireThat(config.schema === 1 && /^[a-f0-9]{64}$/.test(config.certificateSHA256), 'Invalid macOS signing configuration.');
@@ -71,7 +71,7 @@ export function assertCertificateRequirement(requirement) {
 export function generate({ output = defaultIdentityDir, config = defaultConfigPath, force = false, now = new Date() } = {}) {
   const files = ['certificate.pem', 'identity.p12', 'identity-password'].map(name => path.join(output, name));
   const existing = files.filter(file => fs.existsSync(file));
-  requireThat(force || (!fs.existsSync(config) && !existing.length), `A macOS signing identity already exists (${fs.existsSync(config) ? 'config/macos-signing.json is pinned' : output}). Use \`upload\` to reuse a keychain identity, or \`generate --force\` to replace it; replacing changes the app identity for every installed client.`);
+  requireThat(force || (!fs.existsSync(config) && !existing.length), `A macOS signing identity already exists (${fs.existsSync(config) ? 'config/macos-signing.json is pinned' : output}). Run \`node scripts/macos-signing.mjs\` to reuse or replace it; replacing changes the app identity for every installed client.`);
   fs.mkdirSync(output, { recursive: true, mode: 0o700 });
   fs.chmodSync(output, 0o700);
   let replaced;
@@ -161,49 +161,119 @@ function keychainIdentities() {
   return keychains.flatMap(keychain => parseIdentityList(security('find-identity', '-p', 'codesigning', keychain)).map(identity => ({ ...identity, keychain })));
 }
 
-// Uploads an existing keychain identity as the release signing secrets and
-// pins its certificate. Runs interactively on the maintainer's Mac.
-export async function uploadKeychainIdentity({ repository = 'knothhe/passpine', config = defaultConfigPath } = {}) {
-  requireThat(process.platform === 'darwin', 'Uploading a keychain identity requires macOS.');
-  execFileSync('gh', ['auth', 'status'], { stdio: 'ignore' });
+function uploadSecrets(repository, identity, password) {
+  execFileSync('gh', ['secret', 'set', certificateEnv, '--repo', repository], { input: identity.toString('base64'), stdio: ['pipe', 'inherit', 'inherit'] });
+  execFileSync('gh', ['secret', 'set', passwordEnv, '--repo', repository], { input: password, stdio: ['pipe', 'inherit', 'inherit'] });
+}
+
+const writePin = (config, fingerprint) => fs.writeFileSync(config, `${JSON.stringify({ schema: 1, certificateSHA256: fingerprint }, null, 2)}\n`);
+
+// Reads the identity kept by `generate`, if any, and whether it is the pinned one.
+export function localIdentity(output = defaultIdentityDir, pinned) {
+  const files = { certificate: path.join(output, 'certificate.pem'), identity: path.join(output, 'identity.p12'), password: path.join(output, 'identity-password') };
+  if (!Object.values(files).every(file => fs.existsSync(file))) return undefined;
+  const fingerprint = certificateFingerprint(fs.readFileSync(files.certificate));
+  return { ...files, fingerprint, pinned: fingerprint === pinned };
+}
+
+// The setup menu offers only actions that make sense for the current state.
+export function setupChoices({ pinned, local, platform = process.platform }) {
+  const choices = [];
+  if (local && (!pinned || local.pinned)) choices.push({ action: 'reupload', label: `Upload the local identity in ${path.dirname(local.identity)}${pinned ? '' : ' and pin it'}` });
+  if (platform === 'darwin') choices.push({ action: 'keychain', label: 'Choose an existing code-signing identity from the macOS keychain' });
+  choices.push({ action: 'generate', label: pinned ? 'Generate a new self-signed identity and replace the pinned one' : 'Generate a new self-signed identity' });
+  return choices;
+}
+
+async function confirmReplacement(prompt, pinned, fingerprint) {
+  if (!pinned || pinned === fingerprint) return;
+  console.log(`\nThis replaces the pinned certificate ${pinned}.\nEvery installed client will see a new app identity once; login items may need approval again.`);
+  requireThat((await prompt.question('Type replace to continue: ')).trim() === 'replace', 'Cancelled; nothing was changed.');
+}
+
+async function chooseKeychainIdentity(prompt) {
   const identities = keychainIdentities();
   requireThat(identities.length, 'No code-signing identity was found in the keychain search list.');
-  const prompt = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-signing-upload-'));
+  console.log('');
+  identities.forEach((identity, index) => console.log(`${index + 1}) ${identity.name}${identity.status ? ` (${identity.status})` : ''}\n   ${identity.hash}  ${identity.keychain}`));
+  const choice = Number(await prompt.question('Select a signing certificate: '));
+  requireThat(Number.isInteger(choice) && identities[choice - 1], 'No signing certificate selected.');
+  return identities[choice - 1];
+}
+
+// Exports one keychain identity as a fresh PKCS#12 with a random password.
+// `security export` cannot pick one identity, so the full export stays in a
+// private temporary directory and only the selected pair is repacked.
+function exportKeychainIdentity(identity, work) {
+  const exportPassword = crypto.randomBytes(24).toString('base64url'), password = crypto.randomBytes(32).toString('base64url');
+  const files = Object.fromEntries(['all.p12', 'export-password', 'certificate.pem', 'key.pem', 'identity.p12', 'password'].map(name => [name, path.join(work, name)]));
+  fs.writeFileSync(files['export-password'], exportPassword, { mode: 0o600 });
+  fs.writeFileSync(files.password, password, { mode: 0o600 });
+  console.log('macOS may ask for permission to export the keychain private keys.');
+  execFileSync('/usr/bin/security', ['export', '-k', identity.keychain, '-t', 'identities', '-f', 'pkcs12', '-P', exportPassword, '-o', files['all.p12']], { stdio: ['ignore', 'ignore', 'inherit'] });
+  const openssl = args => execFileSync('/usr/bin/openssl', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const selected = selectIdentity(openssl(['pkcs12', '-in', files['all.p12'], '-nodes', '-passin', `file:${files['export-password']}`]), identity.hash);
+  fs.writeFileSync(files['certificate.pem'], selected.certificate, { mode: 0o600 });
+  fs.writeFileSync(files['key.pem'], selected.key, { mode: 0o600 });
+  openssl(['pkcs12', '-export', '-inkey', files['key.pem'], '-in', files['certificate.pem'], '-out', files['identity.p12'], '-name', identity.name,
+    '-passout', `file:${files.password}`, '-keypbe', 'PBE-SHA1-3DES', '-certpbe', 'PBE-SHA1-3DES']);
+  const certificate = new crypto.X509Certificate(selected.certificate);
+  if (Date.parse(certificate.validTo) < Date.now()) console.log(`Warning: this certificate expired on ${certificate.validTo}.`);
+  console.log(`\nCertificate: ${certificate.subject.replaceAll('\n', ', ')}`);
+  return { fingerprint: certificateFingerprint(certificate.raw), identity: fs.readFileSync(files['identity.p12']), password };
+}
+
+// Interactive maintainer setup: pick or create the release identity, upload
+// both Actions secrets through gh and keep config/macos-signing.json in sync.
+export async function setup({ config = defaultConfigPath, output = defaultIdentityDir } = {}) {
+  requireThat(process.stdin.isTTY && process.stdout.isTTY, 'Signing setup is interactive; run it in a terminal.');
+  execFileSync('gh', ['auth', 'status'], { stdio: 'ignore' });
+  const terminal = readline.createInterface({ input: process.stdin, output: process.stdout });
+  // Ctrl-D or Ctrl-C at a prompt cancels instead of surfacing an AbortError.
+  const prompt = { question: query => terminal.question(query).catch(error => { throw error?.code === 'ABORT_ERR' ? new Error('Cancelled.') : error; }) };
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-signing-setup-'));
   try {
-    identities.forEach((identity, index) => console.log(`${index + 1}) ${identity.name}${identity.status ? ` (${identity.status})` : ''}\n   ${identity.hash}  ${identity.keychain}`));
-    const choice = Number(await prompt.question('Select a signing certificate: '));
-    const identity = identities[choice - 1];
-    requireThat(Number.isInteger(choice) && identity, 'No signing certificate selected.');
-    // `security export` cannot pick one identity; keep the full export in a
-    // private temporary directory and repack only the selected pair.
-    const exportPassword = crypto.randomBytes(24).toString('base64url'), password = crypto.randomBytes(32).toString('base64url');
-    const files = Object.fromEntries(['all.p12', 'export-password', 'certificate.pem', 'key.pem', 'identity.p12', 'password'].map(name => [name, path.join(work, name)]));
-    fs.writeFileSync(files['export-password'], exportPassword, { mode: 0o600 });
-    fs.writeFileSync(files.password, password, { mode: 0o600 });
-    console.log('macOS may ask for permission to export the keychain private keys.');
-    execFileSync('/usr/bin/security', ['export', '-k', identity.keychain, '-t', 'identities', '-f', 'pkcs12', '-P', exportPassword, '-o', files['all.p12']], { stdio: ['ignore', 'ignore', 'inherit'] });
-    const openssl = args => execFileSync('/usr/bin/openssl', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-    const selected = selectIdentity(openssl(['pkcs12', '-in', files['all.p12'], '-nodes', '-passin', `file:${files['export-password']}`]), identity.hash);
-    fs.writeFileSync(files['certificate.pem'], selected.certificate, { mode: 0o600 });
-    fs.writeFileSync(files['key.pem'], selected.key, { mode: 0o600 });
-    openssl(['pkcs12', '-export', '-inkey', files['key.pem'], '-in', files['certificate.pem'], '-out', files['identity.p12'], '-name', identity.name,
-      '-passout', `file:${files.password}`, '-keypbe', 'PBE-SHA1-3DES', '-certpbe', 'PBE-SHA1-3DES']);
-    const certificate = new crypto.X509Certificate(selected.certificate), fingerprint = certificateFingerprint(certificate.raw);
-    if (Date.parse(certificate.validTo) < Date.now()) console.log(`Warning: this certificate expired on ${certificate.validTo}.`);
     const pinned = fs.existsSync(config) ? readSigningConfig(config).certificateSHA256 : undefined;
-    console.log(`\nCertificate: ${certificate.subject.replaceAll('\n', ', ')}\nSHA-256:     ${fingerprint}\nRepository:  ${repository}`);
-    if (pinned && pinned !== fingerprint) {
-      console.log(`This replaces the pinned certificate ${pinned}. Installed clients will see a new app identity once.`);
+    const local = localIdentity(output, pinned);
+    console.log('Passpine macOS release signing\n');
+    console.log(`Pinned certificate: ${pinned ?? 'none'}`);
+    console.log(`Local identity:     ${local ? `${local.fingerprint}${local.pinned ? ' (pinned)' : ''}` : 'none'} in ${output}`);
+    const repository = (await prompt.question('\nGitHub repository [knothhe/passpine]: ')).trim() || 'knothhe/passpine';
+    requireThat(/^[\w.-]+\/[\w.-]+$/.test(repository), 'Invalid repository; expected OWNER/NAME.');
+    const choices = setupChoices({ pinned, local });
+    console.log('');
+    choices.forEach((choice, index) => console.log(`${index + 1}) ${choice.label}`));
+    console.log('q) Quit');
+    const answer = (await prompt.question('Choose an action: ')).trim();
+    const choice = choices[Number(answer) - 1];
+    requireThat(choice, 'Cancelled; nothing was changed.');
+    let result;
+    if (choice.action === 'reupload') {
+      result = { fingerprint: local.fingerprint, identity: fs.readFileSync(local.identity), password: fs.readFileSync(local.password, 'utf8') };
+    } else if (choice.action === 'keychain') {
+      result = exportKeychainIdentity(await chooseKeychainIdentity(prompt), work);
+      await confirmReplacement(prompt, pinned, result.fingerprint);
+    } else {
+      await confirmReplacement(prompt, pinned, undefined);
+      const generated = generate({ output, config, force: true });
+      if (generated.replaced) console.log(`Moved the previous local identity to ${generated.replaced}.`);
+      console.log(`Generated ${generated.fingerprint} in ${output}; keep this directory backed up offline.`);
+      result = { fingerprint: generated.fingerprint, identity: fs.readFileSync(generated.identity), password: fs.readFileSync(generated.password, 'utf8') };
     }
-    const answer = await prompt.question(`Upload ${certificateEnv} and ${passwordEnv}${pinned === fingerprint ? '' : ' and update config/macos-signing.json'}? Type yes to continue: `);
-    requireThat(answer.trim() === 'yes', 'Cancelled; nothing was uploaded.');
-    execFileSync('gh', ['secret', 'set', certificateEnv, '--repo', repository], { input: fs.readFileSync(files['identity.p12']).toString('base64'), stdio: ['pipe', 'inherit', 'inherit'] });
-    execFileSync('gh', ['secret', 'set', passwordEnv, '--repo', repository], { input: password, stdio: ['pipe', 'inherit', 'inherit'] });
-    if (pinned !== fingerprint) fs.writeFileSync(config, `${JSON.stringify({ schema: 1, certificateSHA256: fingerprint }, null, 2)}\n`);
-    return { fingerprint, changed: pinned !== fingerprint };
+    console.log(`\nSHA-256:    ${result.fingerprint}\nRepository: ${repository}`);
+    if ((await prompt.question(`Upload ${certificateEnv} and ${passwordEnv} now? [Y/n] `)).trim().toLowerCase().startsWith('n')) {
+      if (choice.action === 'generate') console.log('Not uploaded. Run this setup again and choose the local identity to upload it.');
+      else throw new Error('Cancelled; nothing was uploaded.');
+    } else {
+      uploadSecrets(repository, result.identity, result.password);
+      console.log('Uploaded both Actions secrets.');
+    }
+    if (pinned !== result.fingerprint) {
+      writePin(config, result.fingerprint);
+      console.log(`Pinned ${result.fingerprint} in config/macos-signing.json; commit it before the next release.`);
+    }
   } finally {
-    prompt.close();
+    terminal.close();
     fs.rmSync(work, { recursive: true, force: true });
   }
 }
@@ -211,24 +281,15 @@ export async function uploadKeychainIdentity({ repository = 'knothhe/passpine', 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
   try {
     const [action, ...args] = process.argv.slice(2);
-    if (action === 'generate' && args.filter(arg => arg !== '--force').length <= 1 && args.filter(arg => arg === '--force').length <= 1) {
-      const output = args.find(arg => arg !== '--force');
-      const result = generate({ ...(output && { output: path.resolve(output) }), force: args.includes('--force') });
-      if (result.replaced) console.log(`Moved the previous identity to ${result.replaced}.`);
-      console.log(`Pinned certificate SHA-256 ${result.fingerprint} in config/macos-signing.json; commit it before the next release.`);
-      console.log(`Store the identity as Actions secrets, then keep ${path.dirname(result.identity)} backed up offline:`);
-      console.log(`  base64 < '${result.identity}' | gh secret set ${certificateEnv} --repo knothhe/passpine`);
-      console.log(`  gh secret set ${passwordEnv} --repo knothhe/passpine < '${result.password}'`);
+    if (action === undefined) {
+      await setup();
     } else if (action === 'verify' && args.length === 1) {
       verify(path.resolve(args[0]));
       console.log(`Verified the pinned release signature: ${args[0]}`);
     } else if (action === 'build' && args.length === 0) {
       buildRelease();
-    } else if (action === 'upload' && (args.length === 0 || (args.length === 2 && args[0] === '--repo'))) {
-      const result = await uploadKeychainIdentity(args[1] ? { repository: args[1] } : {});
-      console.log(result.changed ? `Uploaded the secrets and pinned ${result.fingerprint}; commit config/macos-signing.json before the next release.` : 'Uploaded the secrets for the pinned certificate.');
     } else {
-      throw new Error('Usage: macos-signing.mjs generate [--force] [OUTPUT_DIR] | upload [--repo OWNER/NAME] | verify APP_BUNDLE | build');
+      throw new Error('Usage: macos-signing.mjs (interactive setup) | verify APP_BUNDLE | build');
     }
   } catch (error) {
     console.error(`macOS signing failed: ${error.message}`);

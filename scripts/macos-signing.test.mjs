@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { assertCertificateRequirement, certificateFingerprint, generate, parseIdentities, parseIdentityList, readSigningConfig, selectIdentity } from './macos-signing.mjs';
+import { assertCertificateRequirement, certificateFingerprint, generate, localIdentity, parseIdentities, parseIdentityList, readSigningConfig, selectIdentity, setupChoices } from './macos-signing.mjs';
 
 const temporary = () => fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-macos-signing-test-'));
 
@@ -113,7 +113,7 @@ test('forced generation replaces the pin and keeps the previous identity', () =>
     const output = path.join(root, 'identity'), config = path.join(root, 'macos-signing.json');
     const first = generate({ output, config });
     const previous = fs.readFileSync(first.identity);
-    assert.throws(() => generate({ output, config }), /generate --force/);
+    assert.throws(() => generate({ output, config }), /reuse or replace it/);
     const second = generate({ output, config, force: true, now: new Date('2026-10-25T01:02:03.004Z') });
     assert.notEqual(second.fingerprint, first.fingerprint);
     assert.equal(readSigningConfig(config).certificateSHA256, second.fingerprint);
@@ -124,6 +124,32 @@ test('forced generation replaces the pin and keeps the previous identity', () =>
     const fresh = generate({ output: path.join(root, 'fresh'), config, force: true });
     assert.equal(fresh.replaced, undefined);
     assert.equal(readSigningConfig(config).certificateSHA256, fresh.fingerprint);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('setup offers only the actions that fit the pinned and local identities', () => {
+  const root = temporary();
+  try {
+    const output = path.join(root, 'identity'), config = path.join(root, 'macos-signing.json');
+    assert.equal(localIdentity(output), undefined);
+    const generated = generate({ output, config });
+    const local = localIdentity(output, generated.fingerprint);
+    assert.equal(local.fingerprint, generated.fingerprint);
+    assert.equal(local.pinned, true);
+    const actions = options => setupChoices(options).map(choice => choice.action);
+    assert.deepEqual(actions({ platform: 'linux' }), ['generate']);
+    assert.deepEqual(actions({ platform: 'darwin' }), ['keychain', 'generate']);
+    assert.deepEqual(actions({ pinned: generated.fingerprint, local, platform: 'darwin' }), ['reupload', 'keychain', 'generate']);
+    assert.deepEqual(actions({ local: { ...local, pinned: false }, platform: 'linux' }), ['reupload', 'generate']);
+    // A local identity that differs from the pin must not be uploaded silently.
+    const other = localIdentity(output, 'f'.repeat(64));
+    assert.equal(other.pinned, false);
+    assert.deepEqual(actions({ pinned: 'f'.repeat(64), local: other, platform: 'linux' }), ['generate']);
+    assert.match(setupChoices({ pinned: 'f'.repeat(64), platform: 'linux' })[0].label, /replace the pinned/);
+    fs.rmSync(local.password);
+    assert.equal(localIdentity(output), undefined);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

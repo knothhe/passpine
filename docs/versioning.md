@@ -65,9 +65,13 @@ ad-hoc 签名的指定要求（designated requirement）是每次构建都会变
 | Repository secret `PASSPINE_MACOS_SIGNING_CERTIFICATE` | Base64 编码的 PKCS#12 身份（证书与私钥），只传给 Release 的 build job 中的 macOS 构建步骤 |
 | Repository secret `PASSPINE_MACOS_SIGNING_CERTIFICATE_PASSWORD` | 上述 PKCS#12 的口令 |
 
-首次配置时在仓库外执行 `node scripts/macos-signing.mjs generate`，它在 `~/.config/passpine-release/macos-signing/`（目录 `0700`、文件 `0600`）生成证书、PKCS#12 和口令，写入 `config/macos-signing.json` 并打印设置 Secret 的命令；应另行保管离线备份。已有身份或仓库已固定证书时命令拒绝覆盖；确需更换时运行 `generate --force`，旧的证书、PKCS#12 和口令移到输出目录下的 `replaced-<时间>/` 而不删除，再按提示重新设置两个 Secret 并提交新的 `config/macos-signing.json`。更换证书会再次改变所有已安装客户端的应用身份，不要为修复 CI 配置重新生成。从 ad-hoc 版本升级到首个固定证书版本时，应用身份会变化一次，此后保持稳定。
+维护者在终端运行 `node scripts/macos-signing.mjs`（无参数）进入交互式配置。它先显示当前固定证书与本机 `~/.config/passpine-release/macos-signing/` 中的身份，询问目标仓库（默认 `knothhe/passpine`），再按当前状态列出可选操作：
 
-也可以在 macOS 上运行 `node scripts/macos-signing.mjs upload [--repo OWNER/NAME]`，从钥匙串搜索列表中已有的代码签名身份（含未受信任的自签名证书）选择一个上传，默认仓库为 `knothhe/passpine`。命令要求 `gh` 已登录；由于 `security export` 只能导出整个钥匙串的身份，命令在私有临时目录中导出后只重新打包所选证书及其私钥，生成新的随机口令，确认后用 `gh secret set` 写入上述两个 Secret，结束时删除临时文件。所选证书与 `config/macos-signing.json` 不同时，命令提示身份会变化并在上传后更新固定值，需提交该文件后再发布。
+- 上传本机已有且与固定值一致（或尚未固定）的身份；
+- 在 macOS 上从钥匙串搜索列表选择已有的代码签名身份（含未受信任的自签名证书）。`security export` 只能导出整个钥匙串的身份，因此在私有临时目录中导出后只重新打包所选证书及其私钥，并生成新的随机口令，结束时删除临时文件；
+- 生成新的自签名身份：证书、PKCS#12 和口令写入上述目录（目录 `0700`、文件 `0600`），本机旧身份移到 `replaced-<时间>/` 而不删除；应另行保管离线备份。
+
+所选证书与 `config/macos-signing.json` 不同时，需输入 `replace` 确认替换。确认上传后用 `gh secret set` 写入两个 Secret（需 `gh` 已登录），并更新固定值；之后提交该文件再发布。更换证书会再次改变所有已安装客户端的应用身份，不要为修复 CI 配置重新生成。从 ad-hoc 版本升级到首个固定证书版本时，应用身份会变化一次，此后保持稳定。
 
 各 job 将附件暂存到 `dist/releases/<版本>/`，生成独立的 `manifest-<目标>.json`，记录 tag、HEAD、版本、文件名、大小和 SHA-256。发布步骤要求完整且匹配的目标集合，只上传确切文件。manifest 保存在 Actions artifacts 中，不上传到 Release。
 
