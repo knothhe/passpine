@@ -13,7 +13,7 @@ import (
 func TestBatchCreateNestedFolderSelectsVisibleLeafAndMovesEntries(t *testing.T) {
 	a, backend, settle := batchFixture(t, nil)
 	a.enterBatch()
-	a.batch.flatten = true
+	a.batch.keep = batchKeepName
 	a.batch.selected["开发/GitHub"] = true
 	delete(a.batch.expanded, "工作")
 	view := ui.NewTester(testView(a), 1180, 800)
@@ -46,8 +46,20 @@ func TestBatchCreateNestedFolderSelectsVisibleLeafAndMovesEntries(t *testing.T) 
 	if !view.HasText("已创建并选中文件夹“工作/test/a/b/c”") {
 		t.Fatal("creation success feedback is missing")
 	}
+	// The folder list has a fixed height; scroll the deep leaf into view.
+	list := visualBounds(t, view, "选择目标文件夹")
+	for step := 0; step < 20; step++ {
+		if leaf, _ := view.Find("选择文件夹 工作/test/a/b/c"); leaf.H > 0 {
+			break
+		}
+		view.Scroll(list.X+list.W/2, list.Y+list.H/2, 0, 30)
+		view.Advance(time.Second)
+	}
 	if err := view.Click("选择文件夹 工作/test/a/b/c"); err != nil {
 		t.Fatal(err)
+	}
+	if !a.batch.chosen || a.batch.destination != "工作/test/a/b/c" {
+		t.Fatal("the scrolled leaf could not be chosen")
 	}
 	if err := view.Click("移动 1 项"); err != nil {
 		t.Fatal(err)
@@ -175,7 +187,7 @@ func TestBatchCreateFolderWithRealVault(t *testing.T) {
 			a.runOnMain = func(callback func()) { callbacks <- callback }
 			a.enterBatch()
 			a.batch.selected["工作/GitHub"] = true
-			a.batch.flatten = true
+			a.batch.keep = batchKeepName
 			view := ui.NewTester(testView(a), test.width, 700)
 			view.SetPreferences(ui.Preferences{ReduceMotion: true})
 			settle := func() {

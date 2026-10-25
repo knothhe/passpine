@@ -16,21 +16,21 @@ import (
 // batchState is the list's selection mode. Selection holds entry paths, never
 // secrets, and moving or trashing reads nothing beyond the latest revision.
 type batchState struct {
-	active            bool
-	selected          map[string]bool
-	anchor            string
-	destination       string
-	chosen            bool
-	folderQuery       string
-	folderCreation    *string
-	revealFolder      string
-	expanded          map[string]bool
-	moveMode          string
-	flatten           bool
-	prefixInitialized bool
-	prefixFrom        string
-	prefixTo          string
+	active         bool
+	selected       map[string]bool
+	anchor         string
+	destination    string
+	chosen         bool
+	folderQuery    string
+	folderCreation *string
+	revealFolder   string
+	expanded       map[string]bool
+	// keep is what a move keeps from each original path; empty means the
+	// default. stripFrom is the chosen shared folder to remove.
+	keep              string
+	stripFrom         string
 	list              components.ListState
+	preview           components.ListState
 	progress          *batchProgress
 	result            *batchResult
 	trashConfirmation *batchTrashConfirmation
@@ -52,7 +52,6 @@ type batchFailure struct {
 // batchResult keeps unfinished entries of the last operation for retrying.
 type batchResult struct {
 	action, destination string
-	prefix              bool
 	completed           int
 	failures            []batchFailure
 	undo                *batchUndoState
@@ -142,11 +141,7 @@ func (a *application) batchUnlockDescription() string {
 		}
 		return a.t("解锁后将重试 %d 项。", retryable)
 	}
-	ready, _, _ := a.batchMovePlan()
-	if a.batch.moveMode == "prefix" {
-		return a.t("解锁后将修改 %d 项的文件夹前缀。", len(ready))
-	}
-	return a.t("解锁后将 %d 项移动到“%s”。", len(ready), a.batchFolderLabel(a.batch.destination))
+	return a.t("解锁后将 %d 项移动到“%s”。", len(a.batchMovePlan().ready), a.batchFolderLabel(a.batch.destination))
 }
 
 func (a *application) resetBatchDestination() {
@@ -252,39 +247,6 @@ func batchDestinationPath(folder, name string) string {
 	return folder + "/" + name
 }
 
-// batchMovePlan mirrors the service's refusal to overwrite: entries whose new
-// path already exists, or that would collide with each other, are skipped.
-func (a *application) batchMovePlan() (ready, conflicts, unchanged []app.Entry) {
-	if !a.batchMoveConfigured() {
-		return nil, nil, nil
-	}
-	chosen := a.selectedBatchEntries()
-	targets := map[string]int{}
-	for _, entry := range chosen {
-		targets[strings.ToLower(a.batchEntryDestination(entry))]++
-	}
-	for _, entry := range chosen {
-		if entry.Path == a.batchEntryDestination(entry) {
-			unchanged = append(unchanged, entry)
-			continue
-		}
-		target := strings.ToLower(a.batchEntryDestination(entry))
-		exists := false
-		for _, other := range a.sortedEntries {
-			if other.Path != entry.Path && strings.ToLower(other.Path) == target {
-				exists = true
-				break
-			}
-		}
-		if exists || targets[target] > 1 {
-			conflicts = append(conflicts, entry)
-		} else {
-			ready = append(ready, entry)
-		}
-	}
-	return ready, conflicts, unchanged
-}
-
 // runBatch sends one request per entry so progress is visible, then refreshes
 // the list once. It stops when the session or vault changes underneath it.
 func (a *application) runBatch(action string, requests []app.Request, done func([]app.Response)) {
@@ -358,8 +320,8 @@ func (a *application) startBatchMove() {
 	if a.busy {
 		return
 	}
-	ready, conflicts, unchanged := a.batchMovePlan()
-	if len(ready) == 0 {
+	plan := a.batchMovePlan()
+	if len(plan.ready) == 0 {
 		return
 	}
 	if a.state.Locked {
@@ -367,25 +329,16 @@ func (a *application) startBatchMove() {
 		return
 	}
 	destination := a.batch.destination
-	prefix := a.batch.moveMode == "prefix"
-	if prefix {
-		destination = strings.TrimSpace(a.batch.prefixTo)
-	}
-	requests := make([]app.Request, 0, len(ready))
-	for _, entry := range ready {
-		requests = append(requests, app.Request{Action: "move", VaultID: a.state.VaultID, Entry: entry.Path, Destination: a.batchEntryDestination(entry)})
+	requests := make([]app.Request, 0, len(plan.ready))
+	for _, entry := range plan.ready {
+		requests = append(requests, app.Request{Action: "move", VaultID: a.state.VaultID, Entry: entry.Path, Destination: plan.target[entry.Path]})
 	}
 	undo := a.newBatchUndo()
 	a.runBatch("move", requests, func(responses []app.Response) {
-		result := batchResult{action: "move", destination: destination, prefix: prefix, undo: undo}
+		result := batchResult{action: "move", destination: destination, undo: undo}
 		selected := map[string]bool{}
-		for _, entry := range conflicts {
+		for _, entry := range plan.skipped {
 			selected[entry.Path] = true
-		}
-		if prefix {
-			for _, entry := range unchanged {
-				selected[entry.Path] = true
-			}
 		}
 		for i, request := range requests {
 			r := batchResponse(responses, i)
@@ -521,24 +474,6 @@ func (a *application) batchFailureReason(code string) string {
 	return a.t("操作未完成，可以重试。")
 }
 
-// batchNames lists up to three distinct names; entry names are vault data and
-// only the separator and the overflow template come from the catalog.
-func (a *application) batchNames(entries []app.Entry) string {
-	names := []string{}
-	seen := map[string]bool{}
-	for _, entry := range entries {
-		if !seen[entry.Name] {
-			seen[entry.Name] = true
-			names = append(names, entry.Name)
-		}
-	}
-	separator := a.t("、")
-	if len(names) <= 3 {
-		return strings.Join(names, separator)
-	}
-	return a.t("%s 等 %d 项", strings.Join(names[:2], separator), len(names)-2)
-}
-
 // batchCheck draws the check box shared by entry rows and "select all".
 func batchCheck(c *ui.Context, checked, mixed bool) {
 	t := c.Theme()
@@ -604,8 +539,9 @@ func (a *application) batchEntryRow(c *ui.Context, entry app.Entry) {
 	}
 }
 
-// batchView presents peer organization actions, each with its own form and
-// execution button below the shared selection.
+// batchView shows one move form for the selection: destination, what to keep
+// from each original path and a per-entry preview, with the move button fixed
+// below them. Trash stays a separate action beside the count.
 func (a *application) batchView(c *ui.Context) {
 	if a.batchUndo != nil && a.batchUndo.visible && (!a.state.Locked || a.state.Settings.BrowseWhileLocked) {
 		a.batchUndoView(c, a.batchUndo)
@@ -615,9 +551,6 @@ func (a *application) batchView(c *ui.Context) {
 		a.batchResultView(c)
 		return
 	}
-	if a.batch.moveMode == "prefix" && a.batch.progress == nil {
-		a.syncBatchPrefixSource()
-	}
 	chosen := a.selectedBatchEntries()
 	progress := a.batch.progress
 	if len(chosen) == 0 && progress == nil {
@@ -625,7 +558,7 @@ func (a *application) batchView(c *ui.Context) {
 			ui.Box(c).MinHeight(32)
 			ui.Column(c).Margin(20, 0, 0, 0).Gap(6).Children(func() {
 				components.Text(c, a.t("选择条目")).FontSize(scaledFontSize(c, 24)).Bold()
-				muted(c, a.t("勾选左侧条目后，可以移动到文件夹、修改路径前缀或移到回收站。"))
+				muted(c, a.t("勾选左侧条目后，可以移动到其他文件夹，或移到回收站。"))
 			})
 		})
 		return
@@ -636,19 +569,8 @@ func (a *application) batchView(c *ui.Context) {
 	}
 	ui.Column(c).Key("batch-panel").Fill().MaxWidth(608).Padding(24).Children(func() {
 		ui.Box(c).MinHeight(32)
-		components.Text(c, a.t("已选 %d 项", count)).Margin(20, 0, 0, 0).FillWidth().FontSize(scaledFontSize(c, 24)).Bold()
-		ui.Row(c).Key("batch-actions").Label(a.t("批量操作")).FillWidth().Wrap().Margin(16, 0, 0, 0).AlignItems(ui.Center).Gap(8).Children(func() {
-			for _, action := range []struct {
-				key, label string
-				icon       *ui.SVG
-				prefix     bool
-			}{{"move", a.t("移动到"), lucide.FolderInput(), false}, {"prefix", a.t("修改前缀"), lucide.Replace(), true}} {
-				c.Key(action.key)
-				selected := (a.batch.moveMode == "prefix") == action.prefix
-				if a.batchActionButton(c, action.label, action.icon, selected, false).Disabled(a.busy).Clicked() {
-					a.setBatchMoveMode(action.prefix)
-				}
-			}
+		ui.Row(c).Key("batch-heading").FillWidth().Wrap().Margin(20, 0, 0, 0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Children(func() {
+			components.Text(c, a.t("已选 %d 项", count)).FontSize(scaledFontSize(c, 24)).Bold()
 			c.Key("trash")
 			trashLabel := a.t("移到回收站")
 			trashing := progress != nil && progress.action == "trash"
@@ -659,64 +581,36 @@ func (a *application) batchView(c *ui.Context) {
 				a.confirmBatchTrash()
 			}
 		})
-		ready, conflicts, unchanged := a.batchMovePlan()
-		ui.Column(c).Key("batch-operation").FillWidth().Grow(1).MinHeight(0).Margin(24, 0, 0, 0).Children(func() {
-			ui.Row(c).Key("operation-heading").FillWidth().Wrap().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Margin(0, 0, 14, 0).Children(func() {
-				title := a.t("移动到")
-				if a.batch.moveMode == "prefix" {
-					title = a.t("修改前缀")
-				}
-				components.Text(c, title).FontSize(scaledFontSize(c, 14)).Bold()
-				label := a.t("移动 %d 项", len(chosen))
-				if a.batchMoveConfigured() {
-					label = a.t("移动 %d 项", len(ready))
-				}
-				if a.batch.moveMode == "prefix" {
-					label = a.t("修改 %d 项", len(ready))
-				}
-				moving := progress != nil && progress.action == "move"
-				if moving {
-					label = a.t("正在移动 %d/%d", progress.done, progress.total)
-					if a.batch.moveMode == "prefix" {
-						label = a.t("正在修改 %d/%d", progress.done, progress.total)
-					}
-				}
-				// The running action keeps full contrast so its progress stays readable;
-				// startBatchMove ignores clicks while busy.
-				if components.Button(c, label, components.ButtonPrimary).Disabled(!moving && (a.busy || !a.batchMoveConfigured() || len(ready) == 0)).Clicked() {
-					a.startBatchMove()
-				}
-			})
-			if a.batch.moveMode == "prefix" {
-				a.batchPrefixView(c, ready, conflicts, unchanged)
-				return
-			}
-			a.batchMoveOptionsView(c)
+		plan := a.batchMovePlan()
+		ui.Column(c).Key("batch-operation").Label(a.t("移动到")).FillWidth().Grow(1).MinHeight(0).Margin(20, 0, 0, 0).Children(func() {
+			components.Text(c, a.t("目标文件夹")).Margin(0, 0, 6, 0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 			search := textBox(c, &a.batch.folderQuery, components.TextBoxOptions{LeadingIcon: lucide.Search()}).FillWidth().Label(a.t("搜索目标文件夹")).Placeholder(a.t("搜索或新建文件夹")).Disabled(a.busy)
 			if search.Changed() {
 				a.syncBatchFolderQuery()
 				a.lastInput = time.Now()
 			}
-			components.ScrollView(c, components.ScrollViewOptions{}).Key("batch-folders").Label(a.t("选择目标文件夹")).FillWidth().Grow(1).MinHeight(160).Margin(8, 0, 0, 0).Children(func() {
+			components.ScrollView(c, components.ScrollViewOptions{}).Key("batch-folders").Label(a.t("选择目标文件夹")).FillWidth().MaxHeight(168).Shrink(0).Margin(8, 0, 0, 0).Children(func() {
 				ui.Column(c).FillWidth().Gap(2).Children(func() {
 					a.batchFolderOptions(c)
 				})
 			})
-			if a.batch.chosen {
-				if len(conflicts) > 0 {
-					a.batchNotice(c, true, a.t("%s 移到“%s”后会重名，将跳过。", a.batchNames(conflicts), a.batchFolderLabel(a.batch.destination)))
+			a.batchKeepView(c, chosen)
+			a.batchPreviewView(c, plan)
+			ui.Row(c).Key("batch-move-footer").FillWidth().Justify(ui.End).Margin(12, 0, 0, 0).Padding(14, 0, 0, 0).BorderWidth(1, 0, 0, 0).BorderColor(c.Theme().Border).Children(func() {
+				label := a.t("移动 %d 项", len(chosen))
+				if a.batchMoveConfigured() {
+					label = a.t("移动 %d 项", len(plan.ready))
 				}
-				if len(unchanged) > 0 {
-					message := a.t("%d 项已在此文件夹中。", len(unchanged))
-					if !a.batch.flatten {
-						message = a.t("保留前缀后，%d 项路径未变化。", len(unchanged))
-					}
-					a.batchNotice(c, false, message)
+				moving := progress != nil && progress.action == "move"
+				if moving {
+					label = a.t("正在移动 %d/%d", progress.done, progress.total)
 				}
-				if len(ready) == 0 {
-					a.batchNotice(c, false, a.t("没有可移动的条目，请换一个文件夹。"))
+				// The running action keeps full contrast so its progress stays readable;
+				// startBatchMove ignores clicks while busy.
+				if components.Button(c, label, components.ButtonPrimary).Disabled(!moving && (a.busy || len(plan.ready) == 0)).Clicked() {
+					a.startBatchMove()
 				}
-			}
+			})
 		})
 	})
 }

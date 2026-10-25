@@ -127,14 +127,14 @@ func batchFixture(t *testing.T, failures map[string]string) (*application, *batc
 func TestBatchMoveSkipsConflictsAndKeepsThemSelected(t *testing.T) {
 	a, backend, settle := batchFixture(t, nil)
 	a.enterBatch()
-	a.batch.flatten = true // Exercise conflicts when discarding source folders.
+	a.batch.keep = batchKeepName // Exercise conflicts when keeping only entry names.
 	for _, path := range []string{"开发/Cloudflare", "开发/GitHub", "工作/Linear", "工作/客户项目/GitHub"} {
 		a.batch.selected[path] = true
 	}
 	a.batch.destination, a.batch.chosen = "归档", true
-	ready, conflicts, _ := a.batchMovePlan()
-	if len(ready) != 1 || len(conflicts) != 3 {
-		t.Fatalf("plan should skip the existing Linear and both GitHubs: ready=%v conflicts=%v", ready, conflicts)
+	plan := a.batchMovePlan()
+	if len(plan.ready) != 1 || len(plan.skipped) != 3 || plan.status["工作/Linear"] != batchMoveExists || plan.status["开发/GitHub"] != batchMoveDuplicate {
+		t.Fatalf("plan should skip the existing Linear and both GitHubs: %#v", plan)
 	}
 	a.startBatchMove()
 	if a.batch.progress == nil || a.batch.progress.total != 1 {
@@ -161,7 +161,7 @@ func TestBatchMoveSkipsConflictsAndKeepsThemSelected(t *testing.T) {
 func TestBatchMovePartialFailureRetriesOnlyRetryableEntries(t *testing.T) {
 	a, backend, settle := batchFixture(t, map[string]string{"工作/Figma": "vault_busy", "工作/Linear": "source_remains"})
 	a.enterBatch()
-	a.batch.flatten = true
+	a.batch.keep = batchKeepName
 	for _, path := range []string{"开发/Cloudflare", "工作/Figma", "工作/Linear"} {
 		a.batch.selected[path] = true
 	}
@@ -285,7 +285,7 @@ func TestLockedSelectionAsksToUnlockThenContinuesTheMove(t *testing.T) {
 	if err := view.Click("选择"); err != nil || !a.batch.active {
 		t.Fatalf("selection should be available while browsing locked: %v", err)
 	}
-	a.batch.flatten = true
+	a.batch.keep = batchKeepName
 	a.batch.selected["开发/Cloudflare"], a.batch.selected["工作/Figma"] = true, true
 	view.Frame()
 	if err := view.Click("展开“家庭”"); err != nil {

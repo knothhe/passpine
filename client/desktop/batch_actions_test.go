@@ -2,160 +2,74 @@ package desktop
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/knothhe/passpine/client/app"
 )
 
-func assertBatchPeerActions(t *testing.T, a *application, view *ui.Tester, executeLabel string) {
-	t.Helper()
-	move := visualBounds(t, view, a.t("移动到"))
-	prefix := visualBounds(t, view, a.t("修改前缀"))
-	trash := visualBounds(t, view, a.t("移到回收站"))
-	if !visualNear(move.Y, prefix.Y) || !visualNear(move.Y, trash.Y) || !visualNear(move.H, prefix.H) {
-		t.Fatalf("organization actions are not peers in one row: move=%v prefix=%v trash=%v", move, prefix, trash)
-	}
-	execute := visualBounds(t, view, executeLabel)
-	if execute.Y < move.Y+move.H {
-		t.Fatalf("execution still precedes its action chooser: actions=%v execute=%v", move, execute)
-	}
-}
-
-func TestBatchActionsArePeersAboveTheirExecution(t *testing.T) {
+// The form reads top to bottom: destination, what to keep, preview, then the
+// move button. Trash sits beside the count, apart from the move form.
+func TestBatchMoveFormOrdersFieldsAboveItsButton(t *testing.T) {
 	for _, language := range []string{"zh-CN", "en"} {
 		for _, width := range []int{1180, 860} {
 			t.Run(fmt.Sprintf("%s-%d", language, width), func(t *testing.T) {
-				a, _, _ := prefixFixture(t, []string{"test/a/b", "test/b/c"}, nil)
-				a.chooseBatchPrefix("test")
-				a.setBatchMoveMode(false)
-				a.batch.flatten = true
-				a.chooseBatchFolder("test")
+				a, _, _ := moveFixture(t, []string{"test/a/b", "test/b/c"}, nil)
+				a.chooseBatchFolder("test0")
 				a.state.Settings.Language = language
 				view := ui.NewTester(testView(a), width, 760)
 				view.SetPreferences(ui.Preferences{ReduceMotion: true})
 				view.Advance(time.Second)
-				assertBatchPeerActions(t, a, view, a.t("移动 %d 项", 2))
-				if language == "zh-CN" && width == 1180 || language == "en" && width == 860 {
-					managerResizeScreenshot(t, view, fmt.Sprintf("batch-peer-move-%s-%d", language, width))
+				count := visualBounds(t, view, a.t("已选 %d 项", 2))
+				trash := visualBounds(t, view, a.t("移到回收站"))
+				if trash.Y > count.Y+count.H || trash.X < count.X+count.W {
+					t.Fatalf("trash is not beside the selection count: count=%v trash=%v", count, trash)
 				}
-				if err := view.Click(a.t("修改前缀")); err != nil {
-					t.Fatal(err)
+				search := visualBounds(t, view, a.t("搜索目标文件夹"))
+				keep := visualBounds(t, view, a.t("保留原路径"))
+				preview := visualBounds(t, view, a.t("原路径与新路径"))
+				move := visualBounds(t, view, a.t("移动 %d 项", 2))
+				if !(trash.Y < search.Y && search.Y < keep.Y && keep.Y < preview.Y && preview.Y+preview.H <= move.Y) {
+					t.Fatalf("form is out of order: search=%v keep=%v preview=%v move=%v", search, keep, preview, move)
 				}
-				a.batch.prefixTo = "test0"
-				view.Frame()
-				assertBatchPeerActions(t, a, view, a.t("修改 %d 项", 2))
-				if language == "zh-CN" && width == 1180 || language == "en" && width == 860 {
-					managerResizeScreenshot(t, view, fmt.Sprintf("batch-peer-prefix-%s-%d", language, width))
+				if move.Y+move.H > 760 {
+					t.Fatalf("move button is not visible: %v", move)
 				}
+				for _, removed := range []string{"修改前缀", "保留前缀", "不保留前缀"} {
+					if _, found := view.Find(removed); found {
+						t.Fatalf("the merged form still shows %q", removed)
+					}
+				}
+				managerResizeScreenshot(t, view, fmt.Sprintf("batch-move-form-%s-%d", language, width))
 			})
 		}
 	}
 }
 
-func TestBatchPeerActionsKeepDraftsAndWaitForExecution(t *testing.T) {
-	a, backend, settle := prefixFixture(t, []string{"test/a/b", "test/b/c"}, nil)
-	a.chooseBatchPrefix("test")
-	a.setBatchMoveMode(false)
-	a.batch.flatten = true
-	view := ui.NewTester(testView(a), 1180, 760)
+func TestBatchMoveFormRemainsKeyboardReachable(t *testing.T) {
+	a, _, _ := moveFixture(t, []string{"test/a/b", "test/a/c/d"}, nil)
+	a.chooseBatchFolder("test0")
+	view := ui.NewTester(testView(a), 860, 760)
 	view.SetPreferences(ui.Preferences{ReduceMotion: true})
-	if err := view.Click(a.t("选择文件夹 %s", "test")); err != nil {
-		t.Fatal(err)
-	}
-	if err := view.Click(a.t("修改前缀")); err != nil {
-		t.Fatal(err)
-	}
-	// Represent an in-progress prefix draft, then leave and return through the
-	// actual peer action controls. Switching must never apply either operation.
-	a.batch.prefixFrom, a.batch.prefixTo = "test", "test0"
-	view.Frame()
-	if err := view.Click(a.t("移动到")); err != nil {
-		t.Fatal(err)
-	}
-	if a.batch.destination != "test" || a.batch.folderQuery != "test" || !a.batch.chosen {
-		t.Fatal("switching away from the folder action lost its selected destination")
-	}
-	if err := view.Click(a.t("搜索目标文件夹")); err != nil {
-		t.Fatal(err)
-	}
-	view.Key(ui.Cmd, ui.KeyA)
-	view.Type("new/path")
-	if err := view.Click(a.t("修改前缀")); err != nil {
-		t.Fatal(err)
-	}
-	if a.batch.prefixFrom != "test" || a.batch.prefixTo != "test0" || !view.HasText(a.t("将修改 %d 项，%d 项不修改", 2, 0)) {
-		t.Fatal("returning to the prefix action lost its draft or preview")
-	}
-	if err := view.Click(a.t("移动到")); err != nil {
-		t.Fatal(err)
-	}
-	if a.batch.folderQuery != "new/path" || a.batch.chosen {
-		t.Fatal("returning to the folder action lost its unfinished search or chose an unrelated destination")
-	}
-	if len(a.batch.selected) != 2 || len(backend.actions("move")) != 0 || len(backend.actions("trash")) != 0 || len(backend.actions("create-folder")) != 0 {
-		t.Fatal("choosing a peer action modified the entries or their selection")
-	}
-	if err := view.Click(a.t("修改前缀")); err != nil {
-		t.Fatal(err)
-	}
-	for _, to := range []string{"archive", ""} {
-		a.batch.prefixTo = to
-		view.Frame()
-		if err := view.Click(a.t("移动到")); err != nil {
-			t.Fatal(err)
-		}
-		if err := view.Click(a.t("修改前缀")); err != nil {
-			t.Fatal(err)
-		}
-		if a.batch.prefixFrom != "test" || a.batch.prefixTo != to {
-			t.Fatalf("returning to an unfinished prefix draft changed its source or input: from=%q to=%q, want test/%q", a.batch.prefixFrom, a.batch.prefixTo, to)
+	order := []string{a.t("移到回收站"), a.t("搜索目标文件夹"), a.t("去掉公共前缀"), a.t("要去掉的公共前缀"), a.t("移动 %d 项", 2)}
+	next := 0
+	for step := 0; step < 40 && next < len(order); step++ {
+		view.Key(0, ui.KeyTab)
+		if view.Focused(order[next]) {
+			next++
 		}
 	}
-	a.batch.prefixFrom, a.batch.prefixTo = "test", "test0"
-	view.Frame()
-	if err := view.Click(a.t("修改 %d 项", 2)); err != nil {
-		t.Fatal(err)
-	}
-	settle()
-	moves := backend.actions("move")
-	if len(moves) != 2 || moves[0].Destination != "test0/a/b" || moves[1].Destination != "test0/b/c" {
-		t.Fatalf("the prefix execution did not use its preserved draft: %#v", moves)
+	if next != len(order) {
+		t.Fatalf("keyboard could not reach %q in form order", order[next])
 	}
 }
 
-func TestBatchPeerActionsAndFormRemainKeyboardReachable(t *testing.T) {
-	for _, ready := range []bool{false, true} {
-		t.Run(fmt.Sprintf("execution-ready=%t", ready), func(t *testing.T) {
-			a, _, _ := prefixFixture(t, []string{"test/a/b", "test/b/c"}, nil)
-			a.chooseBatchPrefix("test")
-			if ready {
-				a.batch.prefixTo = "test0"
-			}
-			view := ui.NewTester(testView(a), 860, 760)
-			view.SetPreferences(ui.Preferences{ReduceMotion: true})
-			if err := view.Click(a.t("修改前缀")); err != nil {
-				t.Fatal(err)
-			}
-			labels := []string{a.t("移到回收站")}
-			if ready {
-				labels = append(labels, a.t("修改 %d 项", 2))
-			}
-			labels = append(labels, a.t("原文件夹前缀"), a.t("复制原文件夹前缀"), a.t("新文件夹前缀"))
-			for _, label := range labels {
-				view.Key(0, ui.KeyTab)
-				if !view.Focused(label) {
-					t.Fatalf("keyboard could not reach %q in action-to-form order", label)
-				}
-			}
-		})
-	}
-}
-
-func TestBatchPeerActionsCannotSwitchDuringExecution(t *testing.T) {
-	a, backend, settle := prefixFixture(t, []string{"test/a/b", "test/b/c"}, nil)
-	a.chooseBatchPrefix("test")
-	a.batch.prefixTo = "test0"
+func TestBatchMoveFormCannotChangeDuringExecution(t *testing.T) {
+	a, backend, settle := moveFixture(t, []string{"test/a/b", "test/b/c"}, nil)
+	a.chooseBatchFolder("test0")
 	interrupted := &interruptedBatchBackend{batchBackend: backend, started: make(chan struct{}), release: make(chan struct{})}
 	released := false
 	release := func() {
@@ -168,25 +82,148 @@ func TestBatchPeerActionsCannotSwitchDuringExecution(t *testing.T) {
 	a.service = interrupted
 	view := ui.NewTester(testView(a), 1180, 760)
 	view.SetPreferences(ui.Preferences{ReduceMotion: true})
-	if err := view.Click(a.t("修改 %d 项", 2)); err != nil {
+	if err := view.Click(a.t("移动 %d 项", 2)); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case <-interrupted.started:
 	case <-time.After(time.Second):
-		t.Fatal("prefix execution did not start")
+		t.Fatal("move did not start")
 	}
 	view.Frame()
-	for _, key := range []string{"移动到", "修改前缀", "移到回收站"} {
-		if err := view.Click(a.t(key)); err != nil {
-			t.Fatal(err)
-		}
+	if !view.HasText(a.t("正在移动 %d/%d", 0, 2)) {
+		t.Fatalf("running move did not show its progress: %v", view.Texts())
 	}
-	if a.batch.moveMode != "prefix" || !a.busy || len(backend.actions("trash")) != 0 {
-		t.Fatal("a running operation allowed another peer action")
+	for _, key := range []string{"仅条目名", "完整路径", "移到回收站"} {
+		_ = view.Click(a.t(key))
+	}
+	if a.batch.keep != "" || !a.busy || len(backend.actions("trash")) != 0 {
+		t.Fatal("a running move allowed its option or another action to change")
 	}
 	// Release the worker explicitly before settling; the deferred close protects
 	// failing assertions without leaving a test goroutine blocked.
 	release()
 	settle()
+	moves := backend.actions("move")
+	if len(moves) != 2 || moves[0].Destination != "test0/a/b" || moves[1].Destination != "test0/b/c" {
+		t.Fatalf("move did not use the option chosen before it started: %#v", moves)
+	}
+}
+
+func TestBatchMovePreviewListsEachPathAndSkippedReasons(t *testing.T) {
+	for _, test := range []struct {
+		language string
+		width    int
+	}{{"zh-CN", 1180}, {"en", 1180}, {"en", 860}} {
+		t.Run(fmt.Sprintf("%s-%d", test.language, test.width), func(t *testing.T) {
+			a, backend, settle := moveFixture(t, []string{"test/a/b", "test/b/c", "test/b/d", "archive/d", "archive/c"}, nil)
+			delete(a.batch.selected, "archive/d")
+			delete(a.batch.selected, "archive/c")
+			a.state.Settings.Language = test.language
+			a.chooseBatchFolder("archive")
+			a.batch.keep = batchKeepName
+			view := ui.NewTester(testView(a), test.width, 760)
+			view.SetPreferences(ui.Preferences{ReduceMotion: true})
+			for _, text := range []string{a.t("将移动 %d 项，跳过 %d 项", 1, 2), "archive/b", "test/b/c", "test/b/d", a.t("目标位置已有同名条目，跳过")} {
+				if !view.HasText(text) {
+					t.Fatalf("preview missing %q: %v", text, view.Texts())
+				}
+			}
+			// Skipped entries come first so their reasons are visible.
+			list := visualBounds(t, view, a.t("原路径与新路径"))
+			skipped := visualBoundsIn(t, view, a.t("目标位置已有同名条目，跳过"), list)
+			ready := visualBoundsIn(t, view, "test/a/b", list)
+			if skipped.Y > ready.Y {
+				t.Fatalf("skipped entries were listed after ready ones: skipped=%v ready=%v", skipped, ready)
+			}
+			managerResizeScreenshot(t, view, fmt.Sprintf("batch-move-preview-%s-%d", test.language, test.width))
+			a.chooseBatchFolder("")
+			a.batch.keep = batchKeepFull
+			view.Frame()
+			if !view.HasText(a.t("路径不变，跳过")) || !view.HasText(a.t("没有可移动的条目，请换一个目标文件夹或保留方式。")) {
+				t.Fatalf("unchanged paths were not explained: %v", view.Texts())
+			}
+			a.chooseBatchFolder("archive")
+			a.batch.keep = ""
+			view.Frame()
+			if err := view.Click(a.t("移动 %d 项", 3)); err != nil {
+				t.Fatal(err)
+			}
+			settle()
+			if len(backend.actions("move")) != 3 || a.batch.active {
+				t.Fatal("the default move did not send every ready entry")
+			}
+		})
+	}
+}
+
+func TestBatchMovePreviewDuplicatesAreMarked(t *testing.T) {
+	a, _, _ := moveFixture(t, []string{"test/a/x", "test/b/x"}, nil)
+	a.chooseBatchFolder("next")
+	a.batch.keep = batchKeepName
+	view := ui.NewTester(testView(a), 1180, 760)
+	view.SetPreferences(ui.Preferences{ReduceMotion: true})
+	if !view.HasText(a.t("与其他所选条目重名，跳过")) || !view.HasText(a.t("将移动 %d 项，跳过 %d 项", 0, 2)) {
+		t.Fatalf("duplicate targets were not marked: %v", view.Texts())
+	}
+}
+
+func TestBatchMoveStripWithRealVaultPreservesContents(t *testing.T) {
+	service, err := app.New(app.Options{DataDir: t.TempDir(), Preview: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { service.Close() })
+	settings := service.Execute(app.Request{Action: "configure"}).Data.Settings
+	settings.Language = "zh-CN"
+	if response := service.Execute(app.Request{Action: "settings", Settings: &settings}); response.Status != "ok" {
+		t.Fatal(response.Message)
+	}
+	contents := map[string]string{"test/a/b": "fixture-secret-b\nusername: fixture-b\n", "test/b/c": "fixture-secret-c\nusername: fixture-c\n"}
+	for path, content := range contents {
+		if response := service.Execute(app.Request{Action: "save", Entry: path, Contents: content, Mode: "create"}); response.Status != "ok" {
+			t.Fatal(response.Code)
+		}
+	}
+	a := newApplication(service)
+	a.state = service.Execute(app.Request{Action: "configure"}).Data
+	callbacks := make(chan func(), 16)
+	a.runOnMain = func(callback func()) { callbacks <- callback }
+	view := ui.NewTester(testView(a), 1180, 800)
+	view.SetPreferences(ui.Preferences{ReduceMotion: true})
+	for _, label := range []string{"选择", "选择条目 test/a/b", "选择条目 test/b/c", "搜索目标文件夹"} {
+		if err := view.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	view.Type("test0")
+	if err := view.Click("新建文件夹 test0"); err != nil {
+		t.Fatal(err)
+	}
+	for a.busy {
+		awaitMain(t, callbacks)
+	}
+	view.Frame()
+	if !view.HasText("test0/a/b") || !view.HasText("test0/b/c") {
+		t.Fatalf("preview did not remove the shared folder: %v", view.Texts())
+	}
+	if err := view.Click("移动 2 项"); err != nil {
+		t.Fatal(err)
+	}
+	for a.busy {
+		awaitMain(t, callbacks)
+	}
+	for original, content := range contents {
+		destination := "test0/" + original[len("test/"):]
+		response := service.Execute(app.Request{Action: "fetch", Entry: destination})
+		if response.Status != "ok" || response.Data.Contents != content {
+			t.Fatalf("real move changed contents at %q: %s", destination, response.Code)
+		}
+		if _, err := os.Stat(filepath.Join(a.state.Directory, filepath.FromSlash(original)+".gpg")); !os.IsNotExist(err) {
+			t.Fatalf("original encrypted file still exists: %q, %v", original, err)
+		}
+		if info, err := os.Stat(filepath.Join(a.state.Directory, filepath.FromSlash(destination)+".gpg")); err != nil || info.Size() == 0 {
+			t.Fatalf("destination encrypted file is missing: %q, %v", destination, err)
+		}
+	}
 }

@@ -4,139 +4,198 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
 )
 
-func TestBatchMovePreservesFullPrefixByDefaultAndFlattenIsExplicit(t *testing.T) {
-	a, _, _ := prefixFixture(t, []string{"test/a/b", "test/c/d", "root-entry"}, nil)
-	a.setBatchMoveMode(false)
-	a.chooseBatchFolder("test0")
-	if a.batch.flatten {
-		t.Fatal("a new selection did not default to preserving folder prefixes")
+func TestBatchCommonFoldersOfferOnlyFoldersEverySelectedEntryShares(t *testing.T) {
+	entry := func(path string) app.Entry {
+		folder, name := splitEntryPath(path)
+		return app.Entry{Path: path, Folder: folder, Name: name}
 	}
-	for _, entry := range a.selectedBatchEntries() {
-		if got, want := a.batchEntryDestination(entry), "test0/"+entry.Path; got != want {
-			t.Fatalf("default move destination = %q, want %q", got, want)
+	for _, test := range []struct {
+		paths []string
+		want  []string
+	}{
+		{[]string{"test/a/b", "test/a/c/d"}, []string{"test", "test/a"}},
+		{[]string{"test/a/c/d"}, []string{"test", "test/a", "test/a/c"}},
+		{[]string{"test/a/b", "testing/c"}, nil},
+		{[]string{"test/a/b", "test/A/c"}, []string{"test"}},
+		{[]string{"test/a/b", "root-entry"}, nil},
+		{nil, nil},
+	} {
+		entries := []app.Entry{}
+		for _, path := range test.paths {
+			entries = append(entries, entry(path))
 		}
-	}
-	a.setBatchMoveFlatten(true)
-	for _, entry := range a.selectedBatchEntries() {
-		if got, want := a.batchEntryDestination(entry), "test0/"+entry.Name; got != want {
-			t.Fatalf("explicit flattened destination = %q, want %q", got, want)
-		}
-	}
-	// This option belongs only to Move to; prefix replacement keeps its own
-	// segment-preserving destination rules under either stored option.
-	a.setBatchMoveMode(true)
-	a.chooseBatchPrefix("test")
-	a.batch.prefixTo = "test0"
-	for _, flatten := range []bool{false, true} {
-		a.setBatchMoveFlatten(flatten)
-		for _, entry := range a.selectedBatchEntries() {
-			want := entry.Path
-			if entry.Folder == "test/a" {
-				want = "test0/a/b"
-			} else if entry.Folder == "test/c" {
-				want = "test0/c/d"
-			}
-			if got := a.batchEntryDestination(entry); got != want {
-				t.Fatalf("flatten=%t altered prefix replacement: %q, want %q", flatten, got, want)
-			}
+		if got := batchCommonFolders(entries); !slices.Equal(got, test.want) {
+			t.Errorf("batchCommonFolders(%v) = %v, want %v", test.paths, got, test.want)
 		}
 	}
 }
 
-func TestBatchMovePrefixOptionsPreserveDraftsWithoutExecuting(t *testing.T) {
+func TestBatchMoveDefaultsToRemovingTheDeepestSharedFolder(t *testing.T) {
+	a, _, _ := moveFixture(t, []string{"test/a/b", "test/a/c/d"}, nil)
+	a.chooseBatchFolder("test0")
+	want := map[string]map[string]string{
+		"":             {"test/a/b": "test0/b", "test/a/c/d": "test0/c/d"},
+		batchKeepFull:  {"test/a/b": "test0/test/a/b", "test/a/c/d": "test0/test/a/c/d"},
+		batchKeepName:  {"test/a/b": "test0/b", "test/a/c/d": "test0/d"},
+		batchKeepStrip: {"test/a/b": "test0/b", "test/a/c/d": "test0/c/d"},
+	}
+	for _, mode := range []string{"", batchKeepFull, batchKeepName, batchKeepStrip} {
+		a.batch.keep = mode
+		plan := a.batchMovePlan()
+		for path, target := range want[mode] {
+			if plan.target[path] != target {
+				t.Fatalf("keep %q moved %q to %q, want %q", mode, path, plan.target[path], target)
+			}
+		}
+	}
+	a.chooseBatchStripFolder("test")
+	if a.batch.keep != batchKeepStrip || a.batch.stripFrom != "test" || a.batchMovePlan().target["test/a/c/d"] != "test0/a/c/d" {
+		t.Fatal("choosing a shallower shared folder did not keep the structure beneath it")
+	}
+	a.chooseBatchStripFolder("test/a/c")
+	a.chooseBatchStripFolder("unrelated")
+	if a.batch.stripFrom != "test" {
+		t.Fatal("a folder not shared by every selected entry became the removed prefix")
+	}
+}
+
+func TestBatchMoveWithoutSharedFolderFallsBackToFullPath(t *testing.T) {
+	a, _, _ := moveFixture(t, []string{"test/a/b", "other/c", "root-entry"}, nil)
+	a.chooseBatchFolder("archive")
+	mode, _, common := a.batchKeep(a.selectedBatchEntries())
+	if mode != batchKeepFull || len(common) != 0 {
+		t.Fatalf("no shared folder resolved to %q with %v", mode, common)
+	}
+	a.setBatchKeep(batchKeepStrip)
+	if a.batch.keep != "" || a.batchMovePlan().target["test/a/b"] != "archive/test/a/b" {
+		t.Fatal("the unavailable option could still be chosen")
+	}
+	// An explicit choice survives selection changes and applies again once the
+	// selection shares a folder.
+	a.batch.keep = batchKeepStrip
+	if a.batchMovePlan().target["other/c"] != "archive/other/c" {
+		t.Fatal("an unavailable strip choice did not fall back to the full path")
+	}
+	delete(a.batch.selected, "other/c")
+	delete(a.batch.selected, "root-entry")
+	if a.batchMovePlan().target["test/a/b"] != "archive/b" {
+		t.Fatal("the strip choice did not return once the selection shared a folder")
+	}
+}
+
+func TestBatchMoveOptionsRecomputeConflictsAndRootNoOps(t *testing.T) {
+	a, _, _ := moveFixture(t, []string{"test/a/b", "test/c/b", "TEST0/test/a/b", "test0/b"}, nil)
+	delete(a.batch.selected, "TEST0/test/a/b")
+	delete(a.batch.selected, "test0/b")
+	a.chooseBatchFolder("test0")
+	a.setBatchKeep(batchKeepFull)
+	plan := a.batchMovePlan()
+	if len(plan.ready) != 1 || plan.ready[0].Path != "test/c/b" || plan.status["test/a/b"] != batchMoveExists {
+		t.Fatalf("keeping full paths ignored case-insensitive existing paths: %#v", plan)
+	}
+	a.setBatchKeep(batchKeepName)
+	plan = a.batchMovePlan()
+	if len(plan.ready) != 0 || plan.status["test/a/b"] != batchMoveExists || plan.status["test/c/b"] != batchMoveExists {
+		t.Fatalf("entry names did not recompute conflicts: %#v", plan)
+	}
+	a.chooseBatchFolder("")
+	a.setBatchKeep(batchKeepFull)
+	plan = a.batchMovePlan()
+	if len(plan.ready) != 0 || plan.status["test/a/b"] != batchMoveUnchanged || plan.status["test/c/b"] != batchMoveUnchanged {
+		t.Fatalf("keeping full paths at the vault root should leave paths unchanged: %#v", plan)
+	}
+	a.setBatchKeep(batchKeepName)
+	plan = a.batchMovePlan()
+	if len(plan.ready) != 0 || plan.status["test/a/b"] != batchMoveDuplicate || plan.status["test/c/b"] != batchMoveDuplicate {
+		t.Fatalf("entry names at the root should refuse duplicate names: %#v", plan)
+	}
+}
+
+func TestBatchKeepOptionsChangeOnlyThePreview(t *testing.T) {
 	for _, test := range []struct {
 		language string
 		width    int
-	}{{"zh-CN", 1180}, {"en", 860}} {
-		t.Run(test.language, func(t *testing.T) {
-			a, backend, _ := prefixFixture(t, []string{"test/a/b", "test/c/d"}, nil)
-			a.setBatchMoveMode(false)
-			a.chooseBatchFolder("test")
-			a.batch.prefixTo = "unfinished/prefix"
+	}{{"zh-CN", 1180}, {"en", 1180}, {"en", 860}} {
+		t.Run(fmt.Sprintf("%s-%d", test.language, test.width), func(t *testing.T) {
+			a, backend, _ := moveFixture(t, []string{"test/a/b", "test/a/c/d"}, nil)
 			a.state.Settings.Language = test.language
 			view := ui.NewTester(testView(a), test.width, 760)
 			view.SetPreferences(ui.Preferences{ReduceMotion: true})
-			if !view.HasText(a.t("将原始文件夹路径完整保留在目标文件夹下。")) {
-				t.Fatal("default prefix behavior was not explained")
+			if !view.HasText(a.t("选择目标文件夹后，这里会列出每一项的新路径。")) || !view.HasText("…/c/d") || !view.HasText("…/test/a/c/d") || !view.HasText("test/a") {
+				t.Fatalf("options without a destination did not show their examples: %v", view.Texts())
 			}
-			if err := view.Click(a.t("不保留前缀")); err != nil {
-				t.Fatal(err)
-			}
-			if !a.batch.flatten || !view.HasText(a.t("直接移入目标文件夹，只保留条目名称。")) {
-				t.Fatal("discarding the prefix did not change the choice or its explanation")
-			}
-			for _, label := range []string{"修改前缀", "移动到"} {
-				if err := view.Click(a.t(label)); err != nil {
-					t.Fatal(err)
+			a.chooseBatchFolder("archive")
+			view.Frame()
+			for _, text := range []string{"archive/c/d", "archive/test/a/c/d", "archive/d", a.t("将移动 %d 项", 2), "test/a/b"} {
+				if !view.HasText(text) {
+					t.Fatalf("preview or examples missing %q: %v", text, view.Texts())
 				}
 			}
-			if !a.batch.flatten || a.batch.destination != "test" || a.batch.folderQuery != "test" || a.batch.prefixTo != "unfinished/prefix" || !a.batch.chosen {
-				t.Fatal("switching peer actions lost a move option or draft")
+			managerResizeScreenshot(t, view, fmt.Sprintf("batch-move-keep-%s-%d", test.language, test.width))
+			for step := 0; step < 40 && !view.Focused(a.t("要去掉的公共前缀")); step++ {
+				view.Key(0, ui.KeyTab)
 			}
-			a.batch.folderQuery = "unfinished/folder"
-			a.syncBatchFolderQuery()
-			view.Frame()
-			if err := view.Click(a.t("保留前缀")); err != nil {
+			if !view.Focused(a.t("要去掉的公共前缀")) {
+				t.Fatal("the removed prefix selector is not reachable by keyboard")
+			}
+			view.Key(0, ui.KeyEnter)
+			if err := view.Click(a.t("去掉公共前缀 %s", "test")); err != nil {
 				t.Fatal(err)
 			}
-			if a.batch.flatten || a.batch.folderQuery != "unfinished/folder" || a.batch.chosen || len(a.batch.selected) != 2 || a.batch.prefixTo != "unfinished/prefix" {
-				t.Fatal("switching prefix behavior discarded a draft or selection")
+			if a.batch.keep != batchKeepStrip || a.batch.stripFrom != "test" || !view.HasText("archive/a/c/d") {
+				t.Fatalf("choosing the removed prefix did not choose that option: %q %q", a.batch.keep, a.batch.stripFrom)
+			}
+			if err := view.Click(a.t("仅条目名")); err != nil {
+				t.Fatal(err)
+			}
+			if a.batch.keep != batchKeepName || a.batchMovePlan().target["test/a/c/d"] != "archive/d" || !view.HasText("archive/d") || view.HasText(a.t("要去掉的公共前缀")) {
+				t.Fatalf("choosing entry names did not update the preview: %v", view.Texts())
 			}
 			a.busy = true
 			view.Frame()
-			if err := view.Click(a.t("不保留前缀")); err != nil {
-				t.Fatal(err)
-			}
-			if a.batch.flatten {
-				t.Fatal("a running operation allowed its move behavior to change")
+			_ = view.Click(a.t("完整路径"))
+			a.setBatchKeep(batchKeepFull)
+			if a.batch.keep != batchKeepName {
+				t.Fatal("a running operation allowed its move option to change")
 			}
 			a.busy = false
-			if len(backend.actions("move")) != 0 || len(backend.actions("unlock")) != 0 || len(backend.actions("create-folder")) != 0 {
-				t.Fatal("choosing move behavior executed a vault action")
+			if len(backend.actions("move")) != 0 || len(backend.actions("unlock")) != 0 || len(a.batch.selected) != 2 {
+				t.Fatal("choosing a move option executed a vault action or changed the selection")
 			}
-			view.Frame()
-			managerResizeScreenshot(t, view, "batch-move-prefix-options-"+test.language)
 		})
 	}
 }
 
-func TestBatchMovePrefixOptionsRecomputeConflictsAndRootNoOps(t *testing.T) {
-	a, _, _ := prefixFixture(t, []string{"test/a/b", "test/c/b", "TEST0/test/a/b", "test0/b"}, nil)
-	delete(a.batch.selected, "TEST0/test/a/b")
-	delete(a.batch.selected, "test0/b")
-	a.setBatchMoveMode(false)
-	a.chooseBatchFolder("test0")
-	ready, conflicts, unchanged := a.batchMovePlan()
-	if len(ready) != 1 || ready[0].Path != "test/c/b" || len(conflicts) != 1 || conflicts[0].Path != "test/a/b" || len(unchanged) != 0 {
-		t.Fatalf("preserving prefixes ignored full-path conflicts: ready=%v conflicts=%v unchanged=%v", ready, conflicts, unchanged)
-	}
-	a.setBatchMoveFlatten(true)
-	ready, conflicts, unchanged = a.batchMovePlan()
-	if len(ready) != 0 || len(conflicts) != 2 || len(unchanged) != 0 {
-		t.Fatal("flattening did not recompute duplicate-name conflicts")
-	}
-	a.setBatchMoveFlatten(false)
-	a.chooseBatchFolder("")
-	ready, conflicts, unchanged = a.batchMovePlan()
-	if len(ready) != 0 || len(conflicts) != 0 || len(unchanged) != 2 {
-		t.Fatal("preserving prefixes at the vault root should leave paths unchanged")
-	}
-	a.setBatchMoveFlatten(true)
-	ready, conflicts, unchanged = a.batchMovePlan()
-	if len(ready) != 0 || len(conflicts) != 2 || len(unchanged) != 0 {
-		t.Fatal("flattening to the root should still refuse duplicate names")
+func TestBatchKeepUnavailableOptionExplainsWhy(t *testing.T) {
+	for _, language := range []string{"zh-CN", "en"} {
+		t.Run(language, func(t *testing.T) {
+			a, _, _ := moveFixture(t, []string{"test/a/b", "other/c"}, nil)
+			a.state.Settings.Language = language
+			a.chooseBatchFolder("archive")
+			view := ui.NewTester(testView(a), 860, 760)
+			view.SetPreferences(ui.Preferences{ReduceMotion: true})
+			if !view.HasText(a.t("所选条目没有共同的上级文件夹。")) || !view.HasText("archive/test/a/b") {
+				t.Fatalf("missing shared folder was not explained or full paths were not the default: %v", view.Texts())
+			}
+			_ = view.Click(a.t("去掉公共前缀"))
+			if a.batch.keep != "" {
+				t.Fatal("the disabled option could be chosen")
+			}
+			managerResizeScreenshot(t, view, "batch-move-keep-unavailable-"+language)
+		})
 	}
 }
 
-func TestBatchMovePrefixOptionsWithRealVaultPreserveContents(t *testing.T) {
-	for _, flatten := range []bool{false, true} {
-		t.Run(fmt.Sprintf("flatten=%t", flatten), func(t *testing.T) {
+func TestBatchKeepOptionsWithRealVaultPreserveContents(t *testing.T) {
+	for _, mode := range []string{"", batchKeepFull, batchKeepName} {
+		t.Run("keep="+mode, func(t *testing.T) {
 			service, err := app.New(app.Options{DataDir: t.TempDir(), Preview: true})
 			if err != nil {
 				t.Fatal(err)
@@ -167,13 +226,10 @@ func TestBatchMovePrefixOptionsWithRealVaultPreserveContents(t *testing.T) {
 			a.chooseBatchFolder("test0")
 			view := ui.NewTester(testView(a), 1180, 800)
 			view.SetPreferences(ui.Preferences{ReduceMotion: true})
-			if flatten {
-				if err := view.Click("不保留前缀"); err != nil {
+			if label := map[string]string{batchKeepFull: "完整路径", batchKeepName: "仅条目名"}[mode]; label != "" {
+				if err := view.Click(label); err != nil {
 					t.Fatal(err)
 				}
-			}
-			if a.batch.flatten != flatten {
-				t.Fatal("the UI did not retain the requested move behavior")
 			}
 			if err := view.Click("移动 2 项"); err != nil {
 				t.Fatal(err)
@@ -182,11 +238,7 @@ func TestBatchMovePrefixOptionsWithRealVaultPreserveContents(t *testing.T) {
 				awaitMain(t, callbacks)
 			}
 			for original, content := range contents {
-				relative := original
-				if flatten {
-					_, relative = splitEntryPath(original)
-				}
-				destination := "test0/" + relative
+				destination := map[string]string{"": "test0/" + original[len("test/"):], batchKeepFull: "test0/" + original, batchKeepName: "test0/" + original[len(original)-1:]}[mode]
 				response := service.Execute(app.Request{Action: "fetch", Entry: destination})
 				if response.Status != "ok" || response.Data.Contents != content {
 					t.Fatalf("move changed contents at %q: %s", destination, response.Code)

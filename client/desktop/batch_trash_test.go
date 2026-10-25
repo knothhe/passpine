@@ -27,7 +27,7 @@ func TestBatchTrashRequiresConfirmationAndCancellationKeepsDraft(t *testing.T) {
 			a.enterBatch()
 			a.batch.selected["开发/Cloudflare"], a.batch.selected["工作/Figma"] = true, true
 			a.chooseBatchFolder("家庭/设备")
-			a.batch.prefixTo = "unfinished/prefix"
+			a.batch.keep = batchKeepName
 			view := ui.NewTester(testView(a), 860, 760)
 			view.SetPreferences(ui.Preferences{ReduceMotion: true})
 			view.Advance(time.Second)
@@ -46,7 +46,7 @@ func TestBatchTrashRequiresConfirmationAndCancellationKeepsDraft(t *testing.T) {
 			view.Advance(time.Second)
 			managerResizeScreenshot(t, view, "batch-trash-confirmation-"+language)
 			clickBatchTrashDialogButton(t, a, view, a.t("取消"))
-			if a.batch.trashConfirmation != nil || len(a.batch.selected) != 2 || !a.batch.chosen || a.batch.destination != "家庭/设备" || a.batch.prefixTo != "unfinished/prefix" || len(backend.actions("trash")) != 0 {
+			if a.batch.trashConfirmation != nil || len(a.batch.selected) != 2 || !a.batch.chosen || a.batch.destination != "家庭/设备" || a.batch.keep != batchKeepName || len(backend.actions("trash")) != 0 {
 				t.Fatal("cancelling trash discarded the selection/draft or sent a write")
 			}
 			if err := view.Click(a.t("移到回收站")); err != nil {

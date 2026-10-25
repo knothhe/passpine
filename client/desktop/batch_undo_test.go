@@ -12,7 +12,7 @@ import (
 func batchUndoFixture(t *testing.T, action string, partial bool) (*application, *batchBackend, func(), []string) {
 	t.Helper()
 	paths := []string{"开发/Cloudflare", "工作/Figma"}
-	if action == "prefix" {
+	if action == "strip" {
 		paths = []string{"test/a/b", "test/b/c"}
 	}
 	failures := map[string]string{}
@@ -22,10 +22,9 @@ func batchUndoFixture(t *testing.T, action string, partial bool) (*application, 
 	var a *application
 	var backend *batchBackend
 	var settle func()
-	if action == "prefix" {
-		a, backend, settle = prefixFixture(t, append([]string(nil), paths...), failures)
-		a.chooseBatchPrefix("test")
-		a.batch.prefixTo = "next"
+	if action == "strip" {
+		a, backend, settle = moveFixture(t, append([]string(nil), paths...), failures)
+		a.chooseBatchFolder("next")
 	} else {
 		a, backend, settle = batchFixture(t, failures)
 		a.enterBatch()
@@ -54,8 +53,8 @@ func assertUndoFixtureOriginals(t *testing.T, a *application, backend *batchBack
 	}
 }
 
-func TestBatchUndoRestoresMovePrefixAndTrashExactlyOnce(t *testing.T) {
-	for _, action := range []string{"move", "prefix", "trash"} {
+func TestBatchUndoRestoresMoveStripAndTrashExactlyOnce(t *testing.T) {
+	for _, action := range []string{"move", "strip", "trash"} {
 		t.Run(action, func(t *testing.T) {
 			a, backend, settle, paths := batchUndoFixture(t, action, false)
 			startUndoFixtureAction(a, action)
@@ -91,7 +90,7 @@ func TestBatchUndoRestoresMovePrefixAndTrashExactlyOnce(t *testing.T) {
 }
 
 func TestBatchUndoOffersPartialSuccessesAndPreservesFailedSelection(t *testing.T) {
-	for _, action := range []string{"move", "prefix", "trash"} {
+	for _, action := range []string{"move", "strip", "trash"} {
 		t.Run(action, func(t *testing.T) {
 			a, backend, settle, paths := batchUndoFixture(t, action, true)
 			startUndoFixtureAction(a, action)
@@ -133,7 +132,7 @@ func TestBatchUndoOffersPartialSuccessesAndPreservesFailedSelection(t *testing.T
 }
 
 func TestBatchUndoAccumulatesForwardRetrySuccesses(t *testing.T) {
-	for _, action := range []string{"move", "prefix"} {
+	for _, action := range []string{"move", "strip"} {
 		t.Run(action, func(t *testing.T) {
 			a, backend, settle, paths := batchUndoFixture(t, action, true)
 			startUndoFixtureAction(a, action)
@@ -300,6 +299,9 @@ func TestBatchUndoUIWithRealVaultPreservesEditsAndConflictingOriginals(t *testin
 	}
 	a.chooseBatchFolder("moved")
 	view.Frame()
+	if err := view.Click(a.t("完整路径")); err != nil {
+		t.Fatal(err)
+	}
 	if err := view.Click(a.t("移动 %d 项", 3)); err != nil {
 		t.Fatal(err)
 	}
