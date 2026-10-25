@@ -29,6 +29,7 @@ func TestBatchActionsArePeersAboveTheirExecution(t *testing.T) {
 				a, _, _ := prefixFixture(t, []string{"test/a/b", "test/b/c"}, nil)
 				a.chooseBatchPrefix("test")
 				a.setBatchMoveMode(false)
+				a.batch.flatten = true
 				a.chooseBatchFolder("test")
 				a.state.Settings.Language = language
 				view := ui.NewTester(testView(a), width, 760)
@@ -56,6 +57,7 @@ func TestBatchPeerActionsKeepDraftsAndWaitForExecution(t *testing.T) {
 	a, backend, settle := prefixFixture(t, []string{"test/a/b", "test/b/c"}, nil)
 	a.chooseBatchPrefix("test")
 	a.setBatchMoveMode(false)
+	a.batch.flatten = true
 	view := ui.NewTester(testView(a), 1180, 760)
 	view.SetPreferences(ui.Preferences{ReduceMotion: true})
 	if err := view.Click(a.t("选择文件夹 %s", "test")); err != nil {

@@ -19,27 +19,58 @@ type notificationState struct {
 }
 
 func (a *application) inform(message string) {
+	a.notificationActionSerial++
 	message = a.t(message)
 	a.notice = message
-	a.notifications.kind, a.notifications.typedMessage = components.ToastInfo, message
+	a.notifications = notificationState{kind: components.ToastInfo, typedMessage: message, clear: a.notifications.clear}
 }
 
 func (a *application) warn(message string) {
+	a.notificationActionSerial++
 	message = a.t(message)
 	a.notice = message
-	a.notifications.kind, a.notifications.typedMessage = components.ToastWarning, message
+	a.notifications = notificationState{kind: components.ToastWarning, typedMessage: message, clear: a.notifications.clear}
 }
 
 // notifyWithAction raises a success toast with one action, such as Undo. A
 // zero timeout uses the standard success duration.
 func (a *application) notifyWithAction(message, description, action string, timeout time.Duration, onAction func()) {
+	a.setActionNotification(message, description, action, components.ToastSuccess, timeout, onAction)
+}
+
+func (a *application) notifyErrorWithAction(message, description, action string, onAction func()) {
+	a.setActionNotification(message, description, action, components.ToastError, -1, onAction)
+}
+
+func (a *application) setActionNotification(message, description, action, kind string, timeout time.Duration, onAction func()) {
+	a.notificationActionSerial++
+	serial, generation, vaultID := a.notificationActionSerial, a.generation, a.state.VaultID
+	deadline := time.Time{}
+	if timeout >= 0 {
+		if timeout == 0 {
+			timeout = 3 * time.Second
+		}
+		deadline = time.Now().Add(timeout)
+	}
+	a.errorText = ""
 	a.notice = message
-	a.notifications.kind, a.notifications.typedMessage = components.ToastSuccess, message
-	a.notifications.description, a.notifications.action, a.notifications.onAction = description, action, onAction
+	a.notifications.expiresAt = time.Time{}
+	a.notifications.kind, a.notifications.typedMessage = kind, message
+	a.notifications.description, a.notifications.action = description, action
+	a.notifications.onAction = func() {
+		if a.notificationActionSerial != serial || a.generation != generation || a.state.VaultID != vaultID || a.busy || a.closing || a.editor.open || a.updates.preparing || !deadline.IsZero() && !time.Now().Before(deadline) {
+			return
+		}
+		a.notificationActionSerial++
+		if onAction != nil {
+			onAction()
+		}
+	}
 	a.notifications.timeout = timeout
 }
 
 func (a *application) clearNotifications() {
+	a.notificationActionSerial++
 	a.notice, a.errorText = "", ""
 	a.notifications = notificationState{clear: true}
 }
@@ -47,6 +78,11 @@ func (a *application) clearNotifications() {
 // A follow-up read can start before the completed operation has painted its
 // outcome. Dismiss displayed feedback without dropping that pending outcome.
 func (a *application) beginOperationFeedback() {
+	// A queued read can begin in the completion callback before its actionable
+	// outcome is painted. Keep that pending action's ownership with its message.
+	if a.notice == "" || a.notice != a.notifications.typedMessage || a.notifications.onAction == nil {
+		a.notificationActionSerial++
+	}
 	a.errorText = ""
 	a.notifications.clear = true
 }
@@ -68,10 +104,12 @@ func (a *application) flushNotifications(c *ui.Context) {
 			c.After(remaining)
 		} else {
 			c.CloseToast(id)
+			a.notificationActionSerial++
 			a.notifications.expiresAt = time.Time{}
 		}
 	}
 	if a.errorText != "" {
+		a.notificationActionSerial++
 		c.AddToast(ui.Toast{ID: id, Title: a.t("操作未完成"), Description: a.t(a.errorText), Type: components.ToastError, Timeout: -1})
 		a.errorText, a.notice = "", ""
 		a.notifications = notificationState{}
@@ -90,14 +128,28 @@ func (a *application) flushNotifications(c *ui.Context) {
 	if kind != components.ToastSuccess {
 		timeout = 6 * time.Second
 	}
-	if a.notice == a.notifications.typedMessage && a.notifications.timeout > 0 {
+	if a.notice == a.notifications.typedMessage && a.notifications.timeout != 0 {
 		timeout = a.notifications.timeout
 	}
 	toast.Type = kind
+	if timeout < 0 {
+		serial := a.notificationActionSerial
+		toast.OnClose = func() {
+			if a.notificationActionSerial == serial {
+				a.notificationActionSerial++
+			}
+		}
+		c.AddToast(toast)
+		a.notice = ""
+		a.notifications = notificationState{}
+		return
+	}
 	deadline := c.Now().Add(timeout)
+	serial := a.notificationActionSerial
 	toast.OnClose = func() {
-		if a.notifications.expiresAt == deadline {
+		if a.notificationActionSerial == serial && a.notifications.expiresAt == deadline {
 			a.notifications.expiresAt = time.Time{}
+			a.notificationActionSerial++
 		}
 	}
 	c.AddToast(toast)

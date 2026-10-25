@@ -69,6 +69,7 @@ type Service struct {
 	cachedEntries    []vault.Entry
 	cachedFolders    []string
 	cachedAt         time.Time
+	folderUndos      map[string]folderUndoReceipt
 }
 
 func DefaultSettings() Settings {
@@ -384,7 +385,7 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 	// Metadata polling is not user activity. Desktop edits also call Touch,
 	// while browser credential actions are recorded here before taking mu.
 	switch r.Action {
-	case "fetch", "copy", "save", "delete", "move", "create-folder", "cleanup-folders", "trash", "draft", "generate", "copy-generated", "recovery", "restore", "purge", "unlock", "lock", "switch", "create", "open", "settings", "export", "verify-backup":
+	case "fetch", "copy", "save", "delete", "move", "create-folder", "cleanup-folders", "undo-cleanup-folders", "trash", "draft", "generate", "copy-generated", "recovery", "restore", "purge", "unlock", "lock", "switch", "create", "open", "settings", "export", "verify-backup":
 		s.lastActivity.Store(time.Now().UnixNano())
 	}
 	if r.Action == "clone" {
@@ -433,7 +434,7 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 		extra.DeviceUnlockNotice = s.enrollDevice(r.Passphrase, epoch)
 	}
 	switch r.Action {
-	case "save", "delete", "move", "create-folder", "cleanup-folders", "trash", "restore", "switch", "create", "open", "git-sync", "unlock":
+	case "save", "delete", "move", "create-folder", "cleanup-folders", "undo-cleanup-folders", "trash", "restore", "switch", "create", "open", "git-sync", "unlock":
 		s.entriesVersion++
 		s.cachedAt = time.Time{}
 	}
@@ -453,7 +454,7 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 	}
 	if err == nil && s.active != nil {
 		switch r.Action {
-		case "fetch", "copy", "save", "delete", "move", "create-folder", "cleanup-folders", "trash", "draft", "generate", "recovery", "restore":
+		case "fetch", "copy", "save", "delete", "move", "create-folder", "cleanup-folders", "undo-cleanup-folders", "trash", "draft", "generate", "recovery", "restore":
 			s.active.Activity()
 		}
 	}
@@ -488,6 +489,9 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 }
 func mergeData(out *Data, v Data) {
 	out.RemovedFolders = v.RemovedFolders
+	out.RestoredFolders = v.RestoredFolders
+	out.RemainingFolders = v.RemainingFolders
+	out.UndoID = v.UndoID
 	out.Entry = v.Entry
 	out.Destination = v.Destination
 	out.OriginalEntry = v.OriginalEntry
@@ -658,8 +662,9 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 	case "create-folder":
 		return Data{Destination: r.Destination}, s.active.CreateFolder(r.Destination)
 	case "cleanup-folders":
-		removed, err := s.active.CleanupEmptyFolders()
-		return Data{RemovedFolders: removed}, err
+		return s.cleanupFolders()
+	case "undo-cleanup-folders":
+		return s.undoCleanupFolders(r)
 	case "fetch":
 		if r.Kind == "draft" {
 			rec, e := s.active.ReadRecovery(r.ID)
@@ -739,17 +744,22 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 			s.autoSync()
 		}
 		return Data{TrashID: rec.ID}, e
-	// Batch organization acts on entries chosen from the list, whose revisions
-	// the desktop never read. Each request moves or trashes the latest version.
+	// Batch organization acts on the latest version when no revision was read.
+	// Undo supplies the move's exact output revision to reject subsequent edits.
 	case "move":
-		revision, e := s.active.Revision(r.Entry)
+		revision := r.Revision
+		var e error
+		if revision == "" {
+			revision, e = s.active.Revision(r.Entry)
+		}
+		var doc vault.Document
 		if e == nil {
-			e = s.active.Move(r.Entry, r.Destination, revision)
+			doc, e = s.active.MoveWithRevision(r.Entry, r.Destination, revision)
 		}
 		if e == nil {
 			s.autoSync()
 		}
-		return Data{Entry: r.Destination, OriginalEntry: r.Entry}, e
+		return Data{Entry: r.Destination, OriginalEntry: r.Entry, Revision: doc.Revision}, e
 	case "trash":
 		revision, e := s.active.Revision(r.Entry)
 		var rec vault.RecoveryRecord

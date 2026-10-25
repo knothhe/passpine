@@ -15,14 +15,76 @@ func (a *application) cleanupEmptyFolders() {
 		return
 	}
 	a.closeNavigationOverlay()
-	a.call(app.Request{Action: "cleanup-folders", VaultID: a.state.VaultID}, func(data app.Data) {
-		a.refreshFolderNavigation()
-		if data.RemovedFolders == 0 {
-			a.inform(a.t("没有需要清理的空文件夹"))
-			return
+	a.call(app.Request{Action: "cleanup-folders", VaultID: a.state.VaultID}, nil)
+}
+
+func (a *application) undoFolderCleanup(id, vaultID string) {
+	if a.busy || a.closing || a.updates.preparing || id == "" || vaultID != a.state.VaultID {
+		return
+	}
+	a.call(app.Request{Action: "undo-cleanup-folders", ID: id, VaultID: vaultID}, nil)
+}
+
+func (a *application) folderCleanupUndoAction(id, vaultID string) func() {
+	generation := a.generation
+	return func() {
+		if generation == a.generation {
+			a.undoFolderCleanup(id, vaultID)
 		}
-		a.notice = a.t("已清理 %d 个空文件夹", data.RemovedFolders)
-	})
+	}
+}
+
+// Folder cleanup and undo can have completed useful work before failing. Keep
+// the receipt actionable after refreshing navigation, without exposing paths.
+func (a *application) handleFolderCleanupResponse(requestAction string, r app.Response) bool {
+	if requestAction != "cleanup-folders" && requestAction != "undo-cleanup-folders" {
+		return false
+	}
+	a.refreshFolderNavigation()
+	data := r.Data
+	if requestAction == "cleanup-folders" {
+		if r.Status == "ok" && data.RemovedFolders == 0 {
+			a.inform(a.t("没有需要清理的空文件夹"))
+			return true
+		}
+		if data.RemovedFolders > 0 {
+			message := a.t("已清理 %d 个空文件夹", data.RemovedFolders)
+			if r.Status != "ok" {
+				message = a.t("已清理 %d 个空文件夹，清理未完成，请重试。", data.RemovedFolders)
+			}
+			if data.UndoID != "" {
+				action := a.folderCleanupUndoAction(data.UndoID, data.VaultID)
+				description := a.t("撤销只恢复本次清理的空文件夹，无需解锁。")
+				if r.Status == "ok" {
+					a.notifyWithAction(message, description, a.t("撤销"), 8*time.Second, action)
+				} else {
+					a.notifyErrorWithAction(message, description, a.t("撤销"), action)
+				}
+			} else if r.Status == "ok" {
+				a.notice = message
+			} else {
+				a.errorText = message
+			}
+			return true
+		}
+	} else {
+		if r.Status == "ok" {
+			a.notice = a.t("已恢复 %d 个空文件夹", data.RestoredFolders)
+			return true
+		}
+		if data.UndoID != "" && data.RemainingFolders > 0 {
+			a.notifyErrorWithAction(a.t("已恢复 %d 个空文件夹，%d 个未恢复", data.RestoredFolders, data.RemainingFolders), a.t("未恢复的文件夹可重试撤销；已有文件不会被覆盖。"), a.t("重试撤销"), a.folderCleanupUndoAction(data.UndoID, data.VaultID))
+			return true
+		}
+	}
+	a.errorText = r.Message
+	if a.errorText == "" {
+		a.errorText = r.Code
+	}
+	if requestAction == "cleanup-folders" && r.Code == "operation_failed" {
+		a.errorText = a.t("无法清理空文件夹，请检查目录权限后重试。")
+	}
+	return true
 }
 
 func (a *application) refreshFolderNavigation() {

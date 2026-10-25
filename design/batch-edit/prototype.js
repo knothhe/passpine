@@ -10,6 +10,7 @@
     browse: "sceneBrowse", empty: "sceneEmpty", select: "sceneSelect", move: "sceneMove",
     conflict: "sceneConflict", trash: "sceneTrash", progress: "sceneProgress",
     prefix: "scenePrefix", "prefix-excluded": "scenePrefixExcluded", "prefix-no-folder": "scenePrefixNoFolder", "trash-confirm": "sceneTrashConfirm", success: "sceneSuccess", partial: "scenePartial", "trash-success": "sceneTrash",
+    "cleanup-success": "sceneCleanupSuccess", "undo-running": "sceneUndoRunning", "undo-partial": "sceneUndoPartial",
   };
   const seed = [
     { id: "cf", name: "Cloudflare", folder: "开发", username: "infra@example.test", website: "https://dash.cloudflare.com" },
@@ -55,6 +56,7 @@
     external: '<path d="M14 3h7v7M21 3l-9 9M10 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/>',
     restore: '<path d="M3 10a9 9 0 1 1 1 8M3 4v6h6M12 7v5l3 2"/>',
     spinner: '<path d="M12 3a9 9 0 1 1-9 9"/>',
+    cleanup: '<path d="m16 3 5 5-9 9-5-5Z"/><path d="m7 12-4 9h9l3-5M5 17l4 4M8 14l5 5"/>',
     chevron: '<path d="m9 6 6 6-6 6"/>',
     branch: '<circle cx="6" cy="18" r="2"/><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><path d="M6 8v8M18 8a6 6 0 0 1-6 6H8"/>',
     sync: '<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/>',
@@ -69,14 +71,14 @@
   const domain = website => { try { return new URL(website).hostname.replace(/^www\./, ""); } catch { return ""; } };
   const defaultIDs = ["cf", "gh", "fg", "li"];
   const root = document.getElementById("root");
-  let items, trashItems, s, timer, toastTimer, anchor = null;
+  let items, trashItems, emptyFolders, s, timer, toastTimer, anchor = null;
   const button = (action, label, variant = "secondary", glyph = "", disabled = false, extra = "") => `<button class="button ${variant}" data-action="${action}" ${disabled ? "disabled" : ""} ${extra}>${glyph ? icon(glyph) : ""}<span>${esc(label)}</span></button>`;
   const iconButton = (action, key, glyph, disabled = false) => `<button class="icon-button" data-action="${action}" aria-label="${esc(t(key))}" title="${esc(t(key))}" ${disabled ? "disabled" : ""}>${icon(glyph)}</button>`;
   const byID = id => items.find(item => item.id === id);
   const selected = () => [...s.selected].map(byID).filter(Boolean);
   const collection = () => s.scope === "trash" ? trashItems : items.filter(item => s.scope === "__root__" ? item.folder === "" : s.scope === "all" || item.folder === s.scope || item.folder.startsWith(`${s.scope}/`));
   const visible = () => collection().filter(item => path(item).toLocaleLowerCase().includes(s.query.trim().toLocaleLowerCase()));
-  const folders = () => [...new Set(items.flatMap(item => item.folder.split("/").filter(Boolean).map((_, i, a) => a.slice(0, i + 1).join("/"))))].sort();
+  const folders = () => [...new Set([...items.flatMap(item => item.folder.split("/").filter(Boolean).map((_, i, a) => a.slice(0, i + 1).join("/"))), ...emptyFolders])].sort();
   const busy = () => Boolean(s.progress);
   // Entry names are user data; only the separator and the overflow template are copy.
   const nameList = entries => {
@@ -89,8 +91,9 @@
     clearTimeout(timer); clearTimeout(toastTimer);
     items = seed.map(item => ({ ...item }));
     trashItems = [];
+    emptyFolders = ["归档/旧项目", "临时", "临时/待整理"];
     s = { scene, mode: scene !== "browse", scope: "all", query: "", selected: new Set(), active: "gh", dialog: null,
-      destination: null, folderQuery: "", operation: "folder", prefixInitialized: false, prefixFrom: "", prefixTo: "", collapsed: new Set(folders()), result: null, progress: null, toast: null, undo: null, sidebar: false, reveal: false };
+      destination: null, folderQuery: "", flatten: false, operation: "folder", prefixInitialized: false, prefixFrom: "", prefixTo: "", collapsed: new Set(folders()), result: null, progress: null, toast: null, undo: null, undoResult: null, sidebar: false, reveal: false };
     anchor = null;
     if (!["browse", "empty"].includes(scene)) s.selected = new Set(defaultIDs);
     if (["move", "conflict"].includes(scene)) s.destination = scene === "conflict" ? "归档" : "家庭/设备";
@@ -99,39 +102,112 @@
     if (scene === "prefix-excluded") { s.selected = new Set(["fg", "gh2", "li", "cf", "gh"]); items.push({ ...byID("fg"), id: "prefix-existing", folder: "工作0" }); }
     if (scene === "prefix-no-folder") { selected().forEach(item => { item.folder = ""; }); s.prefixFrom = ""; s.prefixTo = ""; }
     if (scene === "trash-confirm") s.dialog = "trash-confirm";
-    if (scene === "conflict") s.selected.add("gh2");
+    if (scene === "conflict") { s.flatten = true; s.selected.add("gh2"); }
     if (scene === "progress") { s.destination = "家庭/设备"; s.progress = { action: "move", ids: [...s.selected], done: 2, total: 4 }; }
     if (scene === "partial") applyPartial();
     if (scene === "success") applySuccess("move", defaultIDs, "工作/归档");
     if (["trash", "trash-success"].includes(scene)) applySuccess("trash", defaultIDs);
+    if (scene === "cleanup-success") applyCleanup();
+    if (["undo-running", "undo-partial"].includes(scene)) {
+      applySuccess("move", defaultIDs, "工作/归档");
+      if (scene === "undo-running") { s.progress = { action: "undo", total: 4, done: 2 }; s.toast = { key: "progressUndoing", values: { done: 2, total: 4 }, running: true }; }
+      else {
+        const records = s.undo.records;
+        records.slice(0, 2).forEach(record => { byID(record.original.id).folder = record.original.folder; });
+        items.push({ ...records[2].original, id: "undo-existing" });
+        byID(records[3].original.id).username = "changed@example.test";
+        s.undo.records = records.slice(2);
+        s.undo.completed = 2;
+        s.undoResult = { completed: 2, failed: [{ record: records[2], reason: "undoOriginalExists" }, { record: records[3], reason: "undoTargetChanged" }] };
+        s.toast = null;
+      }
+    }
     if (updateURL && review) history.replaceState(null, "", `?${new URLSearchParams({ scene, lang: language, theme })}`);
     render();
     document.querySelector(".folder-option.selected")?.scrollIntoView({ block: "nearest" });
   }
 
-  function applySuccess(action, ids, destination = "") {
+  function applySuccess(action, ids, destination = "", changedPaths = null) {
     const originals = ids.map(byID).filter(Boolean).map(item => ({ ...item }));
-    if (action === "move") ids.forEach(id => { if (byID(id)) byID(id).folder = destination; });
+    if (action === "move") ids.forEach(id => { const item = byID(id); if (item) item.folder = changedPaths ? changedPaths.get(id).split("/").slice(0, -1).join("/") : [destination, s.flatten ? "" : item.folder].filter(Boolean).join("/"); });
     else { trashItems.push(...originals); items = items.filter(item => !ids.includes(item.id)); }
     s.mode = false; s.selected.clear(); s.active = null; s.dialog = null; s.progress = null; s.result = null;
-    s.lastDestination = destination; s.destination = null; s.folderQuery = "";
-    s.undo = action === "trash" ? originals : null;
+    s.destination = null; s.folderQuery = "";
+    s.undo = { action, completed: 0, records: originals.map(original => ({ original, appliedPath: action === "move" ? path(byID(original.id)) : path(original) })) };
+    s.undoResult = null;
     s.toast = action === "move"
-      ? { key: "movedSuccess", values: { count: originals.length, folder: folderLabel(destination) }, action: "destination", actionKey: "view" }
+      ? { key: "movedSuccess", values: { count: originals.length, folder: folderLabel(destination) }, action: "undo", actionKey: "undo" }
       : { key: "trashedSuccess", values: { count: originals.length }, sub: "trashLocalNotice", action: "undo", actionKey: "undo" };
   }
 
   function applyPartial() {
+    const originals = ["cf", "gh"].map(id => ({ ...byID(id) }));
     ["cf", "gh"].forEach(id => { byID(id).folder = "工作/归档"; s.selected.delete(id); });
     items.push({ ...byID("li"), id: "li-destination", folder: "工作/归档" });
     s.result = { kind: "partial", success: 2, destination: "工作/归档",
       failed: [{ id: "fg", reason: "writeBlocked", review: false }, { id: "li", reason: "destinationSaved", review: true }] };
+    s.undo = { action: "move", completed: 0, records: originals.map(original => ({ original, appliedPath: path(byID(original.id)) })) };
+    s.toast = { key: "partialCompleted", values: { count: 2 }, action: "undo", actionKey: "undo" };
+  }
+
+  function applyCleanup() {
+    const removed = [...emptyFolders]; emptyFolders = [];
+    s.mode = false; s.selected.clear(); s.result = null; s.undoResult = null;
+    s.undo = { action: "cleanup", completed: 0, records: removed.map(folder => ({ folder })) };
+    s.toast = { key: "cleanupSuccess", values: { count: removed.length }, sub: "cleanupUndoHelp", action: "undo", actionKey: "undo" };
+  }
+
+  function restoreUndoRecord(receipt, record) {
+    if (receipt.action === "cleanup") {
+      if (items.some(item => path(item) === record.folder)) return "undoOriginalExists";
+      if (!emptyFolders.includes(record.folder)) emptyFolders.push(record.folder);
+      return null;
+    }
+    const original = record.original;
+    if (items.some(item => item.id !== original.id && path(item).toLocaleLowerCase() === path(original).toLocaleLowerCase())) return "undoOriginalExists";
+    if (receipt.action === "trash") {
+      const recovery = trashItems.find(item => item.id === original.id);
+      if (!recovery) return "undoTargetChanged";
+      items.push({ ...original }); trashItems = trashItems.filter(item => item.id !== original.id); return null;
+    }
+    const current = byID(original.id);
+    if (!current || path(current) !== record.appliedPath || current.username !== original.username || current.website !== original.website) return "undoTargetChanged";
+    current.folder = original.folder; return null;
+  }
+
+  function startUndo() {
+    if (!s.undo || busy()) return;
+    clearTimeout(toastTimer);
+    const receipt = s.undo, records = [...receipt.records], failed = [];
+    let completed = receipt.completed;
+    s.undoResult = null; s.progress = { action: "undo", total: records.length, done: 0 };
+    const step = () => {
+      const record = records[s.progress.done];
+      const reason = restoreUndoRecord(receipt, record);
+      if (reason) failed.push({ record, reason });
+      else {
+        completed++;
+        if (s.result) s.result.success = Math.max(0, s.result.success - 1);
+      }
+      s.progress.done++;
+      s.toast = { key: "progressUndoing", values: { done: s.progress.done, total: records.length }, running: true }; render();
+      if (s.progress.done < records.length) { timer = setTimeout(step, 400); return; }
+      timer = setTimeout(() => {
+        s.progress = null;
+        receipt.completed = completed;
+        if (failed.length) { receipt.records = failed.map(failure => failure.record); s.undoResult = { completed, failed }; s.toast = null; }
+        else { s.undo = null; s.toast = { key: "undoSuccess", values: { count: completed } }; autoDismiss(); }
+        render();
+      }, 350);
+    };
+    s.toast = { key: "progressUndoing", values: { done: 0, total: records.length }, running: true }; render();
+    timer = setTimeout(step, 400);
   }
 
   const targetPath = item => s.operation === "prefix"
     ? s.prefixFrom && (item.folder === s.prefixFrom || item.folder.startsWith(`${s.prefixFrom}/`))
       ? [s.prefixTo.trim(), path(item).slice(s.prefixFrom.length + 1)].filter(Boolean).join("/") : path(item)
-    : [s.destination, item.name].filter(Boolean).join("/");
+    : [s.destination, s.flatten ? item.name : path(item)].filter(Boolean).join("/");
 
   const prefixOptions = () => [...new Set(selected().flatMap(item => {
     if (!item.folder) return [];
@@ -174,7 +250,7 @@
   function reviewBar() {
     if (!review) return "";
     return `<header class="review-bar"><div class="review-brand"><strong class="review-title">${t("reviewTitle")}</strong><span>${t("reviewNote")}</span></div>
-      <nav class="review-nav" aria-label="${t("scenesLabel")}">${["browse", "select", "move", "prefix", "conflict", "progress", "success", "trash", "partial"].map(scene => `<button data-scene="${scene}" class="${s.scene === scene ? "active" : ""}">${t(sceneKeys[scene])}</button>`).join("")}</nav>
+      <nav class="review-nav" aria-label="${t("scenesLabel")}">${["browse", "select", "move", "prefix", "conflict", "progress", "success", "trash", "partial", "cleanup-success", "undo-running", "undo-partial"].map(scene => `<button data-scene="${scene}" class="${s.scene === scene ? "active" : ""}">${t(sceneKeys[scene])}</button>`).join("")}</nav>
       <div class="review-tools"><select id="language" aria-label="${t("language")}"><option value="zh-CN" ${language === "zh-CN" ? "selected" : ""}>${t("chineseLanguage")}</option><option value="en" ${language === "en" ? "selected" : ""}>${t("englishLanguage")}</option></select>${iconButton("theme", "appearance", theme === "dark" ? "sun" : "moon")}<button class="text-button" data-action="reset">${t("reset")}</button><a class="text-button" href="canvas.html?lang=${language}">${t("overview")}${icon("external")}</a></div></header>`;
   }
 
@@ -212,7 +288,7 @@
     const title = s.scope === "all" ? t("allEntries") : s.scope === "trash" ? t("trash") : s.scope === "__root__" ? t("rootFolder") : s.scope;
     const all = rows.length > 0 && rows.every(item => s.selected.has(item.id));
     const some = rows.some(item => s.selected.has(item.id));
-    return `<section class="library" aria-labelledby="list-title"><header class="library-heading"><div class="library-title"><h1 id="list-title">${esc(title)}</h1><p class="library-count" aria-label="${t("entryCountLabel")}">${t(s.query ? "resultCount" : "entryCount", { count: rows.length, total: collection().length })}</p></div><div class="heading-buttons">${s.scope !== "trash" ? `<button class="text-button" data-action="mode" ${busy() ? "disabled" : ""}>${t(s.mode ? "cancel" : "select")}</button>${s.mode ? "" : iconButton("demo", "newEntry", "plus")}` : ""}</div></header>
+    return `<section class="library" aria-labelledby="list-title"><header class="library-heading"><div class="library-title"><h1 id="list-title">${esc(title)}</h1><p class="library-count" aria-label="${t("entryCountLabel")}">${t(s.query ? "resultCount" : "entryCount", { count: rows.length, total: collection().length })}</p></div><div class="heading-buttons">${s.scope !== "trash" ? `${iconButton("cleanup", "cleanupFolders", "cleanup", busy() || s.mode)}<button class="text-button" data-action="mode" ${busy() ? "disabled" : ""}>${t(s.mode ? "cancel" : "select")}</button>${s.mode ? "" : iconButton("demo", "newEntry", "plus")}` : ""}</div></header>
       <div class="search-wrap">${icon("search")}<input id="search" aria-label="${t("searchLabel")}" placeholder="${t("search")}" value="${esc(s.query)}" ${busy() ? "disabled" : ""}>${s.query ? iconButton("clear-search", "clearSearch", "close") : ""}</div>
       ${s.mode ? `<div class="selection-toolbar"><button class="text-button select-all" data-action="all" role="checkbox" aria-checked="${all ? "true" : some ? "mixed" : "false"}" title="${t("selectAllHint")}" ${busy() || !rows.length ? "disabled" : ""}>${checkbox(all ? "checked" : some ? "mixed" : "")}<span>${t("selectAll")}</span></button></div>` : ""}
       <div class="entry-list ${s.mode ? "selecting" : ""}" id="entry-list" tabindex="0" aria-label="${esc(title)}">${rows.length ? rows.map(item => {
@@ -243,6 +319,7 @@
       <div class="selection-heading"><h2>${t("selectedCount", { count: p ? p.total : count })}</h2></div>
       <div class="batch-actions organization-actions" role="group" aria-label="${t("batchActions")}">${button("folder-mode", t("moveSection"), "quiet", "folder", busy(), `id="batch-folder-mode" aria-pressed="${s.operation === "folder"}"`)}${button("prefix-mode", t("replacePrefix"), "quiet", "edit", busy(), `id="batch-prefix-mode" aria-pressed="${s.operation === "prefix"}"`)}${button("trash", trashLabel, "quiet danger-text", running("trash") ? "spinner" : "trash", busy(), progress("trash"))}</div>
       ${s.operation === "prefix" ? `<section class="move-section prefix-section" aria-labelledby="batch-operation-title">${operationHeading}<p class="muted">${t("prefixHelp")}</p>${prefixSourceField()}<label>${t("prefixTo")}<input id="prefix-to" value="${esc(s.prefixTo)}" placeholder="${t("prefixToPlaceholder")}" aria-label="${t("prefixTo")}" ${busy() ? "disabled" : ""}>${!s.prefixTo.trim() ? `<span class="prefix-input-hint">${t("prefixToRequired")}</span>` : ""}</label>${prefixSummary(plan)}</section>` : `<section class="move-section" aria-labelledby="batch-operation-title">${operationHeading}
+        <div class="move-prefix-options" role="group" aria-label="${t("movePrefixOptions")}">${button("preserve-prefix", t("preservePrefix"), s.flatten ? "quiet" : "secondary", "", busy(), `aria-pressed="${!s.flatten}"`)}${button("flatten-prefix", t("flattenPrefix"), s.flatten ? "secondary" : "quiet", "", busy(), `aria-pressed="${s.flatten}"`)}</div><p class="muted move-prefix-help">${t(s.flatten ? "flattenPrefixHelp" : "preservePrefixHelp")}</p>
         <div class="folder-search search-wrap">${icon("search")}<input id="folder-search" placeholder="${t("folderSearch")}" aria-label="${t("folderSearchLabel")}" value="${esc(s.folderQuery)}" ${busy() ? "disabled" : ""}></div>
         <div class="folder-list ${query ? "flat" : ""}" role="group" aria-label="${t("chooseDestination")}">${query ? shown.map(folder => folderOption(folder, folderLabel(folder), 0, false)).join("") : folderTree()}${canCreate ? `<button class="folder-option folder-create" data-folder="${esc(candidate)}">${icon("folderPlus")}<span>${esc(t("createFolder", { folder: candidate }))}</span></button>` : ""}${!shown.length && !canCreate ? `<p class="muted">${t("noFolders")}</p>` : ""}</div>
         ${moveNotices(plan)}
@@ -267,10 +344,15 @@
   function resultPanel() {
     const r = s.result;
     const retryable = r.failed.some(failure => !failure.review);
-    return `<div class="batch-panel"><div class="panel-toolbar"></div><div class="result-summary">${icon("warning")}<h2>${t("partialTitle", { success: r.success, failed: r.failed.length })}</h2></div><div class="result-list">${r.failed.map(failure => {
+    return `<div class="batch-panel"><div class="panel-toolbar"></div><div class="result-summary">${icon("warning")}<h2>${t("partialTitle", { success: r.success, failed: r.failed.length })}</h2><p class="result-description">${t("partialUndoHelp")}</p></div><div class="result-list">${r.failed.map(failure => {
       const item = byID(failure.id);
       return `<div class="result-row"><strong class="entry-name">${esc(item.name)}</strong><span class="entry-path">${esc(path(item))}</span><p class="result-description">${t(failure.reason)}</p>${failure.review ? `<button class="text-button" data-action="check-both">${t("checkBoth")}${icon("arrow")}</button>` : ""}</div>`;
-    }).join("")}</div><div class="batch-actions">${retryable ? button("retry", t("retryFailed"), "primary", "restore") : ""}${button("result-close", t("finish"), retryable ? "secondary" : "primary")}</div></div>`;
+    }).join("")}</div><div class="batch-actions">${retryable ? button("retry", t("retryFailed"), "primary", "restore", busy()) : ""}${button("result-close", t("finish"), retryable ? "secondary" : "primary", "", busy())}</div></div>`;
+  }
+
+  function undoResultPanel() {
+    const r = s.undoResult;
+    return `<div class="batch-panel"><div class="panel-toolbar"></div><div class="result-summary">${icon("warning")}<h2>${t("undoPartialTitle", { success: r.completed, failed: r.failed.length })}</h2><p class="result-description">${t("undoPartialHelp")}</p></div><div class="result-list">${r.failed.map(failure => `<div class="result-row"><strong class="entry-name">${esc(failure.record.original?.name || failure.record.folder)}</strong><span class="entry-path">${esc(failure.record.original ? path(failure.record.original) : failure.record.folder)}</span><p class="result-description">${t(failure.reason)}</p></div>`).join("")}</div>${s.result ? `<p class="inline-notice">${t("forwardFailuresKept", { count: s.result.failed.length })}</p>` : ""}<div class="batch-actions">${button("retry-undo", t("retryUndo"), "primary", "restore", busy())}${button("undo-result-close", t(s.result ? "backToResult" : "finish"), "secondary", "", busy())}</div></div>`;
   }
 
   function moveNotices(plan) {
@@ -310,8 +392,8 @@
 
   function toastView() {
     if (!s.toast) return "";
-    const { key, values, sub, action, actionKey } = s.toast;
-    return `<div class="toast-region" role="status"><div class="toast">${icon("checkCircle")}<span class="toast-copy"><span>${esc(t(key, values))}</span>${sub ? `<span class="toast-sub">${t(sub)}</span>` : ""}</span>${action ? `<button class="text-button toast-action" data-action="${action}">${t(actionKey)}</button>` : ""}${iconButton("close-toast", "close", "close")}</div></div>`;
+    const { key, values, sub, action, actionKey, running } = s.toast;
+    return `<div class="toast-region" role="status"><div class="toast ${running ? "undo-running" : ""}">${icon(running ? "spinner" : "checkCircle")}<span class="toast-copy"><span>${esc(t(key, values))}</span>${sub ? `<span class="toast-sub">${t(sub)}</span>` : ""}</span>${action ? `<button class="text-button toast-action" data-action="${action}" ${busy() ? "disabled" : ""}>${t(actionKey)}</button>` : ""}${running ? "" : iconButton("close-toast", "close", "close")}</div></div>`;
   }
 
   function render() {
@@ -326,7 +408,7 @@
     document.documentElement.dataset.theme = theme;
     document.documentElement.lang = language;
     document.title = t("pageTitle");
-    root.innerHTML = `${reviewBar()}<section class="app-window" aria-label="${t("brand")}"><header class="titlebar"><div class="titlebar-left"><div class="titlebar-controls">${iconButton("demo", "previous", "back", true)}${iconButton("demo", "next", "arrow", true)}<button class="icon-button" data-action="sidebar" aria-label="${t("toggleSidebar")}" title="${t("toggleSidebar")}">${icon("sidebar")}</button></div><strong class="app-title">${t("passwordLibrary")}</strong></div><div class="titlebar-right"><button class="vault-switcher" data-action="demo" aria-label="${t("switchVault")}">${icon("folder")}<span>${t("personalVault")}</span>${icon("down")}</button><button class="status-button" data-action="demo">${icon("branch")}<span>${t("gitNotInitialized")}</span></button><button class="status-button" data-action="demo" aria-label="${t("syncVault")}">${icon("sync")}<span>${t("sync")}</span></button>${iconButton("demo", "lock", "lock")}</div></header><div class="workspace">${navigation()}${s.sidebar ? `<button class="sidebar-backdrop" data-action="sidebar" aria-label="${t("toggleSidebar")}"></button>` : ""}<div class="main-card">${list()}<section class="inspector" aria-live="polite"><div class="inspector-scroll">${s.result ? resultPanel() : s.mode ? batchPanel() : detailPanel()}</div></section></div></div>${toastView()}</section>${modal()}`;
+    root.innerHTML = `${reviewBar()}<section class="app-window" aria-label="${t("brand")}"><header class="titlebar"><div class="titlebar-left"><div class="titlebar-controls">${iconButton("demo", "previous", "back", true)}${iconButton("demo", "next", "arrow", true)}<button class="icon-button" data-action="sidebar" aria-label="${t("toggleSidebar")}" title="${t("toggleSidebar")}">${icon("sidebar")}</button></div><strong class="app-title">${t("passwordLibrary")}</strong></div><div class="titlebar-right"><button class="vault-switcher" data-action="demo" aria-label="${t("switchVault")}">${icon("folder")}<span>${t("personalVault")}</span>${icon("down")}</button><button class="status-button" data-action="demo">${icon("branch")}<span>${t("gitNotInitialized")}</span></button><button class="status-button" data-action="demo" aria-label="${t("syncVault")}">${icon("sync")}<span>${t("sync")}</span></button>${iconButton("demo", "lock", "lock")}</div></header><div class="workspace">${navigation()}${s.sidebar ? `<button class="sidebar-backdrop" data-action="sidebar" aria-label="${t("toggleSidebar")}"></button>` : ""}<div class="main-card">${list()}<section class="inspector" aria-live="polite"><div class="inspector-scroll">${s.undoResult ? undoResultPanel() : s.result ? resultPanel() : s.mode ? batchPanel() : detailPanel()}</div></section></div></div>${toastView()}</section>${modal()}`;
     const modalNode = document.querySelector("dialog");
     if (modalNode) {
       modalNode.showModal();
@@ -381,11 +463,11 @@
       else timer = setTimeout(() => {
         const changedPaths = new Map(ids.map(id => [id, targetPath(byID(id))]));
         const prefix = action === "move" && s.operation === "prefix";
-        applySuccess(action, ids, destination);
-        if (prefix) { for (const [id, next] of changedPaths) byID(id).folder = next.split("/").slice(0, -1).join("/"); s.toast = { key: "prefixSuccess", values: { count: ids.length } }; }
+        applySuccess(action, ids, destination, action === "move" ? changedPaths : null);
+        if (prefix) s.toast = { key: "prefixSuccess", values: { count: ids.length }, action: "undo", actionKey: "undo" };
         // Entries excluded from the operation stay selected for another action.
         if (retained.length) { s.mode = true; s.selected = new Set(retained); }
-        render(); autoDismiss(action === "trash" ? 8000 : 5000);
+        render(); autoDismiss(8000);
       }, 300);
     };
     timer = setTimeout(step, 350);
@@ -395,6 +477,8 @@
     if (busy() && !["theme", "sidebar"].includes(action)) return;
     switch (action) {
       case "folder-mode": s.operation = "folder"; render(); break;
+      case "preserve-prefix": s.flatten = false; render(); break;
+      case "flatten-prefix": s.flatten = true; render(); break;
       case "prefix-mode": {
         s.operation = "prefix";
         render(); break;
@@ -413,27 +497,21 @@
       case "confirm-trash": startOperation("trash"); break;
       case "cancel-dialog": closeDialog(); break;
       case "confirm-move": startOperation("move"); break;
+      case "cleanup": if (!s.mode && emptyFolders.length) { applyCleanup(); render(); autoDismiss(8000); } else toast("cleanupNone"); break;
       case "reveal": s.reveal = !s.reveal; render(); break;
-      case "undo": {
-        if (!s.undo) break;
-        const ids = s.undo.map(item => item.id);
-        trashItems = trashItems.filter(item => !ids.includes(item.id));
-        items.push(...s.undo); s.undo = null;
-        s.mode = true; s.selected = new Set(ids);
-        toast("undone"); break;
-      }
-      case "destination": {
-        const destination = s.lastDestination ?? "";
-        s.scope = destination || "__root__"; s.query = ""; s.mode = false; s.result = null; s.toast = null; s.selected.clear(); s.active = items.find(item => item.folder === destination)?.id; render(); break;
-      }
+      case "undo": case "retry-undo": startUndo(); break;
+      case "undo-result-close": s.undoResult = null; render(); break;
       case "result-close": s.result = null; s.mode = false; s.selected.clear(); s.active = null; render(); break;
       case "check-both": s.dialog = "check"; render(); break;
       case "retry": {
         const r = s.result;
         const retry = r.failed.filter(failure => !failure.review);
+        const originals = retry.map(failure => ({ ...byID(failure.id) }));
         retry.forEach(failure => { byID(failure.id).folder = r.destination; s.selected.delete(failure.id); });
         r.success += retry.length; r.failed = r.failed.filter(failure => failure.review);
-        toast("movedSuccess", { count: retry.length, folder: folderLabel(r.destination) }); break;
+        const records = originals.map(original => ({ original, appliedPath: path(byID(original.id)) }));
+        s.undo = { action: "move", completed: s.undo?.action === "move" ? s.undo.completed : 0, records: [...(s.undo?.action === "move" ? s.undo.records : []), ...records] };
+        s.toast = { key: "partialCompleted", values: { count: s.undo.records.length }, action: "undo", actionKey: "undo" }; render(); autoDismiss(8000); break;
       }
       case "restore": {
         const item = trashItems.find(entry => entry.id === s.active);

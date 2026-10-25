@@ -26,6 +26,7 @@ type batchState struct {
 	revealFolder      string
 	expanded          map[string]bool
 	moveMode          string
+	flatten           bool
 	prefixInitialized bool
 	prefixFrom        string
 	prefixTo          string
@@ -54,6 +55,7 @@ type batchResult struct {
 	prefix              bool
 	completed           int
 	failures            []batchFailure
+	undo                *batchUndoState
 }
 
 func (f batchFailure) retryable() bool {
@@ -108,6 +110,8 @@ func (a *application) resumeBatchAction() bool {
 		a.startBatchTrash()
 	case "retry":
 		a.retryBatch()
+	case "undo":
+		a.startBatchUndo(a.batchUndo)
 	case "create-folder":
 		a.createBatchFolder()
 	default:
@@ -119,6 +123,10 @@ func (a *application) resumeBatchAction() bool {
 // batchUnlockDescription tells what unlocking will do, next to the unlock form.
 func (a *application) batchUnlockDescription() string {
 	switch a.batch.pending {
+	case "undo":
+		if a.batchUndo != nil {
+			return a.t("解锁后将撤销 %d 项。", len(a.batchUndo.requests))
+		}
 	case "create-folder":
 		return a.t("解锁后将新建文件夹“%s”。", strings.TrimSpace(a.batch.folderQuery))
 	case "trash":
@@ -367,8 +375,9 @@ func (a *application) startBatchMove() {
 	for _, entry := range ready {
 		requests = append(requests, app.Request{Action: "move", VaultID: a.state.VaultID, Entry: entry.Path, Destination: a.batchEntryDestination(entry)})
 	}
+	undo := a.newBatchUndo()
 	a.runBatch("move", requests, func(responses []app.Response) {
-		result := batchResult{action: "move", destination: destination, prefix: prefix}
+		result := batchResult{action: "move", destination: destination, prefix: prefix, undo: undo}
 		selected := map[string]bool{}
 		for _, entry := range conflicts {
 			selected[entry.Path] = true
@@ -380,6 +389,7 @@ func (a *application) startBatchMove() {
 		}
 		for i, request := range requests {
 			r := batchResponse(responses, i)
+			undo.record(request, r)
 			if r.Status == "ok" {
 				result.completed++
 				continue
@@ -404,24 +414,21 @@ func (a *application) startBatchTrash() {
 	for _, entry := range chosen {
 		requests = append(requests, app.Request{Action: "trash", VaultID: a.state.VaultID, Entry: entry.Path})
 	}
+	undo := a.newBatchUndo()
 	a.runBatch("trash", requests, func(responses []app.Response) {
-		result := batchResult{action: "trash"}
+		result := batchResult{action: "trash", undo: undo}
 		selected := map[string]bool{}
-		undo := []string{}
 		for i := range requests {
 			r := batchResponse(responses, i)
+			undo.record(requests[i], r)
 			if r.Status == "ok" {
 				result.completed++
-				undo = append(undo, r.Data.TrashID)
 				continue
 			}
 			result.failures = append(result.failures, batchFailure{entry: requests[i].Entry, code: r.Code})
 			selected[requests[i].Entry] = true
 		}
 		a.finishBatch(result, selected)
-		if len(result.failures) == 0 && len(undo) > 0 {
-			a.notifyWithAction(a.t("已将 %d 项移到回收站", result.completed), a.t("恢复副本仅保存在此设备"), a.t("撤销"), 8*time.Second, func() { a.undoBatchTrash(undo) })
-		}
 	})
 }
 
@@ -431,6 +438,7 @@ func (a *application) finishBatch(result batchResult, remaining map[string]bool)
 	a.resetBatchDestination()
 	if len(result.failures) > 0 {
 		a.batch.selected, a.batch.result = remaining, &result
+		a.offerBatchUndo(result, remaining)
 		return
 	}
 	if len(remaining) > 0 {
@@ -438,17 +446,7 @@ func (a *application) finishBatch(result batchResult, remaining map[string]bool)
 	} else {
 		a.batch = batchState{}
 	}
-	if result.action == "move" && result.completed > 0 {
-		destination := result.destination
-		a.notifyWithAction(a.batchMoveSuccess(result, result.completed), "", a.t("查看"), 0, func() {
-			filter := "all"
-			if destination != "" {
-				filter = "folder:" + destination
-			}
-			a.exitBatch()
-			a.navigateManager(filter)
-		})
-	}
+	a.offerBatchUndo(result, remaining)
 }
 
 func (a *application) retryBatch() {
@@ -466,6 +464,9 @@ func (a *application) retryBatch() {
 			requests = append(requests, app.Request{Action: "move", VaultID: a.state.VaultID, Entry: failure.entry, Destination: failure.destination})
 		}
 	}
+	if result.undo == nil {
+		result.undo = a.newBatchUndo()
+	}
 	a.runBatch("move", requests, func(responses []app.Response) {
 		failures := []batchFailure{}
 		for _, failure := range result.failures {
@@ -476,6 +477,9 @@ func (a *application) retryBatch() {
 		completed := 0
 		for i := range requests {
 			r := batchResponse(responses, i)
+			if result.undo != nil {
+				result.undo.record(requests[i], r)
+			}
 			if r.Status == "ok" {
 				completed++
 				delete(a.batch.selected, requests[i].Entry)
@@ -489,32 +493,8 @@ func (a *application) retryBatch() {
 			a.batch.result = nil
 		}
 		if completed > 0 {
-			a.notice = a.batchMoveSuccess(*result, completed)
+			a.offerBatchUndo(*result, a.batch.selected)
 		}
-	})
-}
-
-func (a *application) undoBatchTrash(ids []string) {
-	requests := make([]app.Request, 0, len(ids))
-	for _, id := range ids {
-		requests = append(requests, app.Request{Action: "restore", VaultID: a.state.VaultID, ID: id})
-	}
-	a.runBatch("restore", requests, func(responses []app.Response) {
-		restored := map[string]bool{}
-		for _, r := range responses {
-			if r.Status == "ok" && r.Data.Entry != "" {
-				restored[r.Data.Entry] = true
-			}
-		}
-		if len(restored) > 0 {
-			a.batch = batchState{active: true, selected: restored, expanded: map[string]bool{}}
-			a.dropDetail()
-		}
-		if len(restored) < len(ids) {
-			a.errorText = a.t("部分条目未能还原，可以在回收站中查看。")
-			return
-		}
-		a.notice = a.t("已撤销")
 	})
 }
 
@@ -627,6 +607,10 @@ func (a *application) batchEntryRow(c *ui.Context, entry app.Entry) {
 // batchView presents peer organization actions, each with its own form and
 // execution button below the shared selection.
 func (a *application) batchView(c *ui.Context) {
+	if a.batchUndo != nil && a.batchUndo.visible && (!a.state.Locked || a.state.Settings.BrowseWhileLocked) {
+		a.batchUndoView(c, a.batchUndo)
+		return
+	}
 	if a.batch.result != nil {
 		a.batchResultView(c)
 		return
@@ -707,6 +691,7 @@ func (a *application) batchView(c *ui.Context) {
 				a.batchPrefixView(c, ready, conflicts, unchanged)
 				return
 			}
+			a.batchMoveOptionsView(c)
 			search := textBox(c, &a.batch.folderQuery, components.TextBoxOptions{LeadingIcon: lucide.Search()}).FillWidth().Label(a.t("搜索目标文件夹")).Placeholder(a.t("搜索或新建文件夹")).Disabled(a.busy)
 			if search.Changed() {
 				a.syncBatchFolderQuery()
@@ -722,7 +707,11 @@ func (a *application) batchView(c *ui.Context) {
 					a.batchNotice(c, true, a.t("%s 移到“%s”后会重名，将跳过。", a.batchNames(conflicts), a.batchFolderLabel(a.batch.destination)))
 				}
 				if len(unchanged) > 0 {
-					a.batchNotice(c, false, a.t("%d 项已在此文件夹中。", len(unchanged)))
+					message := a.t("%d 项已在此文件夹中。", len(unchanged))
+					if !a.batch.flatten {
+						message = a.t("保留前缀后，%d 项路径未变化。", len(unchanged))
+					}
+					a.batchNotice(c, false, message)
 				}
 				if len(ready) == 0 {
 					a.batchNotice(c, false, a.t("没有可移动的条目，请换一个文件夹。"))
@@ -883,6 +872,9 @@ func (a *application) batchResultView(c *ui.Context) {
 				}
 			})
 			ui.Row(c).Margin(20, 0, 0, 0).Gap(8).Children(func() {
+				if a.batchUndoCurrent(result.undo) && components.Button(c, a.t("撤销已完成项"), components.ButtonOutline).Disabled(a.busy).Clicked() {
+					a.startBatchUndo(result.undo)
+				}
 				if retryable && components.Button(c, a.t("重试"), components.ButtonPrimary).Disabled(a.busy).Clicked() {
 					a.retryBatch()
 				}

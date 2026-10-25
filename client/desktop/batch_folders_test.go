@@ -13,6 +13,7 @@ import (
 func TestBatchCreateNestedFolderSelectsVisibleLeafAndMovesEntries(t *testing.T) {
 	a, backend, settle := batchFixture(t, nil)
 	a.enterBatch()
+	a.batch.flatten = true
 	a.batch.selected["开发/GitHub"] = true
 	delete(a.batch.expanded, "工作")
 	view := ui.NewTester(testView(a), 1180, 800)
@@ -174,6 +175,7 @@ func TestBatchCreateFolderWithRealVault(t *testing.T) {
 			a.runOnMain = func(callback func()) { callbacks <- callback }
 			a.enterBatch()
 			a.batch.selected["工作/GitHub"] = true
+			a.batch.flatten = true
 			view := ui.NewTester(testView(a), test.width, 700)
 			view.SetPreferences(ui.Preferences{ReduceMotion: true})
 			settle := func() {

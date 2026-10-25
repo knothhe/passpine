@@ -72,6 +72,7 @@ type application struct {
 	shortcut                                                             shortcutState
 	quick                                                                quickSearchState
 	notifications                                                        notificationState
+	notificationActionSerial                                             uint64
 	settingsState                                                        components.SettingsState
 	settingsLoaded                                                       bool
 	settingsSaved                                                        app.Settings
@@ -87,6 +88,7 @@ type application struct {
 	revealedFields                                                       map[string]bool
 	editor                                                               editorState
 	batch                                                                batchState
+	batchUndo                                                            *batchUndoState
 	deleteOpen, discardOpen, purgeOpen                                   bool
 	purgeID                                                              string
 	recovery                                                             []app.RecoveryItem
@@ -380,6 +382,7 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 		a.vaultSelection = r.Data.VaultID
 		a.clearDetailTransition()
 		a.batch = batchState{}
+		a.batchUndo = nil
 	}
 	if a.state.VaultID != r.Data.VaultID || len(a.state.Entries) != len(r.Data.Entries) {
 		a.cacheReady = false
@@ -404,10 +407,11 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 			a.revealedFields = nil
 		}
 	}
+	if a.handleFolderCleanupResponse(requestAction, r) {
+		a.invalidate()
+		return
+	}
 	if r.Status != "ok" {
-		if requestAction == "cleanup-folders" {
-			a.refreshFolderNavigation()
-		}
 		if (requestAction == "fetch" || requestAction == "copy" && a.detailTransition.unlocking) && a.pendingSelection == "" {
 			a.clearDetailTransition()
 		}
@@ -419,13 +423,6 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 			a.batch.folderCreation = nil
 			if r.Code == "operation_failed" {
 				a.errorText = a.t("无法创建文件夹，请检查目录权限和可用空间后重试。")
-			}
-		}
-		if requestAction == "cleanup-folders" {
-			if r.Data.RemovedFolders > 0 {
-				a.errorText = a.t("已清理 %d 个空文件夹，清理未完成，请重试。", r.Data.RemovedFolders)
-			} else if r.Code == "operation_failed" {
-				a.errorText = a.t("无法清理空文件夹，请检查目录权限后重试。")
 			}
 		}
 		a.invalidate()
@@ -536,6 +533,7 @@ func (a *application) handleSessionLock() {
 }
 
 func (a *application) clearSecrets() {
+	a.batchUndo = nil
 	a.cancelUnlockAction()
 	a.preferences.pendingRead = nil
 	a.clearQuickSearchSecrets()

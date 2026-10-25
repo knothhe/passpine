@@ -116,7 +116,11 @@ func (a *application) batchMoveConfigured() bool {
 
 func (a *application) batchEntryDestination(entry app.Entry) string {
 	if a.batch.moveMode != "prefix" {
-		return batchDestinationPath(a.batch.destination, entry.Name)
+		relative := entry.Path
+		if a.batch.flatten {
+			relative = entry.Name
+		}
+		return batchDestinationPath(a.batch.destination, relative)
 	}
 	from, to := strings.TrimSpace(a.batch.prefixFrom), strings.TrimSpace(a.batch.prefixTo)
 	// Match complete folder segments, never an entry name or a partial segment.

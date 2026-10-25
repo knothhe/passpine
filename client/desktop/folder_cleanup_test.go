@@ -114,7 +114,7 @@ func TestFolderCleanupWhileLockedDoesNotAuthenticate(t *testing.T) {
 	requests := make(chan app.Request, 4)
 	a.service = backendFunc(func(request app.Request) app.Response {
 		requests <- request
-		if request.Action != "cleanup-folders" {
+		if request.Action != "cleanup-folders" && request.Action != "undo-cleanup-folders" {
 			return app.Response{Status: "error", Code: "unexpected_authentication", Data: lockedState}
 		}
 		return service.Execute(request)
@@ -135,6 +135,21 @@ func TestFolderCleanupWhileLockedDoesNotAuthenticate(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(a.state.Directory, "empty")); !os.IsNotExist(err) {
 		t.Fatal("locked cleanup left empty directories", err)
+	}
+	if err := view.Click(a.t("撤销")); err != nil {
+		t.Fatal(err)
+	}
+	a.undoFolderCleanup("duplicate", a.state.VaultID)
+	settle()
+	request := <-requests
+	if request.Action != "undo-cleanup-folders" || request.ID == "" || request.VaultID != a.state.VaultID || request.Mode != "" || request.Passphrase != "" || len(requests) != 0 {
+		t.Fatalf("undo requested authentication or sent duplicate work: %#v", request)
+	}
+	if !a.state.Locked || a.pendingUnlock.action != "" || !view.HasText(a.t("已恢复 %d 个空文件夹", 3)) {
+		t.Fatal("metadata-only undo did not retain the locked session")
+	}
+	if _, err := os.Stat(filepath.Join(a.state.Directory, "empty/a/b")); err != nil {
+		t.Fatal("locked undo did not recreate the original empty hierarchy", err)
 	}
 }
 
@@ -219,6 +234,39 @@ func TestFolderCleanupPreservesRecoveryNavigation(t *testing.T) {
 	}
 }
 
+func TestFolderCleanupUndoSurvivesQueuedRecoveryRead(t *testing.T) {
+	a, service, view, settle := folderCleanupFixture(t, "zh-CN", 1180)
+	created := service.Execute(app.Request{Action: "create-folder", Destination: "queued-undo/child"})
+	if created.Status != "ok" {
+		t.Fatal(created.Code)
+	}
+	a.state, a.entriesVersion = created.Data, created.Data.EntriesVersion
+	view.Frame()
+	if err := view.Click(a.t("清理空文件夹")); err != nil {
+		t.Fatal(err)
+	}
+	if err := view.Click(a.t("回收站")); err != nil {
+		t.Fatal(err)
+	}
+	if a.page != "recovery" || a.preferences.pendingRead == nil {
+		t.Fatal("recovery navigation did not queue a read behind cleanup")
+	}
+	// Cleanup raises its outcome, then receiveResponse starts the queued list
+	// read before that outcome can be painted. The eventual Undo must still work.
+	settle()
+	if a.page != "recovery" || !view.HasText(a.t("已清理 %d 个空文件夹", 2)) {
+		t.Fatal("queued recovery read lost the cleanup outcome or navigation")
+	}
+	if err := view.Click(a.t("撤销")); err != nil {
+		t.Fatal(err)
+	}
+	settle()
+	info, err := os.Stat(filepath.Join(a.state.Directory, "queued-undo", "child"))
+	if err != nil || !info.IsDir() || !view.HasText(a.t("已恢复 %d 个空文件夹", 2)) {
+		t.Fatal("the displayed Undo action was invalidated by its queued recovery read", err)
+	}
+}
+
 func TestFolderCleanupFailureShowsFeedbackAfterNavigationRefresh(t *testing.T) {
 	for _, removed := range []int{0, 2} {
 		a := fixture()
@@ -240,5 +288,83 @@ func TestFolderCleanupFailureShowsFeedbackAfterNavigationRefresh(t *testing.T) {
 		if a.filter != "all" || !view.HasText(want) {
 			t.Fatal("cleanup failure was hidden by navigation refresh")
 		}
+	}
+}
+
+func TestFolderCleanupUndoPartialFailureOffersRetryWithoutOverwritingFiles(t *testing.T) {
+	for _, language := range []string{"zh-CN", "en"} {
+		t.Run(language, func(t *testing.T) {
+			a, service, view, settle := folderCleanupFixture(t, language, 1180)
+			for _, folder := range []string{"blocked/child", "good"} {
+				if result := service.Execute(app.Request{Action: "create-folder", Destination: folder}); result.Status != "ok" {
+					t.Fatal(result.Message)
+				}
+			}
+			a.state = service.Execute(app.Request{Action: "list"}).Data
+			a.entriesVersion = a.state.EntriesVersion
+			a.cleanupEmptyFolders()
+			settle()
+			if !view.HasText(a.t("已清理 %d 个空文件夹", 3)) {
+				t.Fatal("cleanup did not show its result")
+			}
+			blocker := filepath.Join(a.state.Directory, "blocked")
+			if err := os.WriteFile(blocker, []byte("concurrent user file"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := view.Click(a.t("撤销")); err != nil {
+				t.Fatal(err)
+			}
+			settle()
+			if !view.HasText(a.t("已恢复 %d 个空文件夹，%d 个未恢复", 1, 2)) {
+				t.Fatal("partial undo did not summarize its completed work")
+			}
+			if data, err := os.ReadFile(blocker); err != nil || string(data) != "concurrent user file" {
+				t.Fatal("undo replaced a concurrent user file", err)
+			}
+			view.Advance(10 * time.Second)
+			if !view.HasText(a.t("重试撤销")) {
+				t.Fatal("partial undo lost its retry action before the error was resolved")
+			}
+			if err := os.Remove(blocker); err != nil {
+				t.Fatal(err)
+			}
+			if err := view.Click(a.t("重试撤销")); err != nil {
+				t.Fatal(err)
+			}
+			settle()
+			if !view.HasText(a.t("已恢复 %d 个空文件夹", 2)) || view.HasText(a.t("重试撤销")) {
+				t.Fatal("retry did not restore only the remaining directories and clear its action")
+			}
+			if _, err := os.Stat(filepath.Join(a.state.Directory, "blocked/child")); err != nil {
+				t.Fatal("retry did not restore the remaining hierarchy", err)
+			}
+		})
+	}
+}
+
+func TestFolderCleanupUndoCannotFollowVaultOrGenerationChange(t *testing.T) {
+	for _, change := range []string{"vault", "generation"} {
+		t.Run(change, func(t *testing.T) {
+			a := fixture()
+			a.state.VaultID = "original-vault"
+			calls := 0
+			a.service = backendFunc(func(app.Request) app.Response { calls++; return app.Response{} })
+			data := a.state
+			data.RemovedFolders, data.UndoID = 1, "receipt"
+			a.handleFolderCleanupResponse("cleanup-folders", app.Response{Status: "ok", Data: data})
+			undo := a.notifications.onAction
+			if undo == nil || a.notifications.action != a.t("撤销") {
+				t.Fatal("cleanup did not expose its undo action")
+			}
+			if change == "vault" {
+				a.state.VaultID = "different-vault"
+			} else {
+				a.generation++
+			}
+			undo()
+			if calls != 0 || a.busy {
+				t.Fatal("stale undo started an operation in another vault or generation")
+			}
+		})
 	}
 }

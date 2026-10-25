@@ -75,3 +75,64 @@ func TestCleanupEmptyFoldersReportsPartialPermissionFailure(t *testing.T) {
 		t.Fatal("failed cleanup changed the protected directory", err)
 	}
 }
+
+func TestCleanupReceiptPreservesPartialWorkAndRestoreRetriesPermissions(t *testing.T) {
+	v := newFixture(t)
+	for _, folder := range []string{"a-blocked/child", "z-empty"} {
+		if err := v.CreateFolder(folder); err != nil {
+			t.Fatal(err)
+		}
+	}
+	blocked := filepath.Join(v.config.Directory, "a-blocked")
+	if err := os.Chmod(blocked, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(blocked, 0700) })
+	removed, err := v.CleanupEmptyFoldersWithPaths()
+	if !errors.Is(err, os.ErrPermission) || !slices.Equal(removed, []string{"z-empty"}) {
+		t.Fatal("partial cleanup receipt included unremoved folders", removed, err)
+	}
+	if _, pending, err := v.RestoreEmptyFolders(removed); err != nil || len(pending) != 0 {
+		t.Fatal("partial cleanup could not be undone", pending, err)
+	}
+	if err := os.Chmod(blocked, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(blocked, "keep"), []byte("user data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	removed, err = v.CleanupEmptyFoldersWithPaths()
+	if err != nil || len(removed) != 2 {
+		t.Fatal(removed, err)
+	}
+	if err := os.Chmod(blocked, 0500); err != nil {
+		t.Fatal(err)
+	}
+	restored, pending, err := v.RestoreEmptyFolders(removed)
+	if restored != 1 || !errors.Is(err, os.ErrPermission) || !slices.Equal(pending, []string{"a-blocked/child"}) {
+		t.Fatal("permission failure lost completed restore or retry paths", restored, pending, err)
+	}
+	if err := os.Chmod(blocked, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if restored, pending, err := v.RestoreEmptyFolders(pending); restored != 1 || len(pending) != 0 || err != nil {
+		t.Fatal("permission retry failed", restored, pending, err)
+	}
+}
+
+func TestRestoreEmptyFoldersRejectsLeafAndParentSymlinks(t *testing.T) {
+	v := newFixture(t)
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(v.config.Directory, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	if restored, pending, err := v.RestoreEmptyFolders([]string{"linked", "linked/child", "safe"}); err == nil || restored != 1 || !slices.Equal(pending, []string{"linked", "linked/child"}) {
+		t.Fatal("restore accepted a symlink or failed to restore an independent folder", restored, pending, err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "child")); !os.IsNotExist(err) {
+		t.Fatal("restore followed a parent symlink", err)
+	}
+	if info, err := os.Lstat(filepath.Join(v.config.Directory, "linked")); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("restore replaced the link", err)
+	}
+}

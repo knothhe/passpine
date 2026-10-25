@@ -1,7 +1,7 @@
 // Review boards only. Coordinates are CSS pixels at the intended desktop viewport.
 globalThis.PASSPINE_BATCH_BOARDS = {
   width: 3640,
-  height: 5530,
+  height: 6440,
   boards: [
     { file: "browse.html", key: "sceneBrowse", x: 0, y: 90, w: 1180, h: 800 },
     { file: "empty.html", key: "sceneEmpty", x: 1230, y: 90, w: 1180, h: 800 },
@@ -10,6 +10,9 @@ globalThis.PASSPINE_BATCH_BOARDS = {
     { file: "prefix-excluded.html", key: "scenePrefixExcluded", x: 1230, y: 3750, w: 1180, h: 800 },
     { file: "prefix-no-folder.html?lang=en", key: "scenePrefixNoFolder", x: 2460, y: 3750, w: 860, h: 760 },
     { file: "trash-confirm.html", key: "sceneTrashConfirm", x: 0, y: 4660, w: 1180, h: 800 },
+    { file: "cleanup-success.html", key: "sceneCleanupSuccess", x: 1230, y: 4660, w: 1180, h: 800 },
+    { file: "undo-running.html", key: "sceneUndoRunning", x: 2460, y: 4660, w: 1180, h: 800 },
+    { file: "undo-partial.html?lang=en", key: "sceneUndoPartial", x: 0, y: 5570, w: 860, h: 760 },
     { file: "move.html", key: "sceneMove", x: 0, y: 1000, w: 1180, h: 800 },
     { file: "conflict.html", key: "sceneConflict", x: 1230, y: 1000, w: 1180, h: 800 },
     { file: "progress.html", key: "sceneProgress", x: 2460, y: 1000, w: 1180, h: 800 },

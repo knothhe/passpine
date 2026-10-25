@@ -341,7 +341,7 @@ func TestBatchPrefixRetriesOriginalTargetsAfterPartialFailure(t *testing.T) {
 	a.retryBatch()
 	settle()
 	moves := backend.actions("move")
-	if len(moves) != 3 || moves[2].Destination != "test0/b/c" || a.notice != "已修改 1 项的文件夹前缀" {
+	if len(moves) != 3 || moves[2].Destination != "test0/b/c" || a.notice != "已修改 2 项的文件夹前缀" {
 		t.Fatalf("retry lost its original destination: %#v, %q", moves, a.notice)
 	}
 }

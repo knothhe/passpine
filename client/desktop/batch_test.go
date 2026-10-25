@@ -50,6 +50,7 @@ func (b *batchBackend) Execute(r app.Request) app.Response {
 	case "move":
 		b.rename(r.Entry, r.Destination)
 		data.Entry = r.Destination
+		data.Revision = "moved:" + r.Destination
 	case "trash":
 		b.rename(r.Entry, "")
 		data.TrashID = "trash:" + r.Entry
@@ -126,6 +127,7 @@ func batchFixture(t *testing.T, failures map[string]string) (*application, *batc
 func TestBatchMoveSkipsConflictsAndKeepsThemSelected(t *testing.T) {
 	a, backend, settle := batchFixture(t, nil)
 	a.enterBatch()
+	a.batch.flatten = true // Exercise conflicts when discarding source folders.
 	for _, path := range []string{"开发/Cloudflare", "开发/GitHub", "工作/Linear", "工作/客户项目/GitHub"} {
 		a.batch.selected[path] = true
 	}
@@ -146,18 +148,20 @@ func TestBatchMoveSkipsConflictsAndKeepsThemSelected(t *testing.T) {
 	if !a.batch.active || len(a.batch.selected) != 3 || a.batch.selected["开发/Cloudflare"] || a.batch.chosen {
 		t.Fatalf("skipped entries should stay selected for another folder: %#v", a.batch.selected)
 	}
-	if a.notice != "已将 1 项移动到“归档”" || a.notifications.action != "查看" || a.notifications.onAction == nil {
-		t.Fatalf("move did not report its outcome with a view action: %q %q", a.notice, a.notifications.action)
+	if a.notice != "已将 1 项移动到“归档”" || a.notifications.action != "撤销" || a.notifications.onAction == nil {
+		t.Fatalf("move did not report its outcome with an undo action: %q %q", a.notice, a.notifications.action)
 	}
 	a.notifications.onAction()
-	if a.batch.active || a.filter != "folder:归档" {
-		t.Fatal("view action did not open the destination folder")
+	settle()
+	if !a.batch.active || !a.batch.selected["开发/Cloudflare"] || len(backend.actions("move")) != 2 {
+		t.Fatal("undo did not restore the moved entry")
 	}
 }
 
 func TestBatchMovePartialFailureRetriesOnlyRetryableEntries(t *testing.T) {
 	a, backend, settle := batchFixture(t, map[string]string{"工作/Figma": "vault_busy", "工作/Linear": "source_remains"})
 	a.enterBatch()
+	a.batch.flatten = true
 	for _, path := range []string{"开发/Cloudflare", "工作/Figma", "工作/Linear"} {
 		a.batch.selected[path] = true
 	}
@@ -281,6 +285,7 @@ func TestLockedSelectionAsksToUnlockThenContinuesTheMove(t *testing.T) {
 	if err := view.Click("选择"); err != nil || !a.batch.active {
 		t.Fatalf("selection should be available while browsing locked: %v", err)
 	}
+	a.batch.flatten = true
 	a.batch.selected["开发/Cloudflare"], a.batch.selected["工作/Figma"] = true, true
 	view.Frame()
 	if err := view.Click("展开“家庭”"); err != nil {

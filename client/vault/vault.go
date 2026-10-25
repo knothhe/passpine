@@ -881,15 +881,21 @@ func (v *Vault) Revision(name string) (string, error) {
 }
 
 func (v *Vault) Move(from, to, expectedRevision string) error {
+	_, e := v.MoveWithRevision(from, to, expectedRevision)
+	return e
+}
+
+// MoveWithRevision returns the document and exact ciphertext revision produced
+// by the move. Callers can use that revision to undo without moving a later edit.
+func (v *Vault) MoveWithRevision(from, to, expectedRevision string) (Document, error) {
 	// Read's revision is verified again by SaveRename, so intervening edits are
 	// rejected rather than overwritten by the earlier decrypted document.
 	doc, e := v.Read(from)
 	if e != nil {
-		return e
+		return Document{}, e
 	}
 	if doc.Revision != expectedRevision {
-		return ErrConflict
+		return Document{}, ErrConflict
 	}
-	_, e = v.SaveRename(from, to, doc.Raw, expectedRevision)
-	return e
+	return v.SaveRename(from, to, doc.Raw, expectedRevision)
 }

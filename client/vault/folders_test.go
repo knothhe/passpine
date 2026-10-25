@@ -202,3 +202,96 @@ func TestEmptyFolderRemovalPreservesNewFilesAndSkipsMissingFolders(t *testing.T)
 		t.Fatalf("already removed folder should be skipped: %v %v", removed, err)
 	}
 }
+
+func TestCleanupReceiptAndRestoreNeedNoKeysOrDecryption(t *testing.T) {
+	root := t.TempDir()
+	v, err := New(Config{Directory: filepath.Join(root, "store"), KeyFile: filepath.Join(root, "missing.asc")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(v.Close)
+	if err := os.MkdirAll(filepath.Join(v.config.Directory, "empty/有 空格/child"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	ciphertext := filepath.Join(v.config.Directory, "account.gpg")
+	if err := os.WriteFile(ciphertext, []byte("not decryptable"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := v.CleanupEmptyFoldersWithPaths()
+	want := []string{"empty/有 空格/child", "empty/有 空格", "empty"}
+	if err != nil || !slices.Equal(removed, want) {
+		t.Fatalf("cleanup receipt does not describe actual removed directories: %v %v", removed, err)
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		restored, pending, err := v.RestoreEmptyFolders(append(append([]string{}, removed...), removed...))
+		if err != nil || restored != 3 || len(pending) != 0 || v.Status().Unlocked {
+			t.Fatalf("metadata-only restore attempt %d: %d %v %v", attempt, restored, pending, err)
+		}
+	}
+	if data, err := os.ReadFile(ciphertext); err != nil || string(data) != "not decryptable" {
+		t.Fatal("cleanup undo changed ciphertext", err)
+	}
+	if _, err := os.Stat(filepath.Join(v.config.Directory, "empty/有 空格/child")); err != nil {
+		t.Fatal("cleanup undo did not recreate the hierarchy", err)
+	}
+}
+
+func TestRestoreEmptyFoldersPreservesFilesAndRetriesOnlyFailures(t *testing.T) {
+	v := newFixture(t)
+	for _, folder := range []string{"blocked/child", "good/child"} {
+		if err := v.CreateFolder(folder); err != nil {
+			t.Fatal(err)
+		}
+	}
+	removed, err := v.CleanupEmptyFoldersWithPaths()
+	if err != nil || len(removed) != 4 {
+		t.Fatal(removed, err)
+	}
+	blocked := filepath.Join(v.config.Directory, "blocked")
+	if err := os.WriteFile(blocked, []byte("keep concurrent file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	v.Lock()
+	restored, pending, err := v.RestoreEmptyFolders(removed)
+	if err == nil || restored != 2 || !slices.Equal(pending, []string{"blocked", "blocked/child"}) {
+		t.Fatalf("restore did not isolate failures: %d %v %v", restored, pending, err)
+	}
+	if data, err := os.ReadFile(blocked); err != nil || string(data) != "keep concurrent file" {
+		t.Fatal("restore overwrote a concurrent file", err)
+	}
+	if err := os.WriteFile(filepath.Join(v.config.Directory, "good/keep"), []byte("user data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(blocked); err != nil {
+		t.Fatal(err)
+	}
+	if restored, pending, err := v.RestoreEmptyFolders(pending); err != nil || restored != 2 || len(pending) != 0 {
+		t.Fatalf("restore retry failed: %d %v %v", restored, pending, err)
+	}
+	if data, err := os.ReadFile(filepath.Join(v.config.Directory, "good/keep")); err != nil || string(data) != "user data" || v.Status().Unlocked {
+		t.Fatal("restore retry touched completed work or unlocked the vault", err)
+	}
+}
+
+func TestRestoreEmptyFoldersDoesNotCreateUnrecordedParentsAndRequiresStoreLock(t *testing.T) {
+	v := newFixture(t)
+	for _, folders := range [][]string{{"unrecorded/child"}, {"valid", "invalid/../escape"}} {
+		if restored, _, err := v.RestoreEmptyFolders(folders); err == nil || restored != 0 {
+			t.Fatal("restore accepted missing unrecorded parents or unsafe paths", restored, err)
+		}
+	}
+	for _, name := range []string{"unrecorded", "valid", "invalid"} {
+		if _, err := os.Stat(filepath.Join(v.config.Directory, name)); !os.IsNotExist(err) {
+			t.Fatal("restore created an unrecorded or partially validated directory", name, err)
+		}
+	}
+	unlock, err := lockStore(v.config.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, pending, err := v.RestoreEmptyFolders([]string{"blocked"})
+	unlock()
+	if !errors.Is(err, ErrBusy) || restored != 0 || !slices.Equal(pending, []string{"blocked"}) {
+		t.Fatal("restore ignored the store lock or discarded retry state", restored, pending, err)
+	}
+}

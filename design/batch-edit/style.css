@@ -317,6 +317,13 @@ button.folder-toggle:hover { background: var(--hover); color: var(--fg); }
 .toast .toast-action { margin-left: 6px; font-weight: 500; font-size: 12px; }
 .toast .icon-button { width: 25px; height: 25px; }
 .toast .icon-button .icon { width: 14px; height: 14px; }
+.undo-running > .icon { animation: undo-spin 1s linear infinite; }
+@keyframes undo-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .undo-running > .icon { animation: none; } }
+.move-prefix-options { display:flex; flex:none; gap:4px; margin-top:12px; }
+.move-prefix-options .button { padding:5px 10px; min-height:30px; font-size:12px; }
+.move-prefix-options [aria-pressed="true"] { background:var(--hover); border-color:var(--border); }
+.move-prefix-help { flex:none; margin-top:6px; font-size:11px; line-height:1.6; }
 
 /* Detail content is already inset by its shared inspector container. */
 
