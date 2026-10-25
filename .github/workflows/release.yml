@@ -54,6 +54,9 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       tag: ${{ needs.verify.outputs.tag }}
+    secrets:
+      PASSPINE_MACOS_SIGNING_CERTIFICATE: ${{ secrets.PASSPINE_MACOS_SIGNING_CERTIFICATE }}
+      PASSPINE_MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.PASSPINE_MACOS_SIGNING_CERTIFICATE_PASSWORD }}
     permissions:
       contents: read
 

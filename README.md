@@ -44,7 +44,7 @@ make help               # 查看全部命令和参数
 
 Dev 客户端图标带右下角 `Dev` 标记。设置 → 关于提供通道、源码提交、未提交修改状态、构建环境与平台信息，可一键复制。退出会先处理未保存编辑，等待设置及正在执行的请求完成。
 
-支持 macOS、Windows 和 Linux。macOS 应用使用本地签名，尚未配置 Developer ID 公证；Windows 安装包尚未配置 Authenticode 签名。
+支持 macOS、Windows 和 Linux。macOS 正式版使用固定的自签名证书，更新后应用身份保持不变，但尚未配置 Developer ID 公证；Windows 安装包尚未配置 Authenticode 签名。
 
 ## 使用
 

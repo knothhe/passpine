@@ -52,7 +52,20 @@ Linux 矩阵还在 Xvfb 中运行原生启动回归，确认 Dev 卸载控制端
 
 Linux 可用 `scripts/install-linux.sh` 一键安装（命令见 README）：它从最新或指定版本的 Release 下载 `update-feed.json`，以 `config/update-signing.json` 中的同一固定公钥验签，按 Feed 中的地址、大小和 SHA-256 核对安装包及两个程序，再执行包内 `install.sh`，因此不新增 Release 附件。脚本从 `main` 分支提供，须兼容所有含 `installerUpdate` 的已发布 Feed；修改 Feed 结构或 Linux 包内容时同步更新脚本及 `scripts/install-linux.test.mjs`。也可将下载包解压到单独目录，运行 `bash install.sh`，默认安装到 `~/.local/bin`，也可传入其他绝对安装目录。安装器创建桌面菜单入口并注册 Host；目标系统需要 GTK 3。客户端使用 MyGo 原生 UI，无需 WebKitGTK 或 Node.js。CI 构建不会安装到用户目录。
 
-macOS 沿用 ad-hoc 签名，未接入 Developer ID 公证；Windows 未接入 Authenticode 签名。扩展 ZIP 不自动提交商店或获取 Firefox 签名。Chrome ZIP 使用独立商店配置，manifest 必须省略 `key`；本地解包构建保留公钥以固定 ID。发布暂存及汇总均直接检查 ZIP，拒绝任何包含 `key` 字段的 Chrome 包；Firefox 继续校验固定公钥及 Gecko ID。WXT 关闭额外 sources ZIP 生成，GitHub 自动提供的 Source code 下载项不受影响。
+macOS 正式版使用固定的自签名证书签名，仍未接入 Developer ID 公证；Windows 未接入 Authenticode 签名。扩展 ZIP 不自动提交商店或获取 Firefox 签名。Chrome ZIP 使用独立商店配置，manifest 必须省略 `key`；本地解包构建保留公钥以固定 ID。发布暂存及汇总均直接检查 ZIP，拒绝任何包含 `key` 字段的 Chrome 包；Firefox 继续校验固定公钥及 Gecko ID。WXT 关闭额外 sources ZIP 生成，GitHub 自动提供的 Source code 下载项不受影响。
+
+### macOS 签名身份
+
+ad-hoc 签名的指定要求（designated requirement）是每次构建都会变化的 cdhash，更新后系统会把新版本视为另一个应用：通过 `SMAppService` 注册的开机自启及其他绑定代码身份的系统授权可能失效或需要重新批准。正式版因此改用长期固定的自签名证书，指定要求为 `identifier "com.knothhe.passpine" and certificate leaf = H"…"`，跨版本保持不变。它不能代替 Developer ID 公证：从浏览器下载、带 quarantine 属性的应用仍会被 Gatekeeper 拦截。本地 Dev 构建继续使用 ad-hoc 签名，也可设置 `PASSPINE_MACOS_SIGNING_IDENTITY`（及可选的 `PASSPINE_MACOS_SIGNING_KEYCHAIN`）改用本机身份。
+
+证书 SHA-256 固定在 `config/macos-signing.json`。macOS 构建步骤运行 `node scripts/macos-signing.mjs build`：把 Secret 中的身份导入 `RUNNER_TEMP` 下的临时钥匙串，仅向该步骤的 `build-client.sh` 提供身份，结束后恢复钥匙串搜索列表并删除临时钥匙串。正式构建签名后检查 bundle 与 `Contents/MacOS` 中每个程序的叶证书均为固定证书，且指定要求基于证书而非 cdhash；缺少 Secret、证书不匹配或配置缺失时停止构建，不回退 ad-hoc。
+
+| GitHub 配置 | 格式及用途 |
+| --- | --- |
+| Repository secret `PASSPINE_MACOS_SIGNING_CERTIFICATE` | Base64 编码的 PKCS#12 身份（证书与私钥），只传给 Release 的 build job 中的 macOS 构建步骤 |
+| Repository secret `PASSPINE_MACOS_SIGNING_CERTIFICATE_PASSWORD` | 上述 PKCS#12 的口令 |
+
+首次配置时在仓库外执行 `node scripts/macos-signing.mjs generate`，它在 `~/.config/passpine-release/macos-signing/`（目录 `0700`、文件 `0600`）生成证书、PKCS#12 和口令，写入 `config/macos-signing.json` 并打印设置 Secret 的命令；应另行保管离线备份。已有身份时命令拒绝覆盖。更换证书会再次改变所有已安装客户端的应用身份，不要为修复 CI 配置重新生成。从 ad-hoc 版本升级到首个固定证书版本时，应用身份会变化一次，此后保持稳定。
 
 各 job 将附件暂存到 `dist/releases/<版本>/`，生成独立的 `manifest-<目标>.json`，记录 tag、HEAD、版本、文件名、大小和 SHA-256。发布步骤要求完整且匹配的目标集合，只上传确切文件。manifest 保存在 Actions artifacts 中，不上传到 Release。
 
