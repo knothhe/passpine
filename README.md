@@ -14,6 +14,18 @@ brew install --cask knothhe/tap/passpine
 
 命令会自动添加 [knothhe/tap](https://github.com/knothhe/homebrew-tap)。也可从 [GitHub Releases](https://github.com/knothhe/passpine/releases) 下载。三平台构建及正式版发布成功后，GitHub Actions 会自动更新 Homebrew 配方。Homebrew 更新、卸载及首次启动说明见[安装说明](docs/install-local.md#macos-homebrew-正式版)。
 
+## Linux 安装
+
+x86_64 Linux 可一条命令安装正式客户端：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/knothhe/passpine/main/scripts/install-linux.sh | sh
+```
+
+脚本识别 Arch、Debian/Ubuntu、Fedora/RHEL、openSUSE 及其衍生版，用系统包管理器补装缺少的 GTK 3、Git 和 OpenSSL（仅此步骤使用 `sudo` 或 `doas`）；随后用固定公钥验证 Release 的签名更新 Feed，核对安装包及程序的 SHA-256，再运行包内 `install.sh` 安装到 `~/.local/bin`、创建桌面入口并注册浏览器连接。之后的升级由应用内更新完成。
+
+在 `sh -s --` 后传入参数：`--version X.Y.Z` 安装指定版本，`--skip-deps` 跳过依赖安装，`--uninstall` 注销浏览器连接并移除程序、桌面入口和图标，保留密码库、私钥与设置。`PASSPINE_BIN_DIR` 可改安装目录。脚本只替换或移除正式版 Passpine，不覆盖其他程序、符号链接或指向其他目录的桌面入口。
+
 ## 构建与安装
 
 需要 Make、Go 1.27.1+、Node.js 22.12+ 和 pnpm 12.11.2；macOS 还需 Xcode Command Line Tools。Git 同步使用系统 Git 和已有认证凭据。

@@ -50,7 +50,7 @@ Linux 矩阵还在 Xvfb 中运行原生启动回归，确认 Dev 卸载控制端
 | `passpine-<版本>-firefox.zip` | Firefox MV3 扩展 |
 | `update-feed.json` | 包地址、完整性清单及 Ed25519 签名；与普通安装包共用制品 |
 
-Linux 下载包解压到单独目录，运行 `bash install.sh`，默认安装到 `~/.local/bin`，也可传入其他绝对安装目录。安装器创建桌面菜单入口并注册 Host；目标系统需要 GTK 3。客户端使用 MyGo 原生 UI，无需 WebKitGTK 或 Node.js。CI 构建不会安装到用户目录。
+Linux 可用 `scripts/install-linux.sh` 一键安装（命令见 README）：它从最新或指定版本的 Release 下载 `update-feed.json`，以 `config/update-signing.json` 中的同一固定公钥验签，按 Feed 中的地址、大小和 SHA-256 核对安装包及两个程序，再执行包内 `install.sh`，因此不新增 Release 附件。脚本从 `main` 分支提供，须兼容所有含 `installerUpdate` 的已发布 Feed；修改 Feed 结构或 Linux 包内容时同步更新脚本及 `scripts/install-linux.test.mjs`。也可将下载包解压到单独目录，运行 `bash install.sh`，默认安装到 `~/.local/bin`，也可传入其他绝对安装目录。安装器创建桌面菜单入口并注册 Host；目标系统需要 GTK 3。客户端使用 MyGo 原生 UI，无需 WebKitGTK 或 Node.js。CI 构建不会安装到用户目录。
 
 macOS 沿用 ad-hoc 签名，未接入 Developer ID 公证；Windows 未接入 Authenticode 签名。扩展 ZIP 不自动提交商店或获取 Firefox 签名。Chrome ZIP 使用独立商店配置，manifest 必须省略 `key`；本地解包构建保留公钥以固定 ID。发布暂存及汇总均直接检查 ZIP，拒绝任何包含 `key` 字段的 Chrome 包；Firefox 继续校验固定公钥及 Gecko ID。WXT 关闭额外 sources ZIP 生成，GitHub 自动提供的 Source code 下载项不受影响。
 
