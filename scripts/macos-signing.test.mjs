@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { assertCertificateRequirement, certificateFingerprint, generate, parseIdentities, readSigningConfig } from './macos-signing.mjs';
+import { execFileSync } from 'node:child_process';
+import { assertCertificateRequirement, certificateFingerprint, generate, parseIdentities, parseIdentityList, readSigningConfig, selectIdentity } from './macos-signing.mjs';
 
 const temporary = () => fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-macos-signing-test-'));
 
@@ -73,4 +74,35 @@ test('the macOS signing identity reaches only the signed macOS build step', () =
   assert.ok(!steps.some(step => /bash scripts\/build-client\.sh/.test(step) && /runner\.os != 'Windows'|runner\.os == 'macOS'/.test(step)), 'macOS release packages must use the signed build.');
   const jobs = release.split(/\n(?=  [a-z]+:\n)/);
   assert.deepEqual(jobs.filter(job => /PASSPINE_MACOS_SIGNING/.test(job)).map(job => job.trim().split(':')[0]), ['build']);
+});
+
+test('identity list keeps names, trust status and keychain order', () => {
+  const [first, second] = ['A'.repeat(40), 'B'.repeat(40)];
+  const output = `  1) ${first} "Apple Development: Name (TEAM)"\n  2) ${second} "Passpine (self-signed)" (CSSMERR_TP_NOT_TRUSTED)\n     2 identities found\n\n  Valid identities only\n  1) ${first} "Apple Development: Name (TEAM)"\n`;
+  assert.deepEqual(parseIdentityList(output), [
+    { hash: first, name: 'Apple Development: Name (TEAM)', status: '' },
+    { hash: second, name: 'Passpine (self-signed)', status: 'CSSMERR_TP_NOT_TRUSTED' },
+  ]);
+});
+
+test('keychain export selection repacks only the chosen certificate and its key', () => {
+  const root = temporary();
+  try {
+    const identities = [0, 1].map(index => generate({ output: path.join(root, String(index)), config: path.join(root, `${index}.json`) }));
+    const keyFor = index => {
+      // Recover each generated key through the same PKCS#12 dump openssl prints.
+      const dump = execFileSync('openssl', ['pkcs12', '-in', identities[index].identity, '-nodes', '-passin', `file:${identities[index].password}`], { encoding: 'utf8' });
+      return dump.match(/-----BEGIN PRIVATE KEY-----[\s\S]+?-----END PRIVATE KEY-----/)[0];
+    };
+    const certificates = identities.map(identity => new crypto.X509Certificate(fs.readFileSync(identity.certificate)));
+    const dump = `Bag Attributes\n${keyFor(0)}\n${certificates[0].toString()}\nBag Attributes\n${certificates[1].toString()}\n${keyFor(1)}\n`;
+    const sha1 = certificates[1].fingerprint.replaceAll(':', '').toLowerCase();
+    const selected = selectIdentity(dump, sha1);
+    assert.equal(new crypto.X509Certificate(selected.certificate).fingerprint256, certificates[1].fingerprint256);
+    assert.equal(crypto.createPublicKey(selected.key).export({ type: 'spki', format: 'der' }).toString('hex'), certificates[1].publicKey.export({ type: 'spki', format: 'der' }).toString('hex'));
+    assert.throws(() => selectIdentity(`${keyFor(0)}\n${certificates[1].toString()}`, sha1), /private key/);
+    assert.throws(() => selectIdentity(dump, 'C'.repeat(40)), /missing from the keychain export/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
