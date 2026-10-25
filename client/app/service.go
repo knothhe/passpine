@@ -442,8 +442,12 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 		if s.active != nil {
 			s.active.Lock()
 		}
-		extra = Data{}
-		err = vault.ErrCancelled
+		// A finished folder change cannot be revoked by a later lock; report
+		// it so the caller can still offer undo.
+		if err != nil || !organizesFolders(r.Action) {
+			extra = Data{}
+			err = vault.ErrCancelled
+		}
 	}
 	out := Response{RequestID: r.RequestID, Protocol: 1, Status: "ok", Data: s.snapshotWithEntries(source != "browser" || r.Action == "configure" || r.Action == "list")}
 	if out.Data.Locked && needsUnlock(r.Action) {
@@ -1125,9 +1129,20 @@ func (s *Service) log(action, source, outcome string) {
 	}
 }
 
+// needsUnlock lists actions that read or encrypt entry contents. Folder
+// organization only renames files and directories; a move that must be
+// re-encrypted for other recipients is rejected by the vault while locked.
 func needsUnlock(action string) bool {
 	switch action {
-	case "fetch", "copy", "save", "delete", "move", "create-folder", "trash", "draft", "recovery", "restore", "purge", "export", "verify-backup":
+	case "fetch", "copy", "save", "delete", "trash", "draft", "recovery", "restore", "purge", "export", "verify-backup":
+		return true
+	}
+	return false
+}
+
+func organizesFolders(action string) bool {
+	switch action {
+	case "move", "create-folder", "cleanup-folders", "undo-cleanup-folders":
 		return true
 	}
 	return false

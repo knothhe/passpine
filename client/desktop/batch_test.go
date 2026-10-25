@@ -11,9 +11,12 @@ import (
 )
 
 // batchBackend keeps entry paths in memory and fails chosen entries with a code.
+// While locked it rejects trash and restore, and moves into policy, a folder
+// standing in for one whose recipients require re-encryption.
 type batchBackend struct {
 	mu       sync.Mutex
 	locked   bool
+	policy   string
 	paths    []string
 	folders  []string
 	failures map[string]string
@@ -34,7 +37,8 @@ func (b *batchBackend) Execute(r app.Request) app.Response {
 		b.locked = false
 	}
 	data.Locked = b.locked
-	if b.locked && (r.Action == "move" || r.Action == "trash" || r.Action == "restore" || r.Action == "create-folder") {
+	reencrypt := r.Action == "move" && b.policy != "" && strings.HasPrefix(r.Destination, b.policy+"/")
+	if b.locked && (reencrypt || r.Action == "trash" || r.Action == "restore") {
 		return app.Response{Status: "error", Code: "locked", Data: b.metadata(data)}
 	}
 	switch r.Action {
@@ -276,7 +280,7 @@ func TestBatchSelectionEndsWithFolderChangesAndLock(t *testing.T) {
 	}
 }
 
-func TestLockedSelectionAsksToUnlockThenContinuesTheMove(t *testing.T) {
+func TestLockedSelectionMovesWithoutUnlock(t *testing.T) {
 	a, backend, settle := batchFixture(t, nil)
 	backend.locked = true
 	a.state.Locked = true
@@ -297,29 +301,51 @@ func TestLockedSelectionAsksToUnlockThenContinuesTheMove(t *testing.T) {
 	if err := view.Click("移动 2 项"); err != nil {
 		t.Fatal(err)
 	}
-	if len(backend.actions("move")) != 0 || a.batch.pending != "move" || a.pendingUnlock.action != "batch" {
-		t.Fatal("moving while locked should wait for unlock without sending requests")
+	if a.batch.pending != "" || a.pendingUnlock.action != "" {
+		t.Fatal("a move that changes no entry contents asked to unlock")
 	}
-	view.Frame()
-	if !view.HasText("解锁后将 2 项移动到“家庭/设备”。") || !view.HasText("返回选择") {
-		t.Fatalf("unlock view does not explain the pending move: %v", view.Texts())
-	}
-	if err := view.Click("返回选择"); err != nil || a.batch.pending != "" || a.pendingUnlock.action != "" || !view.HasText("已选 2 项") {
-		t.Fatalf("cancelling should return to the selection panel: %v", err)
-	}
-	a.startBatchMove()
-	a.passphrase = "test-passphrase"
-	a.unlock("")
 	settle()
 	moves := backend.actions("move")
 	destinations := map[string]bool{}
 	for _, move := range moves {
 		destinations[move.Destination] = true
 	}
-	if len(moves) != 2 || !destinations["家庭/设备/Cloudflare"] || !destinations["家庭/设备/Figma"] {
-		t.Fatalf("the move did not continue after unlocking: %#v", moves)
+	if len(moves) != 2 || !destinations["家庭/设备/Cloudflare"] || !destinations["家庭/设备/Figma"] || len(backend.actions("unlock")) != 0 {
+		t.Fatalf("the locked move did not run directly: %#v", moves)
 	}
-	if a.batch.active || a.notice != "已将 2 项移动到“家庭/设备”" {
-		t.Fatalf("continued move did not finish normally: %q", a.notice)
+	if a.batch.active || !a.state.Locked || a.notice != "已将 2 项移动到“家庭/设备”" {
+		t.Fatalf("locked move did not finish normally: %q", a.notice)
+	}
+}
+
+func TestLockedMoveAsksToUnlockOnlyForReencryption(t *testing.T) {
+	a, backend, settle := batchFixture(t, nil)
+	backend.locked, backend.policy, a.state.Locked = true, "家庭", true
+	a.enterBatch()
+	a.batch.keep = batchKeepName
+	a.batch.selected["开发/Cloudflare"] = true
+	a.chooseBatchFolder("家庭/设备")
+	a.startBatchMove()
+	settle()
+	if len(backend.actions("move")) != 1 || a.batch.result == nil || a.batch.pending != "retry" || a.pendingUnlock.action != "batch" {
+		t.Fatal("a move needing re-encryption did not ask to unlock and retry")
+	}
+	view := ui.NewTester(testView(a), 1180, 800)
+	view.Advance(time.Second)
+	if !view.HasText("解锁后将重试 1 项。") || !view.HasText("返回选择") {
+		t.Fatalf("unlock view does not explain the pending retry: %v", view.Texts())
+	}
+	if err := view.Click("返回选择"); err != nil || a.batch.pending != "" || a.pendingUnlock.action != "" {
+		t.Fatalf("cancelling should return to the result: %v", err)
+	}
+	a.retryBatch()
+	if a.batch.pending != "retry" || len(backend.actions("move")) != 1 {
+		t.Fatal("retrying a locked failure did not wait for unlock")
+	}
+	a.passphrase = "test-passphrase"
+	a.unlock("")
+	settle()
+	if moves := backend.actions("move"); len(moves) != 2 || moves[1].Destination != "家庭/设备/Cloudflare" || a.batch.result != nil {
+		t.Fatalf("the move did not continue after unlocking: %#v", moves)
 	}
 }

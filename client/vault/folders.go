@@ -8,23 +8,20 @@ import (
 
 // CreateFolder creates a relative folder and any missing parents without
 // following symlinks. Existing directories are reused, and no marker files or
-// recipient policies are added to the pass store.
+// recipient policies are added to the pass store. Like cleanup, this
+// metadata-only operation needs no decrypted keys or unlocked session.
 func (v *Vault) CreateFolder(name string) error {
 	if err := ValidatePath(name); err != nil {
 		return err
 	}
 	v.operations.Lock()
 	defer v.operations.Unlock()
-	_, token, err := v.token()
-	if err != nil {
-		return err
-	}
 	unlock, err := lockStore(v.config.Directory)
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	return v.commit(token, func() error { return safeMkdirAll(v.config.Directory, name) })
+	return safeMkdirAll(v.config.Directory, name)
 }
 
 // CleanupEmptyFolders removes visible, empty directories from deepest to

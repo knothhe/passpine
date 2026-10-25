@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"slices"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -77,7 +78,8 @@ func (a *application) startBatchUndo(undo *batchUndoState) {
 		a.batch.expanded = map[string]bool{}
 	}
 	undo.visible = true
-	if a.state.Locked {
+	// Reverse moves only rename files; restoring from trash needs unlock.
+	if a.state.Locked && slices.ContainsFunc(undo.requests, func(r app.Request) bool { return r.Action != "move" }) {
 		a.requestBatchUnlock("undo")
 		return
 	}
@@ -112,6 +114,7 @@ func (a *application) startBatchUndo(undo *batchUndoState) {
 			return
 		}
 		a.notifyErrorWithAction(a.t("已撤销 %d 项，%d 项未完成", undo.completed, len(undo.requests)), a.t("未完成的条目保持原样，可重试撤销。"), a.t("重试撤销"), func() { a.startBatchUndo(undo) })
+		a.unlockBatchFailures("undo", undo.generation, undo.failures)
 	})
 }
 
@@ -143,6 +146,8 @@ func (a *application) batchUndoView(c *ui.Context, undo *batchUndoState) {
 						message = a.t("原路径已有条目，未覆盖。")
 					} else if failure.code == "revision_conflict" {
 						message = a.t("目标条目已更改，未还原。")
+					} else if failure.code == "locked" {
+						message = a.t("密码库已锁定，解锁后可以重试撤销。")
 					}
 					muted(c, message)
 				})

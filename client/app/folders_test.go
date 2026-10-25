@@ -41,9 +41,14 @@ func TestCreateFolderPersistsEmptyHierarchyAndRefreshesMetadata(t *testing.T) {
 	if len(hidden.Folders) != 0 || len(hidden.Entries) != 0 {
 		t.Fatal("locked metadata exposed folders with browsing disabled")
 	}
-	denied := restarted.Execute(Request{Action: "create-folder", VaultID: state.VaultID, Destination: "locked/child"})
-	if denied.Status != "error" || denied.Code != "locked" || len(denied.Data.Folders) != 0 {
-		t.Fatalf("locked creation was not rejected: %#v", denied)
+	// Creating a folder changes no entry contents, so it needs no unlock, and
+	// hidden metadata stays hidden in its response.
+	locked := restarted.Execute(Request{Action: "create-folder", VaultID: state.VaultID, Destination: "locked/child"})
+	if locked.Status != "ok" || !locked.Data.Locked || len(locked.Data.Folders) != 0 || len(locked.Data.Entries) != 0 {
+		t.Fatalf("locked creation failed or exposed metadata: %#v", locked)
+	}
+	if info, err := os.Stat(filepath.Join(state.Directory, "locked/child")); err != nil || !info.IsDir() {
+		t.Fatal("locked creation did not write the folder", err)
 	}
 }
 

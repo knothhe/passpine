@@ -359,8 +359,22 @@ func TestBatchMoveAndTrashUseLatestRevision(t *testing.T) {
 			t.Fatalf("browser reached desktop-only %s: %#v", action, out)
 		}
 	}
+	// Moving within one recipient policy only renames the ciphertext, so it
+	// works while locked; another policy needs re-encryption and an unlock.
+	if err := os.MkdirAll(filepath.Join(s.active.Config().Directory, "shared"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(s.active.Config().Directory, "shared/.gpg-id"), []byte("other-recipient\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	must(t, s, Request{Action: "lock"})
-	if r := s.Execute(Request{Action: "move", Entry: "work/figma", Destination: "x/figma"}); r.Code != "locked" {
-		t.Fatalf("move ran while locked: %#v", r)
+	if r := s.Execute(Request{Action: "move", Entry: "work/figma", Destination: "x/figma"}); r.Status != "ok" || r.Data.Revision == "" || r.Data.Contents != "" {
+		t.Fatalf("locked move within one policy failed: %#v", r)
+	}
+	if r := s.Execute(Request{Action: "move", Entry: "x/figma", Destination: "shared/figma"}); r.Code != "locked" {
+		t.Fatalf("locked move skipped re-encryption: %#v", r)
+	}
+	if r := s.Execute(Request{Action: "trash", Entry: "x/figma"}); r.Code != "locked" {
+		t.Fatalf("trash ran while locked: %#v", r)
 	}
 }

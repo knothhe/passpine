@@ -117,28 +117,19 @@ func TestBatchCreateFolderRejectsInvalidInputWithFeedback(t *testing.T) {
 	}
 }
 
-func TestBatchCreateFolderWaitsForUnlockAndPreservesInputOnLanguageChange(t *testing.T) {
+func TestBatchCreateFolderWorksWhileLocked(t *testing.T) {
 	a, backend, settle := batchFixture(t, nil)
 	backend.locked, a.state.Locked = true, true
 	a.enterBatch()
 	a.batch.selected["开发/GitHub"] = true
 	a.batch.folderQuery = "test/a/b/c"
 	a.createBatchFolder()
-	if a.batch.pending != "create-folder" || len(backend.actions("create-folder")) != 0 {
-		t.Fatal("locked creation did not wait for authentication")
+	if a.batch.pending != "" || a.pendingUnlock.action != "" {
+		t.Fatal("creating a folder asked to unlock")
 	}
-	if got := a.batchUnlockDescription(); got != "解锁后将新建文件夹“test/a/b/c”。" {
-		t.Fatal("unlock description does not describe the folder creation", got)
-	}
-	a.state.Settings.Language = "en"
-	if got := a.batchUnlockDescription(); got != "After unlocking, folder “test/a/b/c” will be created." || a.batch.folderQuery != "test/a/b/c" || !a.batch.selected["开发/GitHub"] {
-		t.Fatal("language change lost the pending creation or its input", got)
-	}
-	a.passphrase = "test-passphrase"
-	a.unlock("")
 	settle()
-	if a.batch.pending != "" || !a.batch.chosen || a.batch.destination != "test/a/b/c" || len(backend.actions("create-folder")) != 1 {
-		t.Fatal("folder creation did not resume once after unlocking")
+	if !a.batch.chosen || a.batch.destination != "test/a/b/c" || len(backend.actions("create-folder")) != 1 || len(backend.actions("unlock")) != 0 || !a.state.Locked {
+		t.Fatal("locked folder creation did not run directly")
 	}
 }
 

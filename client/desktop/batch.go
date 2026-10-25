@@ -34,8 +34,9 @@ type batchState struct {
 	progress          *batchProgress
 	result            *batchResult
 	trashConfirmation *batchTrashConfirmation
-	// pending is the organization action waiting for the vault to unlock; selection
-	// itself needs only entry paths, so it works while browsing locked.
+	// pending is the action waiting for the vault to unlock. Selection, folder
+	// creation and moves need only paths, so they work while browsing locked;
+	// trash, restore and moves that must be re-encrypted wait for unlock.
 	pending string
 }
 
@@ -103,16 +104,12 @@ func (a *application) resumeBatchAction() bool {
 		return false
 	}
 	switch action {
-	case "move":
-		a.startBatchMove()
 	case "trash":
 		a.startBatchTrash()
 	case "retry":
 		a.retryBatch()
 	case "undo":
 		a.startBatchUndo(a.batchUndo)
-	case "create-folder":
-		a.createBatchFolder()
 	default:
 		return false
 	}
@@ -126,10 +123,6 @@ func (a *application) batchUnlockDescription() string {
 		if a.batchUndo != nil {
 			return a.t("解锁后将撤销 %d 项。", len(a.batchUndo.requests))
 		}
-	case "create-folder":
-		return a.t("解锁后将新建文件夹“%s”。", strings.TrimSpace(a.batch.folderQuery))
-	case "trash":
-		return a.t("解锁后将 %d 项移到回收站。", len(a.selectedBatchEntries()))
 	case "retry":
 		retryable := 0
 		if a.batch.result != nil {
@@ -141,7 +134,22 @@ func (a *application) batchUnlockDescription() string {
 		}
 		return a.t("解锁后将重试 %d 项。", retryable)
 	}
-	return a.t("解锁后将 %d 项移动到“%s”。", len(a.batchMovePlan().ready), a.batchFolderLabel(a.batch.destination))
+	return a.t("解锁后将 %d 项移到回收站。", len(a.selectedBatchEntries()))
+}
+
+// unlockBatchFailures asks for unlock only when a move failed because the
+// vault was locked, for example a move into a folder with other recipients.
+// A lock during the operation changes generation and is not prompted again.
+func (a *application) unlockBatchFailures(action string, generation uint64, failures []batchFailure) {
+	if !a.state.Locked || generation != a.generation {
+		return
+	}
+	for _, failure := range failures {
+		if failure.code == "locked" {
+			a.requestBatchUnlock(action)
+			return
+		}
+	}
 }
 
 func (a *application) resetBatchDestination() {
@@ -155,10 +163,6 @@ func (a *application) createBatchFolder() {
 	folder := strings.TrimSpace(a.batch.folderQuery)
 	if vault.ValidatePath(folder) != nil {
 		a.errorText = a.t("文件夹路径无效，请使用 / 分隔层级，并避免空名称和特殊字符。")
-		return
-	}
-	if a.state.Locked {
-		a.requestBatchUnlock("create-folder")
 		return
 	}
 	// The request belongs to this selection session, even if the user leaves
@@ -324,11 +328,7 @@ func (a *application) startBatchMove() {
 	if len(plan.ready) == 0 {
 		return
 	}
-	if a.state.Locked {
-		a.requestBatchUnlock("move")
-		return
-	}
-	destination := a.batch.destination
+	destination, generation := a.batch.destination, a.generation
 	requests := make([]app.Request, 0, len(plan.ready))
 	for _, entry := range plan.ready {
 		requests = append(requests, app.Request{Action: "move", VaultID: a.state.VaultID, Entry: entry.Path, Destination: plan.target[entry.Path]})
@@ -351,6 +351,7 @@ func (a *application) startBatchMove() {
 			selected[request.Entry] = true
 		}
 		a.finishBatch(result, selected)
+		a.unlockBatchFailures("retry", generation, result.failures)
 	})
 }
 
@@ -408,9 +409,14 @@ func (a *application) retryBatch() {
 		return
 	}
 	if a.state.Locked {
-		a.requestBatchUnlock("retry")
-		return
+		for _, failure := range result.failures {
+			if failure.retryable() && failure.code == "locked" {
+				a.requestBatchUnlock("retry")
+				return
+			}
+		}
 	}
+	generation := a.generation
 	requests := []app.Request{}
 	for _, failure := range result.failures {
 		if failure.retryable() {
@@ -448,6 +454,7 @@ func (a *application) retryBatch() {
 		if completed > 0 {
 			a.offerBatchUndo(*result, a.batch.selected)
 		}
+		a.unlockBatchFailures("retry", generation, failures)
 	})
 }
 

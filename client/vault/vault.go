@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -887,7 +888,13 @@ func (v *Vault) Move(from, to, expectedRevision string) error {
 
 // MoveWithRevision returns the document and exact ciphertext revision produced
 // by the move. Callers can use that revision to undo without moving a later edit.
+// Under the same .gpg-id policy the ciphertext moves as is and the returned
+// document holds only its path and revision, so no unlocked session is needed.
+// A different policy requires re-encryption and therefore an unlocked session.
 func (v *Vault) MoveWithRevision(from, to, expectedRevision string) (Document, error) {
+	if doc, e := v.moveCiphertext(from, to, expectedRevision); !errors.Is(e, errReencrypt) {
+		return doc, e
+	}
 	// Read's revision is verified again by SaveRename, so intervening edits are
 	// rejected rather than overwritten by the earlier decrypted document.
 	doc, e := v.Read(from)
@@ -898,4 +905,71 @@ func (v *Vault) MoveWithRevision(from, to, expectedRevision string) (Document, e
 		return Document{}, ErrConflict
 	}
 	return v.SaveRename(from, to, doc.Raw, expectedRevision)
+}
+
+var errReencrypt = errors.New("move requires re-encryption")
+
+// moveCiphertext renames an entry without decrypting it. It returns
+// errReencrypt when the destination's recipients differ from the source's.
+func (v *Vault) moveCiphertext(from, to, expectedRevision string) (Document, error) {
+	if e := ValidatePath(from); e != nil {
+		return Document{}, e
+	}
+	if e := ValidatePath(to); e != nil {
+		return Document{}, e
+	}
+	if from == to {
+		return Document{}, errReencrypt
+	}
+	if expectedRevision == "" {
+		return Document{}, errors.New("moving requires a source revision")
+	}
+	v.operations.Lock()
+	defer v.operations.Unlock()
+	unlock, e := lockStore(v.config.Directory)
+	if e != nil {
+		return Document{}, e
+	}
+	defer unlock()
+	same, e := v.sameRecipients(from, to)
+	if e != nil {
+		return Document{}, e
+	}
+	if !same {
+		return Document{}, errReencrypt
+	}
+	// The store lock keeps the checked revision and the copied bytes identical.
+	if e = v.checkRevision(from, expectedRevision); e != nil {
+		return Document{}, e
+	}
+	if e = v.checkRevision(to, ""); e != nil {
+		return Document{}, e
+	}
+	encrypted, e := safeRead(v.config.Directory, from+".gpg")
+	if e != nil {
+		return Document{}, e
+	}
+	if e = safeWrite(v.config.Directory, to+".gpg", encrypted, false); e != nil {
+		return Document{}, e
+	}
+	if e = safeRemove(v.config.Directory, from+".gpg"); e != nil {
+		return Document{}, fmt.Errorf("%w: %w", ErrSourceRemains, e)
+	}
+	return Document{Path: to, Revision: expectedRevision}, nil
+}
+
+// sameRecipients compares the effective .gpg-id policies of two entries as
+// sets, so an entry keeps exactly the recipients it would be re-encrypted to.
+func (v *Vault) sameRecipients(a, b string) (bool, error) {
+	left, e := v.recipients(a)
+	if e != nil {
+		return false, e
+	}
+	right, e := v.recipients(b)
+	if e != nil {
+		return false, e
+	}
+	slices.Sort(left)
+	slices.Sort(right)
+	return slices.Equal(slices.Compact(left), slices.Compact(right)), nil
 }

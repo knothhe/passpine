@@ -63,12 +63,13 @@ func TestCreateFolderRejectsInvalidLockedAndBlockedPaths(t *testing.T) {
 	if data, err := os.ReadFile(blocked); err != nil || string(data) != "keep" {
 		t.Fatal("failed creation changed the existing file", err)
 	}
+	// Folder creation is metadata only and works while the vault is locked.
 	v.Lock()
-	if err := v.CreateFolder("locked/child"); !errors.Is(err, ErrLocked) {
-		t.Fatal("locked vault accepted folder creation", err)
+	if err := v.CreateFolder("locked/child"); err != nil {
+		t.Fatal("locked vault rejected folder creation", err)
 	}
-	if _, err := os.Stat(filepath.Join(v.config.Directory, "locked")); !os.IsNotExist(err) {
-		t.Fatal("locked creation wrote a directory", err)
+	if info, err := os.Stat(filepath.Join(v.config.Directory, "locked/child")); err != nil || !info.IsDir() {
+		t.Fatal("locked creation did not write the directory", err)
 	}
 }
 

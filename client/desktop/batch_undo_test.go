@@ -228,7 +228,7 @@ func TestBatchUndoRejectsUnavailableAndStaleCallbacks(t *testing.T) {
 	}
 }
 
-func TestBatchUndoWhileLockedUsesUnlockContinuation(t *testing.T) {
+func TestBatchUndoWhileLockedUnlocksOnlyToRestore(t *testing.T) {
 	for _, action := range []string{"move", "trash"} {
 		t.Run(action, func(t *testing.T) {
 			a, backend, settle, paths := batchUndoFixture(t, action, false)
@@ -237,7 +237,19 @@ func TestBatchUndoWhileLockedUsesUnlockContinuation(t *testing.T) {
 			undo := a.batchUndo
 			backend.locked, a.state.Locked = true, true
 			a.startBatchUndo(undo)
-			if a.batch.pending != "undo" || a.pendingUnlock.action != "batch" || a.busy || undo.running || len(backend.actions("restore")) != 0 || len(backend.actions("move")) > 2 {
+			if action == "move" {
+				// Reverse moves only rename files, so they run while locked.
+				if a.batch.pending != "" || a.pendingUnlock.action != "" {
+					t.Fatal("undoing a move asked to unlock")
+				}
+				settle()
+				assertUndoFixtureOriginals(t, a, backend, paths)
+				if a.batchUndo != nil || !a.state.Locked {
+					t.Fatal("locked move undo did not finish directly")
+				}
+				return
+			}
+			if a.batch.pending != "undo" || a.pendingUnlock.action != "batch" || a.busy || undo.running || len(backend.actions("restore")) != 0 {
 				t.Fatal("locked undo wrote before entering the existing unlock continuation")
 			}
 			if a.batchUnlockDescription() != a.t("解锁后将撤销 %d 项。", 2) {
