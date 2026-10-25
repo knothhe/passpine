@@ -106,3 +106,25 @@ test('keychain export selection repacks only the chosen certificate and its key'
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('forced generation replaces the pin and keeps the previous identity', () => {
+  const root = temporary();
+  try {
+    const output = path.join(root, 'identity'), config = path.join(root, 'macos-signing.json');
+    const first = generate({ output, config });
+    const previous = fs.readFileSync(first.identity);
+    assert.throws(() => generate({ output, config }), /generate --force/);
+    const second = generate({ output, config, force: true, now: new Date('2026-10-25T01:02:03.004Z') });
+    assert.notEqual(second.fingerprint, first.fingerprint);
+    assert.equal(readSigningConfig(config).certificateSHA256, second.fingerprint);
+    assert.equal(second.replaced, path.join(output, 'replaced-2026-10-25T01-02-03-004Z'));
+    assert.deepEqual(fs.readFileSync(path.join(second.replaced, 'identity.p12')), previous);
+    if (process.platform !== 'win32') assert.equal(fs.statSync(second.replaced).mode & 0o777, 0o700);
+    // A pinned repository config alone, as on a fresh checkout, is also replaceable.
+    const fresh = generate({ output: path.join(root, 'fresh'), config, force: true });
+    assert.equal(fresh.replaced, undefined);
+    assert.equal(readSigningConfig(config).certificateSHA256, fresh.fingerprint);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

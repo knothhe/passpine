@@ -68,11 +68,19 @@ export function assertCertificateRequirement(requirement) {
   requireThat(/designated => .*certificate leaf = H"[0-9a-f]{40}"/i.test(requirement) && !/cdhash/i.test(requirement), 'Signed bundle must use a certificate-based designated requirement.');
 }
 
-export function generate({ output = defaultIdentityDir, config = defaultConfigPath } = {}) {
+export function generate({ output = defaultIdentityDir, config = defaultConfigPath, force = false, now = new Date() } = {}) {
   const files = ['certificate.pem', 'identity.p12', 'identity-password'].map(name => path.join(output, name));
-  requireThat(!fs.existsSync(config) && files.every(file => !fs.existsSync(file)), 'A macOS signing identity already exists; replacing it changes the app identity for every installed client.');
+  const existing = files.filter(file => fs.existsSync(file));
+  requireThat(force || (!fs.existsSync(config) && !existing.length), `A macOS signing identity already exists (${fs.existsSync(config) ? 'config/macos-signing.json is pinned' : output}). Use \`upload\` to reuse a keychain identity, or \`generate --force\` to replace it; replacing changes the app identity for every installed client.`);
   fs.mkdirSync(output, { recursive: true, mode: 0o700 });
   fs.chmodSync(output, 0o700);
+  let replaced;
+  if (existing.length) {
+    // Keep the previous identity so a mistaken replacement can be undone.
+    replaced = path.join(output, `replaced-${now.toISOString().replace(/[:.]/g, '-')}`);
+    fs.mkdirSync(replaced, { mode: 0o700 });
+    for (const file of existing) fs.renameSync(file, path.join(replaced, path.basename(file)));
+  }
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-macos-signing-'));
   try {
     const request = path.join(work, 'request.cnf'), key = path.join(work, 'key.pem');
@@ -89,7 +97,7 @@ export function generate({ output = defaultIdentityDir, config = defaultConfigPa
   }
   const fingerprint = certificateFingerprint(fs.readFileSync(files[0]));
   fs.writeFileSync(config, `${JSON.stringify({ schema: 1, certificateSHA256: fingerprint }, null, 2)}\n`);
-  return { fingerprint, certificate: files[0], identity: files[1], password: files[2] };
+  return { fingerprint, certificate: files[0], identity: files[1], password: files[2], replaced };
 }
 
 function codesignDetails(target, ...args) {
@@ -203,9 +211,11 @@ export async function uploadKeychainIdentity({ repository = 'knothhe/passpine', 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
   try {
     const [action, ...args] = process.argv.slice(2);
-    if (action === 'generate' && args.length <= 1) {
-      const result = generate(args[0] ? { output: path.resolve(args[0]) } : {});
-      console.log(`Pinned certificate SHA-256 ${result.fingerprint} in config/macos-signing.json.`);
+    if (action === 'generate' && args.filter(arg => arg !== '--force').length <= 1 && args.filter(arg => arg === '--force').length <= 1) {
+      const output = args.find(arg => arg !== '--force');
+      const result = generate({ ...(output && { output: path.resolve(output) }), force: args.includes('--force') });
+      if (result.replaced) console.log(`Moved the previous identity to ${result.replaced}.`);
+      console.log(`Pinned certificate SHA-256 ${result.fingerprint} in config/macos-signing.json; commit it before the next release.`);
       console.log(`Store the identity as Actions secrets, then keep ${path.dirname(result.identity)} backed up offline:`);
       console.log(`  base64 < '${result.identity}' | gh secret set ${certificateEnv} --repo knothhe/passpine`);
       console.log(`  gh secret set ${passwordEnv} --repo knothhe/passpine < '${result.password}'`);
@@ -218,7 +228,7 @@ if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === imp
       const result = await uploadKeychainIdentity(args[1] ? { repository: args[1] } : {});
       console.log(result.changed ? `Uploaded the secrets and pinned ${result.fingerprint}; commit config/macos-signing.json before the next release.` : 'Uploaded the secrets for the pinned certificate.');
     } else {
-      throw new Error('Usage: macos-signing.mjs generate [OUTPUT_DIR] | upload [--repo OWNER/NAME] | verify APP_BUNDLE | build');
+      throw new Error('Usage: macos-signing.mjs generate [--force] [OUTPUT_DIR] | upload [--repo OWNER/NAME] | verify APP_BUNDLE | build');
     }
   } catch (error) {
     console.error(`macOS signing failed: ${error.message}`);
