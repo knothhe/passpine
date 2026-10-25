@@ -52,7 +52,7 @@ Windows 沿用 NSIS 卸载器，Make 入口读取当前用户的 Dev 安装记�
 
 macOS Dev 产物为 `dist/dev/Passpine Dev.app`，安装到 `~/Applications/Passpine Dev.app`；Linux 将 Dev 程序以 `passpine-dev` 和 `passpine-dev-host` 名称安装到 `~/.local/bin`。客户端安装完成后，使用安装位置中的 Dev Host 注册独立浏览器连接。正式安装目标不参与本地替换。
 
-Linux 安装同时在 `${XDG_DATA_HOME:-~/.local/share}` 下创建 `applications/com.knothhe.passpine.dev.desktop` 和应用图标，可从桌面应用菜单启动。`CLIENT_INSTALL_DIR` 可指定二进制安装目录，菜单入口会记录该目录的绝对路径。运行需要 GTK 3、WebKitGTK 4.1；Arch Linux 可运行 `sudo pacman -S --needed gtk3 webkit2gtk-4.1`。完整测试还需要 `zip` / `unzip`。托盘使用 StatusNotifierItem 协议，桌面面板需支持该协议；左键执行设置中的托盘动作，右键显示菜单。
+Linux 安装同时在 `${XDG_DATA_HOME:-~/.local/share}` 下创建 `applications/com.knothhe.passpine.dev.desktop` 和应用图标，可从桌面应用菜单启动。`CLIENT_INSTALL_DIR` 可指定二进制安装目录，菜单入口会记录该目录的绝对路径。客户端使用 MyGo 原生 UI，运行需要 GTK 3，无需 WebKitGTK；Arch Linux 可运行 `sudo pacman -S --needed gtk3`。完整测试还需要 `zip` / `unzip`。托盘使用 StatusNotifierItem 协议，桌面面板需支持该协议；左键执行设置中的托盘动作，右键显示菜单。
 
 Hyprland 0.55+ 会话通过 `hyprctl` 的 Lua 接口注册当前搜索快捷键，运行时绑定随客户端退出清理，配置重载后自动恢复，不修改用户配置文件；发生冲突时保留已有绑定并报告失败。需要 `hyprctl` 和 `busctl`（Arch 的 Hyprland / systemd 已提供）。其他 Linux 桌面沿用 X11 或 GlobalShortcuts Portal；Wayland 下的按键授权由桌面管理。
 

@@ -78,7 +78,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libgtk-3-0 libwebkit2gtk-4.1-0 fonts-noto-cjk zip unzip 7zip nsis xvfb xauth
+          sudo apt-get install --yes libgtk-3-0 fonts-noto-cjk zip unzip 7zip nsis xvfb xauth
 
       - name: Install Windows packaging and test tools
         if: runner.os == 'Windows'

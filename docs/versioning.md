@@ -35,7 +35,7 @@ make release
 
 ## CI 与发布附件
 
-`.github/workflows/ci.yml` 仅作为 Release 的可复用工作流，必须传入已有发布 tag；普通分支 push 和 pull request 不触发 GitHub CI。`.github/workflows/release.yml` 在推送 `v*` tag 时自动运行，也可手动输入已有 tag 重试。构建目标为 macOS arm64、Windows amd64 和 Linux amd64。macOS 使用系统 Swift 工具链；Windows 安装 NSIS；Linux 安装 GTK 3 和 WebKitGTK 4.1。浏览器打包集中在 Linux job。
+`.github/workflows/ci.yml` 仅作为 Release 的可复用工作流，必须传入已有发布 tag；普通分支 push 和 pull request 不触发 GitHub CI。`.github/workflows/release.yml` 在推送 `v*` tag 时自动运行，也可手动输入已有 tag 重试。构建目标为 macOS arm64、Windows amd64 和 Linux amd64。macOS 使用系统 Swift 工具链；Windows 安装 NSIS；Linux 安装 GTK 3。浏览器打包集中在 Linux job。
 
 发版前的 `pnpm test` 在 macOS 和 Linux 上都会执行隔离的 Linux 安装脚本回归，使用临时程序、模拟平台和桌面数据库命令，检查脚本依赖、Dev 图标、安装归属记录及特殊路径转义。CLI 编辑回归使用原生 Go 测试进程，不依赖 `sed`、`true` 或 MSYS 文件重命名；Windows 单独验证命令链接操作被明确拒绝且不修改现有文件。模拟与交叉编译不能代替目标系统运行，Release 矩阵仍在各平台执行完整测试。
 
@@ -50,7 +50,7 @@ Linux 矩阵还在 Xvfb 中运行原生启动回归，确认 Dev 卸载控制端
 | `passpine-<版本>-firefox.zip` | Firefox MV3 扩展 |
 | `update-feed.json` | 包地址、完整性清单及 Ed25519 签名；与普通安装包共用制品 |
 
-Linux 下载包解压到单独目录，运行 `bash install.sh`，默认安装到 `~/.local/bin`，也可传入其他绝对安装目录。安装器创建桌面菜单入口并注册 Host；目标系统需要 GTK 3 和 WebKitGTK 4.1，无需 Node.js。CI 构建不会安装到用户目录。
+Linux 下载包解压到单独目录，运行 `bash install.sh`，默认安装到 `~/.local/bin`，也可传入其他绝对安装目录。安装器创建桌面菜单入口并注册 Host；目标系统需要 GTK 3。客户端使用 MyGo 原生 UI，无需 WebKitGTK 或 Node.js。CI 构建不会安装到用户目录。
 
 macOS 沿用 ad-hoc 签名，未接入 Developer ID 公证；Windows 未接入 Authenticode 签名。扩展 ZIP 不自动提交商店或获取 Firefox 签名。Chrome ZIP 使用独立商店配置，manifest 必须省略 `key`；本地解包构建保留公钥以固定 ID。发布暂存及汇总均直接检查 ZIP，拒绝任何包含 `key` 字段的 Chrome 包；Firefox 继续校验固定公钥及 Gecko ID。WXT 关闭额外 sources ZIP 生成，GitHub 自动提供的 Source code 下载项不受影响。
 

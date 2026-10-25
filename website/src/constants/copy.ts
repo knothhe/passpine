@@ -195,7 +195,7 @@ export const zh = {
       windows:
         "Windows 安装包尚未进行 Authenticode 签名，系统可能显示安全提示。",
       linux:
-        "Linux 需要 GTK 3 与 WebKitGTK 4.1。下载压缩包后，按安装指南运行安装脚本。",
+        "Linux 需要 GTK 3。下载压缩包后，按安装指南运行安装脚本。",
     },
     installGuide: "安装与系统要求",
     homebrew: "通过 Homebrew 安装",
@@ -661,7 +661,7 @@ export const en: Copy = {
       windows:
         "The Windows installer is not Authenticode signed. Your system may display a security notice.",
       linux:
-        "Linux requires GTK 3 and WebKitGTK 4.1. Extract the archive and follow the guide to run the installer.",
+        "Linux requires GTK 3. Extract the archive and follow the guide to run the installer.",
     },
     installGuide: "Installation and system requirements",
     homebrew: "Install with Homebrew",
