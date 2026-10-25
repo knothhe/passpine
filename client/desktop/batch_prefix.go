@@ -146,7 +146,7 @@ func batchResponse(responses []app.Response, index int) app.Response {
 	return app.Response{Status: "error", Code: code}
 }
 
-func (a *application) batchPrefixView(c *ui.Context, chosen, ready, conflicts, unchanged []app.Entry) {
+func (a *application) batchPrefixView(c *ui.Context, ready, conflicts, unchanged []app.Entry) {
 	muted(c, a.t("仅替换完整文件夹前缀，保留后续层级和条目名称。"))
 	options := a.batchPrefixOptions()
 	components.Text(c, a.t("原文件夹前缀")).Margin(14, 0, 6, 0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
@@ -206,27 +206,36 @@ func (a *application) batchPrefixView(c *ui.Context, chosen, ready, conflicts, u
 		muted(c, a.t("所有选中条目都会修改。"))
 		return
 	}
-	components.Text(c, a.t("不修改的条目")).Margin(14, 0, 8, 0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
-	skipped := map[string]string{}
-	for _, entry := range conflicts {
-		skipped[entry.Path] = a.t("目标路径已存在或重名")
-	}
+	components.Text(c, a.t("不修改原因")).Margin(14, 0, 8, 0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+	var mismatched []app.Entry
 	for _, entry := range unchanged {
-		reason := a.t("路径未变化")
 		if entry.Folder != a.batch.prefixFrom && !strings.HasPrefix(entry.Folder, a.batch.prefixFrom+"/") {
-			reason = a.t("前缀不匹配")
+			mismatched = append(mismatched, entry)
 		}
-		skipped[entry.Path] = reason
 	}
-	components.ScrollView(c, components.ScrollViewOptions{}).Key("batch-prefix-excluded").Label(a.t("不修改的条目")).FillWidth().Grow(1).MinHeight(90).Children(func() {
+	components.ScrollView(c, components.ScrollViewOptions{}).Key("batch-prefix-reasons").Label(a.t("不修改原因")).FillWidth().Grow(1).MinHeight(0).Children(func() {
 		ui.Column(c).FillWidth().Gap(12).Children(func() {
-			for _, entry := range chosen {
-				if reason, ok := skipped[entry.Path]; ok {
-					ui.Column(c).Key(entry.Path).FillWidth().Gap(4).Children(func() {
-						components.Text(c, entry.Path).FillWidth().Wrap().FontSize(scaledFontSize(c, 12))
-						muted(c, reason)
-					})
+			for _, reason := range []struct {
+				key, message string
+				count        int
+			}{
+				{"conflict", "目标路径已存在或重名：%d 项", len(conflicts)},
+				{"mismatch", "前缀不匹配：%d 项", len(mismatched)},
+				{"unchanged", "路径未变化：%d 项", len(unchanged) - len(mismatched)},
+			} {
+				if reason.count == 0 {
+					continue
 				}
+				ui.Column(c).Key(reason.key).FillWidth().Gap(6).Children(func() {
+					components.Text(c, a.t(reason.message, reason.count)).FillWidth().Wrap().FontSize(scaledFontSize(c, 12))
+					if reason.key == "mismatch" {
+						ui.Column(c).FillWidth().Margin(0, 0, 0, 12).Gap(4).Children(func() {
+							for _, entry := range mismatched {
+								components.Text(c, entry.Path).Key(entry.Path).FillWidth().Wrap().FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+							}
+						})
+					}
+				})
 			}
 		})
 	})

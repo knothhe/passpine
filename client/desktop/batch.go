@@ -704,7 +704,7 @@ func (a *application) batchView(c *ui.Context) {
 				}
 			})
 			if a.batch.moveMode == "prefix" {
-				a.batchPrefixView(c, chosen, ready, conflicts, unchanged)
+				a.batchPrefixView(c, ready, conflicts, unchanged)
 				return
 			}
 			search := textBox(c, &a.batch.folderQuery, components.TextBoxOptions{LeadingIcon: lucide.Search()}).FillWidth().Label(a.t("搜索目标文件夹")).Placeholder(a.t("搜索或新建文件夹")).Disabled(a.busy)

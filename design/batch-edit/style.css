@@ -397,8 +397,10 @@ button.folder-toggle:hover { background: var(--hover); color: var(--fg); }
 .prefix-copy { flex:none; min-height:34px; }
 .prefix-source-hint,.prefix-input-hint { font-size:11px; line-height:1.7; color:var(--muted); }
 .prefix-summary { display:flex; flex:1; flex-direction:column; min-height:0; margin-top:16px; }
-.prefix-summary-count { font-size:13px; font-weight:500; color:var(--fg); line-height:1.6; }
+.prefix-summary > .section-label { flex:none; }
+.prefix-summary-count { flex:none; font-size:13px; font-weight:500; color:var(--fg); line-height:1.6; }
 .prefix-all-ready { margin-top:8px; font-size:12px; }
-.prefix-excluded-list { overflow:auto; min-height:0; margin-top:12px; }
-.prefix-excluded-row { display:grid; gap:4px; padding:12px 0; border-top:1px solid var(--border); overflow-wrap:anywhere; font-size:12px; }
-.prefix-excluded-row p { font-size:11px; line-height:1.6; }
+.prefix-reasons-title { margin-top:14px; margin-bottom:8px; }
+.prefix-reasons { display:flex; flex:1; flex-direction:column; gap:12px; overflow-y:auto; min-height:0; margin:0; padding:0; list-style:none; font-size:12px; line-height:1.6; }
+.prefix-reasons > li { flex:none; }
+.prefix-mismatch-paths { display:grid; gap:4px; margin:6px 0 0; padding:0 0 0 12px; list-style:none; color:var(--muted); font-size:11px; line-height:1.6; overflow-wrap:anywhere; }

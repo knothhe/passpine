@@ -96,7 +96,7 @@
     if (["move", "conflict"].includes(scene)) s.destination = scene === "conflict" ? "归档" : "家庭/设备";
     if (s.destination !== null) s.folderQuery = s.destination;
     if (["prefix", "prefix-excluded", "prefix-no-folder"].includes(scene)) { s.operation = "prefix"; s.prefixInitialized = true; s.selected = new Set(["fg", "li"]); s.prefixFrom = "工作"; s.prefixTo = "工作0"; }
-    if (scene === "prefix-excluded") { s.selected = new Set(["fg", "gh2", "li", "cf"]); items.push({ ...byID("fg"), id: "prefix-existing", folder: "工作0" }); }
+    if (scene === "prefix-excluded") { s.selected = new Set(["fg", "gh2", "li", "cf", "gh"]); items.push({ ...byID("fg"), id: "prefix-existing", folder: "工作0" }); }
     if (scene === "prefix-no-folder") { selected().forEach(item => { item.folder = ""; }); s.prefixFrom = ""; s.prefixTo = ""; }
     if (scene === "trash-confirm") s.dialog = "trash-confirm";
     if (scene === "conflict") s.selected.add("gh2");
@@ -182,7 +182,11 @@
     const excluded = selected().filter(item => !plan.ready.includes(item));
     const reason = item => !s.prefixFrom ? "prefixNoSourceReason" : !prefixDestinationValid() ? "prefixInvalidDestinationReason" : plan.conflicts.includes(item) ? "prefixConflictReason"
       : item.folder !== s.prefixFrom && !item.folder.startsWith(`${s.prefixFrom}/`) ? "prefixMismatchReason" : "prefixUnchangedReason";
-    return `<section class="prefix-summary" aria-labelledby="prefix-summary-title"><h3 class="section-label" id="prefix-summary-title">${t("pathPreview")}</h3><p class="prefix-summary-count" role="status">${t("prefixSummary", { ready: plan.ready.length, skipped: excluded.length })}</p>${excluded.length ? `<div class="prefix-excluded-list" role="group" aria-label="${t("prefixExcluded")}">${excluded.map(item => `<div class="prefix-excluded-row"><span>${esc(path(item))}</span><p>${t(reason(item))}</p></div>`).join("")}</div>` : `<p class="muted prefix-all-ready">${t("prefixAllReady")}</p>`}</section>`;
+    // Group each excluded entry once; only prefix mismatches reveal original paths below the count.
+    const reasons = new Map(["prefixConflictReason", "prefixMismatchReason", "prefixUnchangedReason", "prefixNoSourceReason", "prefixInvalidDestinationReason"].map(key => [key, []]));
+    excluded.forEach(item => reasons.get(reason(item)).push(item));
+    const reasonRows = [...reasons].filter(([, entries]) => entries.length > 0).map(([key, entries]) => `<li>${t(key, { count: entries.length })}${key === "prefixMismatchReason" ? `<ul class="prefix-mismatch-paths">${entries.map(item => `<li>${esc(path(item))}</li>`).join("")}</ul>` : ""}</li>`).join("");
+    return `<section class="prefix-summary" aria-labelledby="prefix-summary-title"><h3 class="section-label" id="prefix-summary-title">${t("pathPreview")}</h3><p class="prefix-summary-count" role="status">${t("prefixSummary", { ready: plan.ready.length, skipped: excluded.length })}</p>${excluded.length ? `<h4 class="section-label prefix-reasons-title" id="prefix-reasons-title">${t("prefixExcluded")}</h4><ul class="prefix-reasons" aria-labelledby="prefix-reasons-title">${reasonRows}</ul>` : `<p class="muted prefix-all-ready">${t("prefixAllReady")}</p>`}</section>`;
   }
 
   function prefixSourceField() {

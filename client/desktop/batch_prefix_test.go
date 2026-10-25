@@ -212,10 +212,10 @@ func prefixTextCount(view *ui.Tester, text string) int {
 	return count
 }
 
-func TestBatchPrefixSummaryListsOnlyExcludedEntriesAndReasons(t *testing.T) {
+func TestBatchPrefixSummaryGroupsReasonsAndListsOnlyMismatchedPaths(t *testing.T) {
 	for _, language := range []string{"zh-CN", "en"} {
 		t.Run(language, func(t *testing.T) {
-			a, backend, _ := prefixFixture(t, []string{"test/a/b", "test/b/c", "unrelated/d"}, nil)
+			a, backend, _ := prefixFixture(t, []string{"test/a/b", "test/b/c", "unrelated/d", "elsewhere/e"}, nil)
 			backend.paths = append(backend.paths, "next/a/b")
 			a.state.Entries = nil
 			a.state = backend.metadata(a.state)
@@ -225,19 +225,43 @@ func TestBatchPrefixSummaryListsOnlyExcludedEntriesAndReasons(t *testing.T) {
 			a.state.Settings.Language = language
 			view := ui.NewTester(testView(a), 860, 760)
 			view.SetPreferences(ui.Preferences{ReduceMotion: true})
-			if !view.HasText(a.t("将修改 %d 项，%d 项不修改", 1, 2)) || !view.HasText(a.t("不修改的条目")) || !view.HasText(a.t("前缀不匹配")) || !view.HasText(a.t("目标路径已存在或重名")) {
-				t.Fatalf("excluded summary or reasons are missing: %v", view.Texts())
+			if !view.HasText(a.t("将修改 %d 项，%d 项不修改", 1, 3)) || !view.HasText(a.t("不修改原因")) || prefixTextCount(view, a.t("前缀不匹配：%d 项", 2)) != 1 || prefixTextCount(view, a.t("目标路径已存在或重名：%d 项", 1)) != 1 || view.HasText(a.t("路径未变化：%d 项", 0)) {
+				t.Fatalf("excluded summary did not group each nonzero reason once: %v", view.Texts())
 			}
-			// Every original path already appears once in the entry list. Only
-			// excluded entries should appear a second time in the summary panel.
-			if prefixTextCount(view, "test/a/b") != 2 || prefixTextCount(view, "unrelated/d") != 2 || prefixTextCount(view, "test/b/c") != 1 || view.HasText("next/b/c") {
-				t.Fatalf("summary included successful path previews or hid an excluded path: %v", view.Texts())
+			// Every path appears in the entry list. Only mismatched paths should
+			// appear again beneath their reason in the summary panel.
+			assertPathCounts := func(mismatched ...string) {
+				t.Helper()
+				for _, path := range backend.paths {
+					want := 1
+					if slices.Contains(mismatched, path) {
+						want = 2
+					}
+					if got := prefixTextCount(view, path); got != want {
+						t.Fatalf("original path %q appeared %d times, want %d: %v", path, got, want, view.Texts())
+					}
+				}
+			}
+			assertPathCounts("unrelated/d", "elsewhere/e")
+			if view.HasText("next/b/c") {
+				t.Fatalf("summary included a successful target path: %v", view.Texts())
 			}
 			managerResizeScreenshot(t, view, "batch-prefix-excluded-"+language)
 			a.batch.prefixTo = "test"
 			view.Frame()
-			if !view.HasText(a.t("将修改 %d 项，%d 项不修改", 0, 3)) || !view.HasText(a.t("路径未变化")) {
-				t.Fatal("unchanged paths were not summarized as excluded entries")
+			if !view.HasText(a.t("将修改 %d 项，%d 项不修改", 0, 4)) || prefixTextCount(view, a.t("路径未变化：%d 项", 2)) != 1 || prefixTextCount(view, a.t("前缀不匹配：%d 项", 2)) != 1 || view.HasText(a.t("目标路径已存在或重名：%d 项", 0)) || view.HasText(a.t("目标路径已存在或重名：%d 项", 1)) {
+				t.Fatalf("same-prefix summary did not group unchanged paths and hide zero reasons: %v", view.Texts())
+			}
+			assertPathCounts("unrelated/d", "elsewhere/e")
+			a.batch.prefixTo = "next"
+			a.chooseBatchPrefix("unrelated")
+			view.Frame()
+			if !view.HasText(a.t("将修改 %d 项，%d 项不修改", 1, 3)) || prefixTextCount(view, a.t("前缀不匹配：%d 项", 3)) != 1 || view.HasText(a.t("前缀不匹配：%d 项", 2)) || view.HasText(a.t("路径未变化：%d 项", 0)) || view.HasText(a.t("目标路径已存在或重名：%d 项", 0)) || view.HasText(a.t("目标路径已存在或重名：%d 项", 1)) {
+				t.Fatalf("changing the source retained stale reason counts: %v", view.Texts())
+			}
+			assertPathCounts("test/a/b", "test/b/c", "elsewhere/e")
+			if view.HasText("next/d") || view.HasText("next/b/c") {
+				t.Fatalf("changing the source showed a successful target path: %v", view.Texts())
 			}
 			a.batch.prefixTo = ""
 			view.Frame()
