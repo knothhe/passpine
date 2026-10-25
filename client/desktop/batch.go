@@ -590,20 +590,26 @@ func (a *application) batchView(c *ui.Context) {
 		})
 		plan := a.batchMovePlan()
 		ui.Column(c).Key("batch-operation").Label(a.t("移动到")).FillWidth().Grow(1).MinHeight(0).Margin(20, 0, 0, 0).Children(func() {
-			components.Text(c, a.t("目标文件夹")).Margin(0, 0, 6, 0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
-			search := textBox(c, &a.batch.folderQuery, components.TextBoxOptions{LeadingIcon: lucide.Search()}).FillWidth().Label(a.t("搜索目标文件夹")).Placeholder(a.t("搜索或新建文件夹")).Disabled(a.busy)
-			if search.Changed() {
-				a.syncBatchFolderQuery()
-				a.lastInput = time.Now()
-			}
-			components.ScrollView(c, components.ScrollViewOptions{}).Key("batch-folders").Label(a.t("选择目标文件夹")).FillWidth().MaxHeight(168).Shrink(0).Margin(8, 0, 0, 0).Children(func() {
-				ui.Column(c).FillWidth().Gap(2).Children(func() {
-					a.batchFolderOptions(c)
+			// In a short window the settings scroll on their own, so the preview
+			// keeps its minimum height and the move button stays visible.
+			components.ScrollView(c, components.ScrollViewOptions{}).Key("batch-settings").FillWidth().Shrink(1).MinHeight(0).Children(func() {
+				ui.Column(c).FillWidth().Padding(0, 8).Children(func() {
+					components.Text(c, a.t("目标文件夹")).Margin(0, 0, 6, 0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+					search := textBox(c, &a.batch.folderQuery, components.TextBoxOptions{LeadingIcon: lucide.Search()}).FillWidth().Label(a.t("搜索目标文件夹")).Placeholder(a.t("搜索或新建文件夹")).Disabled(a.busy)
+					if search.Changed() {
+						a.syncBatchFolderQuery()
+						a.lastInput = time.Now()
+					}
+					components.ScrollView(c, components.ScrollViewOptions{}).Key("batch-folders").Label(a.t("选择目标文件夹")).FillWidth().MaxHeight(168).Shrink(0).Margin(8, 0, 0, 0).Children(func() {
+						ui.Column(c).FillWidth().Gap(2).Children(func() {
+							a.batchFolderOptions(c)
+						})
+					})
+					a.batchKeepView(c, chosen)
 				})
-			})
-			a.batchKeepView(c, chosen)
+			}).Margin(0, -8, 0, -8)
 			a.batchPreviewView(c, plan)
-			ui.Row(c).Key("batch-move-footer").FillWidth().Justify(ui.End).Margin(12, 0, 0, 0).Padding(14, 0, 0, 0).BorderWidth(1, 0, 0, 0).BorderColor(c.Theme().Border).Children(func() {
+			ui.Row(c).Key("batch-move-footer").FillWidth().Shrink(0).Justify(ui.End).Margin(12, 0, 0, 0).Padding(14, 0, 0, 0).BorderWidth(1, 0, 0, 0).BorderColor(c.Theme().Border).Children(func() {
 				label := a.t("移动 %d 项", len(chosen))
 				if a.batchMoveConfigured() {
 					label = a.t("移动 %d 项", len(plan.ready))

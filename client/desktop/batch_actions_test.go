@@ -15,12 +15,13 @@ import (
 // move button. Trash sits beside the count, apart from the move form.
 func TestBatchMoveFormOrdersFieldsAboveItsButton(t *testing.T) {
 	for _, language := range []string{"zh-CN", "en"} {
-		for _, width := range []int{1180, 860} {
-			t.Run(fmt.Sprintf("%s-%d", language, width), func(t *testing.T) {
+		for _, size := range [][2]int{{1180, 760}, {860, 760}, {1180, 620}, {860, 620}} {
+			width, height := size[0], size[1]
+			t.Run(fmt.Sprintf("%s-%dx%d", language, width, height), func(t *testing.T) {
 				a, _, _ := moveFixture(t, []string{"test/a/b", "test/b/c"}, nil)
 				a.chooseBatchFolder("test0")
 				a.state.Settings.Language = language
-				view := ui.NewTester(testView(a), width, 760)
+				view := ui.NewTester(testView(a), width, height)
 				view.SetPreferences(ui.Preferences{ReduceMotion: true})
 				view.Advance(time.Second)
 				count := visualBounds(t, view, a.t("已选 %d 项", 2))
@@ -35,15 +36,19 @@ func TestBatchMoveFormOrdersFieldsAboveItsButton(t *testing.T) {
 				if !(trash.Y < search.Y && search.Y < keep.Y && keep.Y < preview.Y && preview.Y+preview.H <= move.Y) {
 					t.Fatalf("form is out of order: search=%v keep=%v preview=%v move=%v", search, keep, preview, move)
 				}
-				if move.Y+move.H > 760 {
+				if move.Y+move.H > float32(height) {
 					t.Fatalf("move button is not visible: %v", move)
+				}
+				// A short window scrolls the settings instead of squeezing the preview.
+				if preview.H < 96 {
+					t.Fatalf("preview is squeezed: %v", preview)
 				}
 				for _, removed := range []string{"修改前缀", "保留前缀", "不保留前缀"} {
 					if _, found := view.Find(removed); found {
 						t.Fatalf("the merged form still shows %q", removed)
 					}
 				}
-				managerResizeScreenshot(t, view, fmt.Sprintf("batch-move-form-%s-%d", language, width))
+				managerResizeScreenshot(t, view, fmt.Sprintf("batch-move-form-%s-%dx%d", language, width, height))
 			})
 		}
 	}
