@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { assertCertificateRequirement, certificateFingerprint, generate, localIdentity, parseIdentities, parseIdentityList, readSigningConfig, selectIdentity, setupChoices } from './macos-signing.mjs';
+import { assertCertificateRequirement, certificateFingerprint, generate, localIdentity, missingSecrets, parseIdentities, parseIdentityList, readSigningConfig, selectIdentity, setupChoices } from './macos-signing.mjs';
 
 const temporary = () => fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-macos-signing-test-'));
 
@@ -143,14 +143,25 @@ test('setup offers only the actions that fit the pinned and local identities', (
     assert.deepEqual(actions({ platform: 'darwin' }), ['keychain', 'generate']);
     assert.deepEqual(actions({ pinned: generated.fingerprint, local, platform: 'darwin' }), ['reupload', 'keychain', 'generate']);
     assert.deepEqual(actions({ local: { ...local, pinned: false }, platform: 'linux' }), ['reupload', 'generate']);
-    // A local identity that differs from the pin must not be uploaded silently.
+    // A local identity that differs from the pin is offered only as a replacement.
     const other = localIdentity(output, 'f'.repeat(64));
     assert.equal(other.pinned, false);
-    assert.deepEqual(actions({ pinned: 'f'.repeat(64), local: other, platform: 'linux' }), ['generate']);
+    const replacing = setupChoices({ pinned: 'f'.repeat(64), local: other, platform: 'linux' });
+    assert.deepEqual(replacing.map(choice => choice.action), ['reupload', 'generate']);
+    assert.match(replacing[0].label, /replace the pinned one$/);
+    assert.match(setupChoices({ pinned: generated.fingerprint, local, missing: ['PASSPINE_MACOS_SIGNING_CERTIFICATE'], platform: 'linux' })[0].label, /restores the missing secrets/);
+    assert.doesNotMatch(setupChoices({ pinned: generated.fingerprint, local, platform: 'linux' })[0].label, /missing|replace/);
     assert.match(setupChoices({ pinned: 'f'.repeat(64), platform: 'linux' })[0].label, /replace the pinned/);
     fs.rmSync(local.password);
     assert.equal(localIdentity(output), undefined);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('secret presence check names each missing signing secret', () => {
+  const both = ['PASSPINE_MACOS_SIGNING_CERTIFICATE', 'PASSPINE_MACOS_SIGNING_CERTIFICATE_PASSWORD'];
+  assert.deepEqual(missingSecrets(['HOMEBREW_TAP_SSH_KEY', ...both]), []);
+  assert.deepEqual(missingSecrets(['PASSPINE_MACOS_SIGNING_CERTIFICATE']), ['PASSPINE_MACOS_SIGNING_CERTIFICATE_PASSWORD']);
+  assert.deepEqual(missingSecrets([]), both);
 });

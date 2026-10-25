@@ -176,10 +176,22 @@ export function localIdentity(output = defaultIdentityDir, pinned) {
   return { ...files, fingerprint, pinned: fingerprint === pinned };
 }
 
+// Secret values cannot be read back; only their presence is checked.
+export function missingSecrets(names) {
+  return [certificateEnv, passwordEnv].filter(name => !names.includes(name));
+}
+
+function repositorySecrets(repository) {
+  return JSON.parse(execFileSync('gh', ['secret', 'list', '--repo', repository, '--json', 'name'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })).map(secret => secret.name);
+}
+
 // The setup menu offers only actions that make sense for the current state.
-export function setupChoices({ pinned, local, platform = process.platform }) {
+export function setupChoices({ pinned, local, missing = [], platform = process.platform }) {
   const choices = [];
-  if (local && (!pinned || local.pinned)) choices.push({ action: 'reupload', label: `Upload the local identity in ${path.dirname(local.identity)}${pinned ? '' : ' and pin it'}` });
+  if (local) {
+    const pin = !pinned ? ' and pin it' : local.pinned ? '' : ' and replace the pinned one';
+    choices.push({ action: 'reupload', label: `Upload the local identity in ${path.dirname(local.identity)}${pin}${local.pinned && missing.length ? ' (restores the missing secrets)' : ''}` });
+  }
   if (platform === 'darwin') choices.push({ action: 'keychain', label: 'Choose an existing code-signing identity from the macOS keychain' });
   choices.push({ action: 'generate', label: pinned ? 'Generate a new self-signed identity and replace the pinned one' : 'Generate a new self-signed identity' });
   return choices;
@@ -240,7 +252,10 @@ export async function setup({ config = defaultConfigPath, output = defaultIdenti
     console.log(`Local identity:     ${local ? `${local.fingerprint}${local.pinned ? ' (pinned)' : ''}` : 'none'} in ${output}`);
     const repository = (await prompt.question('\nGitHub repository [knothhe/passpine]: ')).trim() || 'knothhe/passpine';
     requireThat(/^[\w.-]+\/[\w.-]+$/.test(repository), 'Invalid repository; expected OWNER/NAME.');
-    const choices = setupChoices({ pinned, local });
+    const missing = missingSecrets(repositorySecrets(repository));
+    console.log(`GitHub secrets:     ${missing.length ? `missing ${missing.join(', ')}` : 'both present'}`);
+    if (pinned && missing.length && !local?.pinned) console.log('The pinned identity is not available locally; upload it from its backup or replace it.');
+    const choices = setupChoices({ pinned, local, missing });
     console.log('');
     choices.forEach((choice, index) => console.log(`${index + 1}) ${choice.label}`));
     console.log('q) Quit');
@@ -250,6 +265,7 @@ export async function setup({ config = defaultConfigPath, output = defaultIdenti
     let result;
     if (choice.action === 'reupload') {
       result = { fingerprint: local.fingerprint, identity: fs.readFileSync(local.identity), password: fs.readFileSync(local.password, 'utf8') };
+      await confirmReplacement(prompt, pinned, result.fingerprint);
     } else if (choice.action === 'keychain') {
       result = exportKeychainIdentity(await chooseKeychainIdentity(prompt), work);
       await confirmReplacement(prompt, pinned, result.fingerprint);

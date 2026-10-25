@@ -65,9 +65,9 @@ ad-hoc 签名的指定要求（designated requirement）是每次构建都会变
 | Repository secret `PASSPINE_MACOS_SIGNING_CERTIFICATE` | Base64 编码的 PKCS#12 身份（证书与私钥），只传给 Release 的 build job 中的 macOS 构建步骤 |
 | Repository secret `PASSPINE_MACOS_SIGNING_CERTIFICATE_PASSWORD` | 上述 PKCS#12 的口令 |
 
-维护者在终端运行 `node scripts/macos-signing.mjs`（无参数）进入交互式配置。它先显示当前固定证书与本机 `~/.config/passpine-release/macos-signing/` 中的身份，询问目标仓库（默认 `knothhe/passpine`），再按当前状态列出可选操作：
+维护者在终端运行 `node scripts/macos-signing.mjs`（无参数）进入交互式配置。它先显示当前固定证书与本机 `~/.config/passpine-release/macos-signing/` 中的身份，询问目标仓库（默认 `knothhe/passpine`），用 `gh secret list` 检查两个 Secret 是否存在（Secret 的值无法读回，只核对存在性），再按当前状态列出可选操作：
 
-- 上传本机已有且与固定值一致（或尚未固定）的身份；
+- 上传本机已有的身份：与固定值一致时重新上传（可补回缺失的 Secret），尚未固定时上传并固定，与固定值不同时上传并替换固定值；
 - 在 macOS 上从钥匙串搜索列表选择已有的代码签名身份（含未受信任的自签名证书）。`security export` 只能导出整个钥匙串的身份，因此在私有临时目录中导出后只重新打包所选证书及其私钥，并生成新的随机口令，结束时删除临时文件；
 - 生成新的自签名身份：证书、PKCS#12 和口令写入上述目录（目录 `0700`、文件 `0600`），本机旧身份移到 `replaced-<时间>/` 而不删除；应另行保管离线备份。
 
