@@ -15,10 +15,6 @@ func (a *application) cleanupEmptyFolders() {
 		return
 	}
 	a.closeNavigationOverlay()
-	if a.state.Locked {
-		a.beginUnlock("cleanup-folders")
-		return
-	}
 	a.call(app.Request{Action: "cleanup-folders", VaultID: a.state.VaultID}, func(data app.Data) {
 		a.refreshFolderNavigation()
 		if data.RemovedFolders == 0 {

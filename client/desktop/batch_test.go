@@ -203,7 +203,7 @@ func TestBatchTrashOffersUndoThatRestoresTheSelection(t *testing.T) {
 	}
 }
 
-func TestBatchFolderTreeCollapsesOnlyBusyFoldersAndSearchShowsPaths(t *testing.T) {
+func TestBatchFolderTreeStartsCollapsedAndSearchShowsPaths(t *testing.T) {
 	a, _, _ := batchFixture(t, nil)
 	a.enterBatch()
 	a.batch.selected["开发/GitHub"] = true
@@ -212,20 +212,23 @@ func TestBatchFolderTreeCollapsesOnlyBusyFoldersAndSearchShowsPaths(t *testing.T
 	if !view.HasText("已选 1 项") || !view.HasText("移动到") {
 		t.Fatal("selection panel is missing its count or move section")
 	}
-	if _, found := view.Find("收起“工作”"); !found {
-		t.Fatal("a folder with four subfolders should offer a collapse toggle")
+	if _, found := view.Find("展开“工作”"); !found {
+		t.Fatal("every parent folder should offer an expand toggle")
 	}
-	if _, found := view.Find("收起“家庭”"); found {
-		t.Fatal("a folder with one subfolder must stay a plain row")
+	if _, found := view.Find("展开“家庭”"); !found {
+		t.Fatal("a folder with one subfolder must also offer an expand toggle")
 	}
-	if _, found := view.Find("客户项目"); !found {
-		t.Fatal("the tree should show folder names, not full paths")
+	if _, found := view.Find("展开“开发”"); found {
+		t.Fatal("a leaf folder must not offer an expand toggle")
 	}
-	if err := view.Click("收起“工作”"); err != nil {
+	if _, found := view.Find("客户项目"); found {
+		t.Fatal("the tree should start fully collapsed")
+	}
+	if err := view.Click("展开“工作”"); err != nil {
 		t.Fatal(err)
 	}
-	if _, found := view.Find("客户项目"); found || !a.batch.collapsed["工作"] {
-		t.Fatal("collapsing did not hide the subfolders")
+	if _, found := view.Find("客户项目"); !found || !a.batch.expanded["工作"] {
+		t.Fatal("expanding did not show subfolders")
 	}
 	if err := view.Click("搜索目标文件夹"); err != nil {
 		t.Fatal(err)
@@ -280,6 +283,9 @@ func TestLockedSelectionAsksToUnlockThenContinuesTheMove(t *testing.T) {
 	}
 	a.batch.selected["开发/Cloudflare"], a.batch.selected["工作/Figma"] = true, true
 	view.Frame()
+	if err := view.Click("展开“家庭”"); err != nil {
+		t.Fatal(err)
+	}
 	if err := view.Click("选择文件夹 家庭/设备"); err != nil {
 		t.Fatal(err)
 	}

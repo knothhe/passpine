@@ -3,6 +3,7 @@ package desktop
 import (
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -12,31 +13,32 @@ import (
 	"github.com/oneo-me/onevra/source/icons/lucide"
 )
 
-// Folders with this many direct subfolders can collapse; the tree still opens
-// fully expanded so every destination is visible without extra clicks.
-const batchCollapseThreshold = 4
-
 // batchState is the list's selection mode. Selection holds entry paths, never
 // secrets, and moving or trashing reads nothing beyond the latest revision.
 type batchState struct {
-	active         bool
-	selected       map[string]bool
-	anchor         string
-	destination    string
-	chosen         bool
-	folderQuery    string
-	folderCreation *string
-	revealFolder   string
-	collapsed      map[string]bool
-	list           components.ListState
-	progress       *batchProgress
-	result         *batchResult
+	active            bool
+	selected          map[string]bool
+	anchor            string
+	destination       string
+	chosen            bool
+	folderQuery       string
+	folderCreation    *string
+	revealFolder      string
+	expanded          map[string]bool
+	moveMode          string
+	prefixInitialized bool
+	prefixFrom        string
+	prefixTo          string
+	list              components.ListState
+	progress          *batchProgress
+	result            *batchResult
 	// pending is the organization action waiting for the vault to unlock; selection
 	// itself needs only entry paths, so it works while browsing locked.
 	pending string
 }
 
 type batchProgress struct {
+	cancelled   atomic.Bool
 	action      string
 	done, total int
 }
@@ -48,6 +50,7 @@ type batchFailure struct {
 // batchResult keeps unfinished entries of the last operation for retrying.
 type batchResult struct {
 	action, destination string
+	prefix              bool
 	completed           int
 	failures            []batchFailure
 }
@@ -60,7 +63,7 @@ func (a *application) enterBatch() {
 	if a.editor.open || a.state.Locked && !a.state.Settings.BrowseWhileLocked {
 		return
 	}
-	a.batch = batchState{active: true, selected: map[string]bool{}, collapsed: map[string]bool{}}
+	a.batch = batchState{active: true, selected: map[string]bool{}, expanded: map[string]bool{}}
 	a.dropDetail()
 }
 
@@ -131,6 +134,9 @@ func (a *application) batchUnlockDescription() string {
 		return a.t("解锁后将重试 %d 项。", retryable)
 	}
 	ready, _, _ := a.batchMovePlan()
+	if a.batch.moveMode == "prefix" {
+		return a.t("解锁后将修改 %d 项的文件夹前缀。", len(ready))
+	}
 	return a.t("解锁后将 %d 项移动到“%s”。", len(ready), a.batchFolderLabel(a.batch.destination))
 }
 
@@ -159,14 +165,13 @@ func (a *application) createBatchFolder() {
 			return
 		}
 		a.batch.folderCreation = nil
-		a.batch.destination, a.batch.chosen, a.batch.folderQuery = data.Destination, true, ""
+		a.chooseBatchFolder(data.Destination)
 		a.batch.revealFolder = data.Destination
 		a.batch.result = nil
 		// A new descendant must remain visible even under a collapsed parent.
-		for parent := range a.batch.collapsed {
-			if strings.HasPrefix(data.Destination, parent+"/") {
-				delete(a.batch.collapsed, parent)
-			}
+		parts := strings.Split(data.Destination, "/")
+		for i := 1; i < len(parts); i++ {
+			a.batch.expanded[strings.Join(parts[:i], "/")] = true
 		}
 		a.notice = a.t("已创建并选中文件夹“%s”", data.Destination)
 	})
@@ -241,20 +246,20 @@ func batchDestinationPath(folder, name string) string {
 // batchMovePlan mirrors the service's refusal to overwrite: entries whose new
 // path already exists, or that would collide with each other, are skipped.
 func (a *application) batchMovePlan() (ready, conflicts, unchanged []app.Entry) {
-	if !a.batch.chosen {
+	if !a.batchMoveConfigured() {
 		return nil, nil, nil
 	}
 	chosen := a.selectedBatchEntries()
 	targets := map[string]int{}
 	for _, entry := range chosen {
-		targets[strings.ToLower(batchDestinationPath(a.batch.destination, entry.Name))]++
+		targets[strings.ToLower(a.batchEntryDestination(entry))]++
 	}
 	for _, entry := range chosen {
-		if entry.Folder == a.batch.destination {
+		if entry.Path == a.batchEntryDestination(entry) {
 			unchanged = append(unchanged, entry)
 			continue
 		}
-		target := strings.ToLower(batchDestinationPath(a.batch.destination, entry.Name))
+		target := strings.ToLower(a.batchEntryDestination(entry))
 		exists := false
 		for _, other := range a.sortedEntries {
 			if other.Path != entry.Path && strings.ToLower(other.Path) == target {
@@ -282,10 +287,14 @@ func (a *application) runBatch(action string, requests []app.Request, done func(
 	a.beginOperationFeedback()
 	a.lastInput = time.Now()
 	a.batch.progress = &batchProgress{action: action, total: len(requests)}
+	progress, vaultID := a.batch.progress, a.state.VaultID
 	generation := a.generation
 	go func() {
 		responses := make([]app.Response, 0, len(requests))
 		for _, request := range requests {
+			if progress.cancelled.Load() {
+				break
+			}
 			r := a.service.Execute(request)
 			responses = append(responses, r)
 			a.runOnMain(func() {
@@ -298,12 +307,39 @@ func (a *application) runBatch(action string, requests []app.Request, done func(
 				break
 			}
 		}
+		if progress.cancelled.Load() && len(responses) < len(requests) {
+			responses = append(responses, app.Response{Status: "error", Code: "locked"})
+		}
 		list := a.service.Execute(app.Request{Action: "list"})
 		a.runOnMain(func() {
-			if generation == a.generation {
-				a.batch.progress = nil
+			if a.batch.progress != progress {
+				return
+			}
+			a.batch.progress = nil
+			if generation != a.generation {
+				// Locking cancels further writes, but the worker must drain before
+				// another action can start. Its paths/result still belong to this
+				// selection; never apply metadata from another vault or unlock a
+				// newer locked UI with a snapshot taken just before the lock.
+				if !progress.cancelled.Load() || a.state.VaultID != vaultID || list.Data.VaultID != vaultID {
+					a.busy, a.backgroundBusy = false, false
+					a.activeRequestAction = ""
+					a.queueMetadataRefresh(false)
+					return
+				}
+				list.Data.Locked = a.state.Locked || list.Data.Locked
+				if list.Data.Locked && !list.Data.Settings.BrowseWhileLocked {
+					list.Data.Entries, list.Data.Folders = nil, nil
+					a.cacheReady = false
+				}
+				generation = a.generation
 			}
 			a.receiveResponse(generation, list, func(app.Data) { done(responses) })
+			// Completion messages can include folder paths. A lock that hides
+			// names must also suppress feedback produced by these late callbacks.
+			if a.state.Locked && !a.state.Settings.BrowseWhileLocked {
+				a.clearNotifications()
+			}
 		})
 	}()
 	a.invalidate()
@@ -313,29 +349,42 @@ func (a *application) startBatchMove() {
 	if a.busy {
 		return
 	}
+	ready, conflicts, unchanged := a.batchMovePlan()
+	if len(ready) == 0 {
+		return
+	}
 	if a.state.Locked {
 		a.requestBatchUnlock("move")
 		return
 	}
-	ready, conflicts, _ := a.batchMovePlan()
 	destination := a.batch.destination
+	prefix := a.batch.moveMode == "prefix"
+	if prefix {
+		destination = strings.TrimSpace(a.batch.prefixTo)
+	}
 	requests := make([]app.Request, 0, len(ready))
 	for _, entry := range ready {
-		requests = append(requests, app.Request{Action: "move", VaultID: a.state.VaultID, Entry: entry.Path, Destination: batchDestinationPath(destination, entry.Name)})
+		requests = append(requests, app.Request{Action: "move", VaultID: a.state.VaultID, Entry: entry.Path, Destination: a.batchEntryDestination(entry)})
 	}
 	a.runBatch("move", requests, func(responses []app.Response) {
-		result := batchResult{action: "move", destination: destination}
+		result := batchResult{action: "move", destination: destination, prefix: prefix}
 		selected := map[string]bool{}
 		for _, entry := range conflicts {
 			selected[entry.Path] = true
 		}
-		for i, r := range responses {
+		if prefix {
+			for _, entry := range unchanged {
+				selected[entry.Path] = true
+			}
+		}
+		for i, request := range requests {
+			r := batchResponse(responses, i)
 			if r.Status == "ok" {
 				result.completed++
 				continue
 			}
-			result.failures = append(result.failures, batchFailure{entry: requests[i].Entry, destination: requests[i].Destination, code: r.Code})
-			selected[requests[i].Entry] = true
+			result.failures = append(result.failures, batchFailure{entry: request.Entry, destination: request.Destination, code: r.Code})
+			selected[request.Entry] = true
 		}
 		a.finishBatch(result, selected)
 	})
@@ -358,7 +407,8 @@ func (a *application) startBatchTrash() {
 		result := batchResult{action: "trash"}
 		selected := map[string]bool{}
 		undo := []string{}
-		for i, r := range responses {
+		for i := range requests {
+			r := batchResponse(responses, i)
 			if r.Status == "ok" {
 				result.completed++
 				undo = append(undo, r.Data.TrashID)
@@ -389,7 +439,7 @@ func (a *application) finishBatch(result batchResult, remaining map[string]bool)
 	}
 	if result.action == "move" && result.completed > 0 {
 		destination := result.destination
-		a.notifyWithAction(a.t("已将 %d 项移动到“%s”", result.completed, a.batchFolderLabel(destination)), "", a.t("查看"), 0, func() {
+		a.notifyWithAction(a.batchMoveSuccess(result, result.completed), "", a.t("查看"), 0, func() {
 			filter := "all"
 			if destination != "" {
 				filter = "folder:" + destination
@@ -423,7 +473,8 @@ func (a *application) retryBatch() {
 			}
 		}
 		completed := 0
-		for i, r := range responses {
+		for i := range requests {
+			r := batchResponse(responses, i)
 			if r.Status == "ok" {
 				completed++
 				delete(a.batch.selected, requests[i].Entry)
@@ -437,7 +488,7 @@ func (a *application) retryBatch() {
 			a.batch.result = nil
 		}
 		if completed > 0 {
-			a.notice = a.t("已将 %d 项移动到“%s”", completed, a.batchFolderLabel(result.destination))
+			a.notice = a.batchMoveSuccess(*result, completed)
 		}
 	})
 }
@@ -455,7 +506,7 @@ func (a *application) undoBatchTrash(ids []string) {
 			}
 		}
 		if len(restored) > 0 {
-			a.batch = batchState{active: true, selected: restored, collapsed: map[string]bool{}}
+			a.batch = batchState{active: true, selected: restored, expanded: map[string]bool{}}
 			a.dropDetail()
 		}
 		if len(restored) < len(ids) {
@@ -572,8 +623,8 @@ func (a *application) batchEntryRow(c *ui.Context, entry app.Entry) {
 	}
 }
 
-// batchView replaces the inspector while selecting: the count with the
-// secondary trash action, then the folder tree used to move the selection.
+// batchView presents peer organization actions, each with its own form and
+// execution button below the shared selection.
 func (a *application) batchView(c *ui.Context) {
 	if a.batch.result != nil {
 		a.batchResultView(c)
@@ -586,12 +637,11 @@ func (a *application) batchView(c *ui.Context) {
 			ui.Box(c).MinHeight(32)
 			ui.Column(c).Margin(20, 0, 0, 0).Gap(6).Children(func() {
 				components.Text(c, a.t("选择条目")).FontSize(scaledFontSize(c, 24)).Bold()
-				muted(c, a.t("勾选左侧条目后，可以在这里选择文件夹移动，或移到回收站。"))
+				muted(c, a.t("勾选左侧条目后，可以移动到文件夹、修改路径前缀或移到回收站。"))
 			})
 		})
 		return
 	}
-	ready, conflicts, unchanged := a.batchMovePlan()
 	count := len(chosen)
 	if progress != nil {
 		count = progress.total
@@ -599,57 +649,99 @@ func (a *application) batchView(c *ui.Context) {
 	ui.Column(c).Key("batch-panel").Fill().MaxWidth(608).Padding(24).Children(func() {
 		ui.Box(c).MinHeight(32)
 		components.Text(c, a.t("已选 %d 项", count)).Margin(20, 0, 0, 0).FillWidth().FontSize(scaledFontSize(c, 24)).Bold()
-		// Both actions sit together under the count: moving is the primary one
-		// and needs a folder below, while trash is the quieter alternative.
-		ui.Row(c).Key("batch-actions").FillWidth().Margin(16, 0, 0, 0).AlignItems(ui.Center).Gap(8).Children(func() {
-			label := a.t("移动 %d 项", len(chosen))
-			if a.batch.chosen {
-				label = a.t("移动 %d 项", len(ready))
+		ui.Row(c).Key("batch-actions").Label(a.t("批量操作")).FillWidth().Wrap().Margin(16, 0, 0, 0).AlignItems(ui.Center).Gap(8).Children(func() {
+			for _, action := range []struct {
+				key, label string
+				icon       *ui.SVG
+				prefix     bool
+			}{{"move", a.t("移动到"), lucide.FolderInput(), false}, {"prefix", a.t("修改前缀"), lucide.Replace(), true}} {
+				c.Key(action.key)
+				selected := (a.batch.moveMode == "prefix") == action.prefix
+				if a.batchActionButton(c, action.label, action.icon, selected, false).Disabled(a.busy).Clicked() {
+					a.setBatchMoveMode(action.prefix)
+				}
 			}
-			moving := progress != nil && progress.action == "move"
-			if moving {
-				label = a.t("正在移动 %d/%d", progress.done, progress.total)
-			}
-			// The running action keeps full contrast so its progress stays readable;
-			// startBatchMove ignores clicks while busy.
-			if components.Button(c, label, components.ButtonPrimary).Disabled(!moving && (a.busy || !a.batch.chosen || len(ready) == 0)).Clicked() {
-				a.startBatchMove()
-			}
+			c.Key("trash")
 			trashLabel := a.t("移到回收站")
-			if progress != nil && progress.action == "trash" {
+			trashing := progress != nil && progress.action == "trash"
+			if trashing {
 				trashLabel = a.t("正在移到回收站 %d/%d", progress.done, progress.total)
 			}
-			trash := components.Button(c, "", components.ButtonGhost).Label(trashLabel).Gap(6).Disabled(a.busy && (progress == nil || progress.action != "trash"))
-			trash.Children(func() {
-				components.Icon(c, lucide.Trash()).Size(managerGlyphSize(c), managerGlyphSize(c)).TextColor(c.Theme().Danger)
-				components.Text(c, trashLabel).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().Danger).SingleLine()
-			})
-			if trash.Clicked() {
+			if a.batchActionButton(c, trashLabel, lucide.Trash(), false, true).Disabled(a.busy && !trashing).Clicked() {
 				a.startBatchTrash()
 			}
 		})
-		components.Text(c, a.t("移动到")).Margin(24, 0, 8, 0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
-		search := textBox(c, &a.batch.folderQuery, components.TextBoxOptions{LeadingIcon: lucide.Search()}).FillWidth().Label(a.t("搜索目标文件夹")).Placeholder(a.t("搜索或新建文件夹")).Disabled(a.busy)
-		if search.Changed() {
-			a.lastInput = time.Now()
-		}
-		components.ScrollView(c, components.ScrollViewOptions{}).Key("batch-folders").Label(a.t("选择目标文件夹")).FillWidth().Grow(1).MinHeight(160).Margin(8, 0, 0, 0).Children(func() {
-			ui.Column(c).FillWidth().Gap(2).Children(func() {
-				a.batchFolderOptions(c)
+		ready, conflicts, unchanged := a.batchMovePlan()
+		ui.Column(c).Key("batch-operation").FillWidth().Grow(1).MinHeight(0).Margin(24, 0, 0, 0).Children(func() {
+			ui.Row(c).Key("operation-heading").FillWidth().Wrap().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Margin(0, 0, 14, 0).Children(func() {
+				title := a.t("移动到")
+				if a.batch.moveMode == "prefix" {
+					title = a.t("修改前缀")
+				}
+				components.Text(c, title).FontSize(scaledFontSize(c, 14)).Bold()
+				label := a.t("移动 %d 项", len(chosen))
+				if a.batchMoveConfigured() {
+					label = a.t("移动 %d 项", len(ready))
+				}
+				if a.batch.moveMode == "prefix" {
+					label = a.t("修改 %d 项", len(ready))
+				}
+				moving := progress != nil && progress.action == "move"
+				if moving {
+					label = a.t("正在移动 %d/%d", progress.done, progress.total)
+					if a.batch.moveMode == "prefix" {
+						label = a.t("正在修改 %d/%d", progress.done, progress.total)
+					}
+				}
+				// The running action keeps full contrast so its progress stays readable;
+				// startBatchMove ignores clicks while busy.
+				if components.Button(c, label, components.ButtonPrimary).Disabled(!moving && (a.busy || !a.batchMoveConfigured() || len(ready) == 0)).Clicked() {
+					a.startBatchMove()
+				}
 			})
+			if a.batch.moveMode == "prefix" {
+				a.batchPrefixView(c, chosen, ready, conflicts, unchanged)
+				return
+			}
+			search := textBox(c, &a.batch.folderQuery, components.TextBoxOptions{LeadingIcon: lucide.Search()}).FillWidth().Label(a.t("搜索目标文件夹")).Placeholder(a.t("搜索或新建文件夹")).Disabled(a.busy)
+			if search.Changed() {
+				a.syncBatchFolderQuery()
+				a.lastInput = time.Now()
+			}
+			components.ScrollView(c, components.ScrollViewOptions{}).Key("batch-folders").Label(a.t("选择目标文件夹")).FillWidth().Grow(1).MinHeight(160).Margin(8, 0, 0, 0).Children(func() {
+				ui.Column(c).FillWidth().Gap(2).Children(func() {
+					a.batchFolderOptions(c)
+				})
+			})
+			if a.batch.chosen {
+				if len(conflicts) > 0 {
+					a.batchNotice(c, true, a.t("%s 移到“%s”后会重名，将跳过。", a.batchNames(conflicts), a.batchFolderLabel(a.batch.destination)))
+				}
+				if len(unchanged) > 0 {
+					a.batchNotice(c, false, a.t("%d 项已在此文件夹中。", len(unchanged)))
+				}
+				if len(ready) == 0 {
+					a.batchNotice(c, false, a.t("没有可移动的条目，请换一个文件夹。"))
+				}
+			}
 		})
-		if a.batch.chosen {
-			if len(conflicts) > 0 {
-				a.batchNotice(c, true, a.t("%s 移到“%s”后会重名，将跳过。", a.batchNames(conflicts), a.batchFolderLabel(a.batch.destination)))
-			}
-			if len(unchanged) > 0 {
-				a.batchNotice(c, false, a.t("%d 项已在此文件夹中。", len(unchanged)))
-			}
-			if len(ready) == 0 {
-				a.batchNotice(c, false, a.t("没有可移动的条目，请换一个文件夹。"))
-			}
-		}
 	})
+}
+
+func (a *application) batchActionButton(c *ui.Context, label string, icon *ui.SVG, selected, danger bool) ui.Element {
+	color := c.Theme().Text
+	if danger {
+		color = c.Theme().Danger
+	}
+	button := components.Button(c, "", components.ButtonGhost).Label(label).Selected(selected).MinHeight(34).Padding(6, 10).Gap(6).AlignItems(ui.Center)
+	if selected {
+		button.Background(c.Theme().Selection)
+	}
+	button.Children(func() {
+		components.Icon(c, icon).Size(managerGlyphSize(c), managerGlyphSize(c)).TextColor(color)
+		components.Text(c, label).FontSize(scaledFontSize(c, 12)).TextColor(color).SingleLine()
+	})
+	return button
 }
 
 func (a *application) batchNotice(c *ui.Context, warning bool, text string) {
@@ -701,14 +793,14 @@ func (a *application) batchFolderOptions(c *ui.Context) {
 	a.batchFolderOption(c, "", a.batchFolderLabel(""), 0, false)
 	for _, folder := range a.folders {
 		hidden := false
-		for parent := range a.batch.collapsed {
-			hidden = hidden || strings.HasPrefix(folder, parent+"/")
+		parts := strings.Split(folder, "/")
+		for i := 1; i < len(parts); i++ {
+			hidden = hidden || !a.batch.expanded[strings.Join(parts[:i], "/")]
 		}
 		if hidden {
 			continue
 		}
-		parts := strings.Split(folder, "/")
-		a.batchFolderOption(c, folder, parts[len(parts)-1], len(parts)-1, children[folder] >= batchCollapseThreshold)
+		a.batchFolderOption(c, folder, parts[len(parts)-1], len(parts)-1, children[folder] > 0)
 	}
 }
 
@@ -720,18 +812,18 @@ func (a *application) batchFolderOption(c *ui.Context, folder, label string, dep
 			if !collapsible {
 				return
 			}
-			open := !a.batch.collapsed[folder]
+			open := a.batch.expanded[folder]
 			icon, toggleLabel := lucide.ChevronDown(), a.t("收起“%s”", folder)
 			if !open {
 				icon, toggleLabel = lucide.ChevronRight(), a.t("展开“%s”", folder)
 			}
-			toggle := ui.ButtonBase(c).Key("toggle").Size(20, 28).AlignItems(ui.Center).Justify(ui.Center).Radius(4).Label(toggleLabel).Expanded(open)
+			toggle := ui.ButtonBase(c).Key("toggle").Size(20, 28).AlignItems(ui.Center).Justify(ui.Center).Radius(4).Label(toggleLabel).Expanded(open).Disabled(a.busy)
 			toggle.Children(func() { components.Icon(c, icon).Size(12, 12).TextColor(t.TextMuted) })
 			if toggle.Clicked() {
 				if open {
-					a.batch.collapsed[folder] = true
+					delete(a.batch.expanded, folder)
 				} else {
-					delete(a.batch.collapsed, folder)
+					a.batch.expanded[folder] = true
 				}
 			}
 		})
@@ -755,8 +847,7 @@ func (a *application) batchFolderOption(c *ui.Context, folder, label string, dep
 			}
 		})
 		if option.Clicked() {
-			a.batch.destination, a.batch.chosen = folder, true
-			a.batch.result = nil
+			a.chooseBatchFolder(folder)
 		}
 	})
 }

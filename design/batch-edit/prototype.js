@@ -9,7 +9,7 @@
   const sceneKeys = {
     browse: "sceneBrowse", empty: "sceneEmpty", select: "sceneSelect", move: "sceneMove",
     conflict: "sceneConflict", trash: "sceneTrash", progress: "sceneProgress",
-    success: "sceneSuccess", partial: "scenePartial", "trash-success": "sceneTrash",
+    prefix: "scenePrefix", success: "sceneSuccess", partial: "scenePartial", "trash-success": "sceneTrash",
   };
   const seed = [
     { id: "cf", name: "Cloudflare", folder: "开发", username: "infra@example.test", website: "https://dash.cloudflare.com" },
@@ -78,8 +78,6 @@
   const visible = () => collection().filter(item => path(item).toLocaleLowerCase().includes(s.query.trim().toLocaleLowerCase()));
   const folders = () => [...new Set(items.flatMap(item => item.folder.split("/").filter(Boolean).map((_, i, a) => a.slice(0, i + 1).join("/"))))].sort();
   const busy = () => Boolean(s.progress);
-  // Folders with this many direct subfolders get a collapse toggle; the tree still opens fully expanded.
-  const collapseThreshold = 4;
   // Entry names are user data; only the separator and the overflow template are copy.
   const nameList = entries => {
     const names = [...new Set(entries.map(item => item.name))];
@@ -92,10 +90,12 @@
     items = seed.map(item => ({ ...item }));
     trashItems = [];
     s = { scene, mode: scene !== "browse", scope: "all", query: "", selected: new Set(), active: "gh", dialog: null,
-      destination: null, folderQuery: "", collapsed: new Set(), result: null, progress: null, toast: null, undo: null, sidebar: false, reveal: false };
+      destination: null, folderQuery: "", operation: "folder", prefixInitialized: false, prefixFrom: "", prefixTo: "", collapsed: new Set(folders()), result: null, progress: null, toast: null, undo: null, sidebar: false, reveal: false };
     anchor = null;
     if (!["browse", "empty"].includes(scene)) s.selected = new Set(defaultIDs);
     if (["move", "conflict"].includes(scene)) s.destination = scene === "conflict" ? "归档" : "家庭/设备";
+    if (s.destination !== null) s.folderQuery = s.destination;
+    if (scene === "prefix") { s.operation = "prefix"; s.prefixInitialized = true; s.selected = new Set(["fg", "gh2"]); s.prefixFrom = "工作"; s.prefixTo = "工作0"; }
     if (scene === "conflict") s.selected.add("gh2");
     if (scene === "progress") { s.destination = "家庭/设备"; s.progress = { action: "move", ids: [...s.selected], done: 2, total: 4 }; }
     if (scene === "partial") applyPartial();
@@ -125,16 +125,21 @@
       failed: [{ id: "fg", reason: "writeBlocked", review: false }, { id: "li", reason: "destinationSaved", review: true }] };
   }
 
+  const targetPath = item => s.operation === "prefix"
+    ? s.prefixFrom && (item.folder === s.prefixFrom || item.folder.startsWith(`${s.prefixFrom}/`))
+      ? [s.prefixTo, path(item).slice(s.prefixFrom.length + 1)].filter(Boolean).join("/") : path(item)
+    : [s.destination, item.name].filter(Boolean).join("/");
+
   function movePlan() {
     const chosen = selected();
-    if (s.destination === null) return { ready: [], conflicts: [], unchanged: [] };
-    const key = item => `${s.destination}/${item.name}`.normalize("NFC").toLocaleLowerCase();
+    if (s.operation !== "prefix" && s.destination === null || s.operation === "prefix" && !s.prefixFrom) return { ready: [], conflicts: [], unchanged: [] };
+    const key = item => targetPath(item).normalize("NFC").toLocaleLowerCase();
     const grouped = new Map();
     chosen.forEach(item => grouped.set(key(item), (grouped.get(key(item)) || 0) + 1));
     const plan = { ready: [], conflicts: [], unchanged: [] };
     chosen.forEach(item => {
-      if (item.folder === s.destination) { plan.unchanged.push(item); return; }
-      const target = (s.destination ? `${s.destination}/${item.name}` : item.name).normalize("NFC").toLocaleLowerCase();
+      if (targetPath(item) === path(item)) { plan.unchanged.push(item); return; }
+      const target = key(item);
       const exists = items.some(other => other.id !== item.id && path(other).normalize("NFC").toLocaleLowerCase() === target);
       (grouped.get(key(item)) > 1 || exists ? plan.conflicts : plan.ready).push(item);
     });
@@ -144,7 +149,7 @@
   function reviewBar() {
     if (!review) return "";
     return `<header class="review-bar"><div class="review-brand"><strong class="review-title">${t("reviewTitle")}</strong><span>${t("reviewNote")}</span></div>
-      <nav class="review-nav" aria-label="${t("scenesLabel")}">${["browse", "select", "move", "conflict", "progress", "success", "trash", "partial"].map(scene => `<button data-scene="${scene}" class="${s.scene === scene ? "active" : ""}">${t(sceneKeys[scene])}</button>`).join("")}</nav>
+      <nav class="review-nav" aria-label="${t("scenesLabel")}">${["browse", "select", "move", "prefix", "conflict", "progress", "success", "trash", "partial"].map(scene => `<button data-scene="${scene}" class="${s.scene === scene ? "active" : ""}">${t(sceneKeys[scene])}</button>`).join("")}</nav>
       <div class="review-tools"><select id="language" aria-label="${t("language")}"><option value="zh-CN" ${language === "zh-CN" ? "selected" : ""}>${t("chineseLanguage")}</option><option value="en" ${language === "en" ? "selected" : ""}>${t("englishLanguage")}</option></select>${iconButton("theme", "appearance", theme === "dark" ? "sun" : "moon")}<button class="text-button" data-action="reset">${t("reset")}</button><a class="text-button" href="canvas.html?lang=${language}">${t("overview")}${icon("external")}</a></div></header>`;
   }
 
@@ -185,17 +190,19 @@
     const canCreate = candidate && !folderOptions.includes(candidate) && !candidate.split("/").some(segment => [".", ".."].includes(segment));
     // Searching flattens the tree to full paths, since a deep match needs its parents to be told apart.
     const shown = query ? folderOptions.filter(folder => folderLabel(folder).toLocaleLowerCase().includes(query)) : folderOptions;
-    const moveTotal = s.destination === null ? count : plan.ready.length;
-    const moveLabel = running("move") ? t("progressMoving", { done: p.done, total: p.total }) : t("moveCount", { count: moveTotal });
+    const moveTotal = s.operation === "prefix" || s.destination !== null ? plan.ready.length : count;
+    const moveLabel = running("move") ? t(s.operation === "prefix" ? "progressUpdating" : "progressMoving", { done: p.done, total: p.total }) : t(s.operation === "prefix" ? "updateCount" : "moveCount", { count: moveTotal });
     const trashLabel = running("trash") ? t("progressTrashing", { done: p.done, total: p.total }) : t("trashAction");
+    const operationTitle = t(s.operation === "prefix" ? "replacePrefix" : "moveSection");
+    const operationHeading = `<header class="batch-operation-heading"><h3 id="batch-operation-title">${operationTitle}</h3>${button("confirm-move", moveLabel, "primary", running("move") ? "spinner" : "", busy() || !plan.ready.length, progress("move"))}</header>`;
     return `<div class="batch-panel selection-panel"><div class="panel-toolbar"></div>
       <div class="selection-heading"><h2>${t("selectedCount", { count: p ? p.total : count })}</h2></div>
-      <div class="batch-actions">${button("confirm-move", moveLabel, "primary", running("move") ? "spinner" : "", busy() || s.destination === null || !plan.ready.length, progress("move"))}${button("trash", trashLabel, "quiet danger-text", running("trash") ? "spinner" : "trash", busy(), progress("trash"))}</div>
-      <section class="move-section" aria-labelledby="move-label"><h3 class="section-label" id="move-label">${t("moveSection")}</h3>
+      <div class="batch-actions organization-actions" role="group" aria-label="${t("batchActions")}">${button("folder-mode", t("moveSection"), "quiet", "folder", busy(), `id="batch-folder-mode" aria-pressed="${s.operation === "folder"}"`)}${button("prefix-mode", t("replacePrefix"), "quiet", "edit", busy(), `id="batch-prefix-mode" aria-pressed="${s.operation === "prefix"}"`)}${button("trash", trashLabel, "quiet danger-text", running("trash") ? "spinner" : "trash", busy(), progress("trash"))}</div>
+      ${s.operation === "prefix" ? `<section class="move-section prefix-section" aria-labelledby="batch-operation-title">${operationHeading}<p class="muted">${t("prefixHelp")}</p><label>${t("prefixFrom")}<input id="prefix-from" value="${esc(s.prefixFrom)}" aria-label="${t("prefixFrom")}" ${busy() ? "disabled" : ""}></label><label>${t("prefixTo")}<input id="prefix-to" value="${esc(s.prefixTo)}" placeholder="${t("removePrefix")}" aria-label="${t("prefixTo")}" ${busy() ? "disabled" : ""}></label><h3 class="section-label">${t("pathPreview")}</h3><div class="prefix-preview">${selected().map(item => `<div><span>${esc(path(item))}</span><strong>${esc(targetPath(item))}</strong></div>`).join("")}</div>${plan.conflicts.length ? `<p class="inline-notice warning">${t("prefixConflict", { count: plan.conflicts.length })}</p>` : ""}</section>` : `<section class="move-section" aria-labelledby="batch-operation-title">${operationHeading}
         <div class="folder-search search-wrap">${icon("search")}<input id="folder-search" placeholder="${t("folderSearch")}" aria-label="${t("folderSearchLabel")}" value="${esc(s.folderQuery)}" ${busy() ? "disabled" : ""}></div>
         <div class="folder-list ${query ? "flat" : ""}" role="group" aria-label="${t("chooseDestination")}">${query ? shown.map(folder => folderOption(folder, folderLabel(folder), 0, false)).join("") : folderTree()}${canCreate ? `<button class="folder-option folder-create" data-folder="${esc(candidate)}">${icon("folderPlus")}<span>${esc(t("createFolder", { folder: candidate }))}</span></button>` : ""}${!shown.length && !canCreate ? `<p class="muted">${t("noFolders")}</p>` : ""}</div>
         ${moveNotices(plan)}
-      </section></div>`;
+      </section>`}</div>`;
   }
 
   function detailPanel() {
@@ -247,7 +254,7 @@
     const hidden = folder => [...s.collapsed].some(parent => folder.startsWith(`${parent}/`));
     return [folderOption("", t("rootFolder"), 0, false), ...all.filter(folder => !hidden(folder)).map(folder => {
       const parts = folder.split("/");
-      return folderOption(folder, parts.at(-1), parts.length - 1, childCount(folder) >= collapseThreshold);
+      return folderOption(folder, parts.at(-1), parts.length - 1, childCount(folder) > 0);
     })].join("");
   }
 
@@ -326,7 +333,10 @@
       s.progress.done++; render();
       if (s.progress.done < ids.length) timer = setTimeout(step, 320);
       else timer = setTimeout(() => {
+        const changedPaths = new Map(ids.map(id => [id, targetPath(byID(id))]));
+        const prefix = action === "move" && s.operation === "prefix";
         applySuccess(action, ids, destination);
+        if (prefix) { for (const [id, next] of changedPaths) byID(id).folder = next.split("/").slice(0, -1).join("/"); s.toast = { key: "prefixSuccess", values: { count: ids.length } }; }
         // Skipped conflicts stay selected so they can be handled next.
         if (conflicts.length) { s.mode = true; s.selected = new Set(conflicts); }
         render(); autoDismiss(action === "trash" ? 8000 : 5000);
@@ -338,6 +348,16 @@
   function handle(action) {
     if (busy() && !["theme", "sidebar"].includes(action)) return;
     switch (action) {
+      case "folder-mode": s.operation = "folder"; render(); break;
+      case "prefix-mode": {
+        s.operation = "prefix";
+        if (!s.prefixInitialized) {
+          let parts = selected()[0]?.folder.split("/") || [];
+          for (const item of selected().slice(1)) { const next = item.folder.split("/"); let length = 0; while (length < parts.length && length < next.length && parts[length] === next[length]) length++; parts = parts.slice(0, length); }
+          s.prefixFrom = parts.join("/"); s.prefixTo = s.prefixFrom; s.prefixInitialized = true;
+        }
+        render(); break;
+      }
       case "theme": theme = theme === "dark" ? "light" : "dark"; render(); break;
       case "reset": init("select"); break;
       case "sidebar": s.sidebar = !s.sidebar; render(); break;
@@ -400,16 +420,17 @@
     }));
     // Searching only filters the list; the selection survives it.
     document.getElementById("search")?.addEventListener("input", event => { s.query = event.target.value; s.result = null; render(); });
-    document.getElementById("folder-search")?.addEventListener("input", event => { s.folderQuery = event.target.value; render(); });
+    document.getElementById("folder-search")?.addEventListener("input", event => { s.folderQuery = event.target.value; s.destination = folders().includes(s.folderQuery.trim()) ? s.folderQuery.trim() : null; render(); });
     document.querySelectorAll("[data-toggle-folder]").forEach(node => node.addEventListener("click", () => {
       const folder = node.dataset.toggleFolder;
       s.collapsed.has(folder) ? s.collapsed.delete(folder) : s.collapsed.add(folder); render();
       document.querySelector(`[data-toggle-folder="${CSS.escape(folder)}"]`)?.focus({ preventScroll: true });
     }));
     document.querySelectorAll("[data-folder]").forEach(node => node.addEventListener("click", () => {
-      s.destination = node.dataset.folder; s.folderQuery = ""; render();
+      s.destination = node.dataset.folder; s.folderQuery = s.destination; render();
       document.querySelector(`[data-folder="${CSS.escape(s.destination)}"]`)?.focus({ preventScroll: true });
     }));
+    for (const [id, field] of [["prefix-from", "prefixFrom"], ["prefix-to", "prefixTo"]]) document.getElementById(id)?.addEventListener("input", event => { s[field] = event.target.value; render(); });
     document.getElementById("language")?.addEventListener("change", event => { language = event.target.value; render(); });
   }
 

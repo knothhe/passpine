@@ -126,11 +126,12 @@ func TestCleanupEmptyFoldersPreservesFilesPoliciesAndHiddenDirectories(t *testin
 	}
 }
 
-func TestCleanupEmptyFoldersRequiresUnlockedSessionAndStoreLock(t *testing.T) {
+func TestCleanupEmptyFoldersWhileLockedStillRequiresStoreLock(t *testing.T) {
 	v := newFixture(t)
 	if err := v.CreateFolder("keep/empty"); err != nil {
 		t.Fatal(err)
 	}
+	v.Lock()
 	unlock, err := lockStore(v.config.Directory)
 	if err != nil {
 		t.Fatal(err)
@@ -140,12 +141,42 @@ func TestCleanupEmptyFoldersRequiresUnlockedSessionAndStoreLock(t *testing.T) {
 	if removed != 0 || !errors.Is(err, ErrBusy) {
 		t.Fatalf("cleanup ignored another writer: %d %v", removed, err)
 	}
-	v.Lock()
-	if removed, err := v.CleanupEmptyFolders(); removed != 0 || !errors.Is(err, ErrLocked) {
-		t.Fatalf("locked cleanup was accepted: %d %v", removed, err)
-	}
 	if _, err := os.Stat(filepath.Join(v.config.Directory, "keep/empty")); err != nil {
 		t.Fatal("rejected cleanup removed a directory", err)
+	}
+	if removed, err := v.CleanupEmptyFolders(); removed != 2 || err != nil {
+		t.Fatalf("locked cleanup did not remove empty folders: %d %v", removed, err)
+	}
+	if v.Status().Unlocked {
+		t.Fatal("cleanup unlocked the vault")
+	}
+}
+
+func TestCleanupEmptyFoldersNeedsNoKeysOrCiphertextDecryption(t *testing.T) {
+	root := t.TempDir()
+	v, err := New(Config{Directory: filepath.Join(root, "store"), KeyFile: filepath.Join(root, "keys", "missing.asc")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(v.Close)
+	if err := os.MkdirAll(filepath.Join(v.config.Directory, "empty/a/b"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Neither this ciphertext nor the absent key can be decrypted. Cleanup must
+	// operate solely on directory metadata and preserve the bytes unchanged.
+	ciphertext := []byte("not valid OpenPGP data")
+	entry := filepath.Join(v.config.Directory, "account.gpg")
+	if err := os.WriteFile(entry, ciphertext, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if removed, err := v.CleanupEmptyFolders(); removed != 3 || err != nil {
+		t.Fatalf("metadata-only cleanup failed without keys: %d %v", removed, err)
+	}
+	if got, err := os.ReadFile(entry); err != nil || string(got) != string(ciphertext) {
+		t.Fatal("cleanup changed ciphertext", err)
+	}
+	if v.Status().Unlocked {
+		t.Fatal("cleanup created a decrypted session")
 	}
 }
 

@@ -86,8 +86,8 @@ func TestCleanupEmptyFoldersRefreshesMetadataAndKeepsMovedEntry(t *testing.T) {
 	}
 	must(t, s, Request{Action: "create-folder", Destination: "keep/empty"})
 	must(t, s, Request{Action: "lock"})
-	if denied := s.Execute(Request{Action: "cleanup-folders", VaultID: before.VaultID}); denied.Code != "locked" || !slices.Contains(denied.Data.Folders, "keep/empty") {
-		t.Fatal("locked cleanup was not rejected")
+	if cleaned := must(t, s, Request{Action: "cleanup-folders", VaultID: before.VaultID}); !cleaned.Locked || cleaned.RemovedFolders != 2 || slices.Contains(cleaned.Folders, "keep/empty") {
+		t.Fatal("locked cleanup did not preserve the locked session and refresh folders")
 	}
 	for _, action := range []string{"configure", "cleanup-folders"} {
 		raw := s.handleBrowser([]byte(`{"protocol":1,"action":"` + action + `"}`))
@@ -97,5 +97,21 @@ func TestCleanupEmptyFoldersRefreshesMetadataAndKeepsMovedEntry(t *testing.T) {
 		if strings.Contains(string(raw), `"folders"`) {
 			t.Fatal("browser response exposed desktop folder metadata")
 		}
+	}
+}
+
+func TestCleanupEmptyFoldersWhileLockedWithBrowsingDisabled(t *testing.T) {
+	s := testService(t)
+	before := must(t, s, Request{Action: "create-folder", Destination: "empty/a/b"})
+	settings := before.Settings
+	settings.BrowseWhileLocked = false
+	must(t, s, Request{Action: "settings", Settings: &settings})
+	must(t, s, Request{Action: "lock"})
+	cleaned := must(t, s, Request{Action: "cleanup-folders", VaultID: before.VaultID})
+	if !cleaned.Locked || cleaned.RemovedFolders != 3 || len(cleaned.Folders) != 0 || len(cleaned.Entries) != 0 {
+		t.Fatalf("locked cleanup exposed metadata or failed: %#v", cleaned)
+	}
+	if _, err := os.Stat(filepath.Join(before.Directory, "empty")); !os.IsNotExist(err) {
+		t.Fatal("cleanup left empty folders behind", err)
 	}
 }

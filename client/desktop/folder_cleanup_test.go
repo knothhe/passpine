@@ -98,32 +98,43 @@ func TestFolderCleanupUIWithRealVault(t *testing.T) {
 	}
 }
 
-func TestFolderCleanupUnlockCanBeCancelledAndResumesOnce(t *testing.T) {
+func TestFolderCleanupWhileLockedDoesNotAuthenticate(t *testing.T) {
 	a, service, view, settle := folderCleanupFixture(t, "zh-CN", 1180)
 	if r := service.Execute(app.Request{Action: "create-folder", Destination: "empty/a/b"}); r.Status != "ok" {
 		t.Fatal(r.Message)
 	}
 	a.state = service.Execute(app.Request{Action: "lock"}).Data
 	a.entriesVersion = a.state.EntriesVersion
+	// Advertise system authentication as available so any accidental unlock
+	// continuation would issue a device request through this rejecting backend.
+	a.state.Settings.DeviceUnlock = true
+	a.state.DeviceUnlockEnrolled = true
+	a.state.DeviceUnlockAvailable = true
+	lockedState := a.state
+	requests := make(chan app.Request, 4)
+	a.service = backendFunc(func(request app.Request) app.Response {
+		requests <- request
+		if request.Action != "cleanup-folders" {
+			return app.Response{Status: "error", Code: "unexpected_authentication", Data: lockedState}
+		}
+		return service.Execute(request)
+	})
 	view.Frame()
 	if err := view.Click("清理空文件夹"); err != nil {
 		t.Fatal(err)
 	}
-	if !view.HasText("解锁后将清理密码库中的空文件夹。") || a.pendingUnlock.action != "cleanup-folders" {
-		t.Fatal("locked cleanup did not explain its pending action")
-	}
-	if err := view.Click("取消"); err != nil || a.pendingUnlock.action != "" {
-		t.Fatal("cleanup authentication could not be cancelled", err)
-	}
-	if _, err := os.Stat(filepath.Join(a.state.Directory, "empty/a/b")); err != nil {
-		t.Fatal("cancelled cleanup removed directories", err)
-	}
-	a.cleanupEmptyFolders()
-	a.passphrase = app.DemoPassphrase
-	a.unlock("")
 	settle()
-	if a.state.Locked || a.pendingUnlock.action != "" || !view.HasText("已清理 3 个空文件夹") {
-		t.Fatal("cleanup did not resume after authentication")
+	if !a.state.Locked || a.pendingUnlock.action != "" || !view.HasText("已清理 3 个空文件夹") {
+		t.Fatal("cleanup did not complete while retaining the locked session")
+	}
+	if request := <-requests; request.Action != "cleanup-folders" || request.Mode != "" || request.Passphrase != "" {
+		t.Fatalf("cleanup requested authentication: %#v", request)
+	}
+	if len(requests) != 0 {
+		t.Fatal("cleanup issued extra backend requests")
+	}
+	if _, err := os.Stat(filepath.Join(a.state.Directory, "empty")); !os.IsNotExist(err) {
+		t.Fatal("locked cleanup left empty directories", err)
 	}
 }
 

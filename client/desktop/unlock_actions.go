@@ -46,9 +46,6 @@ func (a *application) resumeUnlockAction() bool {
 		}
 	case "batch":
 		return a.resumeBatchAction()
-	case "cleanup-folders":
-		a.cleanupEmptyFolders()
-		return true
 	case "export":
 		if isPreferencesPage(a.page) {
 			a.exportKey()

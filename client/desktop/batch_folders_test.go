@@ -14,7 +14,7 @@ func TestBatchCreateNestedFolderSelectsVisibleLeafAndMovesEntries(t *testing.T) 
 	a, backend, settle := batchFixture(t, nil)
 	a.enterBatch()
 	a.batch.selected["开发/GitHub"] = true
-	a.batch.collapsed["工作"] = true
+	delete(a.batch.expanded, "工作")
 	view := ui.NewTester(testView(a), 1180, 800)
 	view.Advance(time.Second)
 	if err := view.Click("搜索目标文件夹"); err != nil {
@@ -28,10 +28,15 @@ func TestBatchCreateNestedFolderSelectsVisibleLeafAndMovesEntries(t *testing.T) 
 		t.Fatal("folder was selected before creation completed")
 	}
 	settle()
-	if !a.batch.chosen || a.batch.destination != "工作/test/a/b/c" || a.batch.folderQuery != "" || a.batch.collapsed["工作"] {
+	if !a.batch.chosen || a.batch.destination != "工作/test/a/b/c" || a.batch.folderQuery != "工作/test/a/b/c" || !a.batch.expanded["工作"] {
 		t.Fatalf("created leaf was not selected and revealed: %#v", a.batch)
 	}
 	view.Frame()
+	if err := view.Click("搜索目标文件夹"); err != nil {
+		t.Fatal(err)
+	}
+	view.Key(ui.Cmd, ui.KeyA)
+	view.Key(0, ui.KeyBackspace)
 	for _, folder := range []string{"工作/test", "工作/test/a", "工作/test/a/b", "工作/test/a/b/c"} {
 		if _, found := view.Find("选择文件夹 " + folder); !found {
 			t.Fatalf("new folder %q is missing from the tree", folder)
@@ -39,6 +44,9 @@ func TestBatchCreateNestedFolderSelectsVisibleLeafAndMovesEntries(t *testing.T) 
 	}
 	if !view.HasText("已创建并选中文件夹“工作/test/a/b/c”") {
 		t.Fatal("creation success feedback is missing")
+	}
+	if err := view.Click("选择文件夹 工作/test/a/b/c"); err != nil {
+		t.Fatal(err)
 	}
 	if err := view.Click("移动 1 项"); err != nil {
 		t.Fatal(err)

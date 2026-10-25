@@ -1117,7 +1117,7 @@ func (s *Service) log(action, source, outcome string) {
 
 func needsUnlock(action string) bool {
 	switch action {
-	case "fetch", "copy", "save", "delete", "move", "create-folder", "cleanup-folders", "trash", "draft", "recovery", "restore", "purge", "export", "verify-backup":
+	case "fetch", "copy", "save", "delete", "move", "create-folder", "trash", "draft", "recovery", "restore", "purge", "export", "verify-backup":
 		return true
 	}
 	return false

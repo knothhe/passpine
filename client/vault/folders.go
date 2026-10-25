@@ -24,13 +24,10 @@ func (v *Vault) CreateFolder(name string) error {
 // CleanupEmptyFolders removes visible, empty directories from deepest to
 // shallowest. Hidden directories, symlinks, files and the vault root are kept.
 // A directory containing any file (including .gpg-id) is never empty.
+// This metadata-only operation needs no decrypted keys or unlocked session.
 func (v *Vault) CleanupEmptyFolders() (int, error) {
 	v.operations.Lock()
 	defer v.operations.Unlock()
-	_, token, err := v.token()
-	if err != nil {
-		return 0, err
-	}
 	unlock, err := lockStore(v.config.Directory)
 	if err != nil {
 		return 0, err
@@ -44,13 +41,10 @@ func (v *Vault) CleanupEmptyFolders() (int, error) {
 	// WalkDir visits parents before children, so reversing the snapshot also
 	// cleans up parents made empty by removing their last empty descendant.
 	for i := len(folders) - 1; i >= 0; i-- {
-		err = v.commit(token, func() error {
-			deleted, err := safeRemoveEmptyFolder(v.config.Directory, folders[i])
-			if deleted {
-				removed++
-			}
-			return err
-		})
+		deleted, err := safeRemoveEmptyFolder(v.config.Directory, folders[i])
+		if deleted {
+			removed++
+		}
 		if err != nil {
 			return removed, err
 		}

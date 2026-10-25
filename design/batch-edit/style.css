@@ -232,7 +232,7 @@ a.text-button { text-decoration: none; }
 .batch-subtitle { margin-top: 4px; color: var(--muted); font-size: 12.5px; line-height: 20px; }
 .batch-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 24px; }
 .batch-actions .button { min-height: 34px; }
-/* Moving happens in the panel itself: heading with the secondary trash action, then the folder tree. */
+/* Peer actions choose the task; each task owns its configuration and submit button. */
 .selection-panel { display: flex; flex: 1; flex-direction: column; max-width: 608px; min-height: 0; }
 .selection-heading { margin-top: 16px; }
 .selection-panel > .batch-actions { margin-top: 16px; }
@@ -382,3 +382,13 @@ button.folder-toggle:hover { background: var(--hover); color: var(--fg); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+.organization-actions .button[aria-pressed="true"] { background:var(--selected); }
+.organization-actions .button[aria-pressed="true"]:hover { background:var(--pressed); }
+.batch-operation-heading { display:flex; flex:none; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:14px; }
+.batch-operation-heading h3 { min-width:0; font-size:14px; font-weight:600; line-height:22px; }
+.prefix-section label { display:grid; gap:7px; font-size:12px; margin:12px 0; }
+.prefix-section input { width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:5px; background:var(--input); color:var(--fg); }
+.prefix-preview { overflow:auto; min-height:0; }
+.prefix-preview > div { display:grid; gap:6px; padding:12px 0; border-top:1px solid var(--border); overflow-wrap:anywhere; font-size:12px; }
+.prefix-preview span { color:var(--muted); }
