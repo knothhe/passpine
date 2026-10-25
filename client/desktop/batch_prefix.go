@@ -1,13 +1,16 @@
 package desktop
 
 import (
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
+	"github.com/knothhe/passpine/client/i18n"
 	"github.com/knothhe/passpine/client/vault"
 	"github.com/oneo-me/onevra/source/components"
+	"github.com/oneo-me/onevra/source/icons/lucide"
 )
 
 func (a *application) chooseBatchFolder(folder string) {
@@ -30,34 +33,78 @@ func (a *application) setBatchMoveMode(prefix bool) {
 	a.batch.moveMode = ""
 	if prefix {
 		a.batch.moveMode = "prefix"
-		if !a.batch.prefixInitialized {
-			a.batch.prefixFrom = commonBatchFolder(a.selectedBatchEntries())
-			a.batch.prefixTo = a.batch.prefixFrom
-			a.batch.prefixInitialized = true
-		}
+		a.syncBatchPrefixSource()
 	}
 	a.batch.result = nil
 }
 
-func commonBatchFolder(entries []app.Entry) string {
-	if len(entries) == 0 {
-		return ""
-	}
-	parts := strings.Split(entries[0].Folder, "/")
-	for _, entry := range entries[1:] {
-		other := strings.Split(entry.Folder, "/")
-		n := 0
-		for n < len(parts) && n < len(other) && parts[n] == other[n] {
-			n++
+func (a *application) batchPrefixOptions() []string {
+	seen := map[string]bool{}
+	for _, entry := range a.selectedBatchEntries() {
+		if entry.Folder == "" {
+			continue
 		}
-		parts = parts[:n]
+		parts := strings.Split(entry.Folder, "/")
+		for i := range parts {
+			seen[strings.Join(parts[:i+1], "/")] = true
+		}
 	}
-	return strings.Join(parts, "/")
+	options := make([]string, 0, len(seen))
+	for folder := range seen {
+		options = append(options, folder)
+	}
+	sort.Strings(options)
+	return options
+}
+
+func (a *application) syncBatchPrefixSource() {
+	if a.busy || a.batch.progress != nil {
+		return
+	}
+	options := a.batchPrefixOptions()
+	if a.batch.prefixInitialized && containsFolder(options, a.batch.prefixFrom) {
+		return
+	}
+	from := ""
+	if entries := a.selectedBatchEntries(); len(entries) > 0 {
+		from = entries[0].Folder
+	}
+	if from == "" && len(options) == 1 {
+		from = options[0]
+	}
+	if !a.batch.prefixInitialized || a.batch.prefixTo != "" && a.batch.prefixTo == a.batch.prefixFrom {
+		a.batch.prefixTo = from
+	}
+	a.batch.prefixFrom, a.batch.prefixInitialized = from, true
+}
+
+func (a *application) chooseBatchPrefix(from string) {
+	if a.busy || !containsFolder(a.batchPrefixOptions(), from) {
+		return
+	}
+	if a.batch.prefixTo != "" && a.batch.prefixTo == a.batch.prefixFrom {
+		a.batch.prefixTo = from
+	}
+	a.batch.prefixFrom, a.batch.prefixInitialized = from, true
+	a.batch.result = nil
+	a.lastInput = time.Now()
+}
+
+func (a *application) copyBatchPrefix() {
+	if a.busy || a.closing || a.state.Locked && !a.state.Settings.BrowseWhileLocked || !containsFolder(a.batchPrefixOptions(), a.batch.prefixFrom) {
+		return
+	}
+	a.notice, a.errorText = "", ""
+	if err := a.writeClipboard(a.batch.prefixFrom, 0, false); err != nil {
+		a.errorText = a.t(i18n.ClipboardWriteFailed)
+		return
+	}
+	a.notice = a.t("已复制")
 }
 
 func (a *application) batchPrefixValid() bool {
 	from, to := strings.TrimSpace(a.batch.prefixFrom), strings.TrimSpace(a.batch.prefixTo)
-	return from != "" && vault.ValidatePath(from) == nil && (to == "" || vault.ValidatePath(to) == nil)
+	return from != "" && to != "" && vault.ValidatePath(from) == nil && vault.ValidatePath(to) == nil
 }
 
 func (a *application) batchMoveConfigured() bool {
@@ -101,45 +148,88 @@ func batchResponse(responses []app.Response, index int) app.Response {
 
 func (a *application) batchPrefixView(c *ui.Context, chosen, ready, conflicts, unchanged []app.Entry) {
 	muted(c, a.t("仅替换完整文件夹前缀，保留后续层级和条目名称。"))
-	for _, field := range []struct {
-		value *string
-		label string
-		key   string
-	}{{&a.batch.prefixFrom, a.t("原文件夹前缀"), "from"}, {&a.batch.prefixTo, a.t("新文件夹前缀"), "to"}} {
-		components.Text(c, field.label).Margin(14, 0, 6, 0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
-		c.Key(field.key)
-		input := textBox(c, field.value, components.TextBoxOptions{}).FillWidth().Label(field.label).Disabled(a.busy)
-		if field.value == &a.batch.prefixTo {
-			input.Placeholder(a.t("留空移除前缀"))
+	options := a.batchPrefixOptions()
+	components.Text(c, a.t("原文件夹前缀")).Margin(14, 0, 6, 0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+	ui.Row(c).Key("prefix-source").FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+		if len(options) > 1 {
+			selected := a.batch.prefixFrom
+			sel := components.Select(c, &selected)
+			sel.Trigger.Label(a.t("原文件夹前缀")).Grow(1).MinWidth(0).Disabled(a.busy).Children(func() {
+				label := selected
+				if label == "" {
+					label = a.t("请选择原文件夹前缀。")
+				}
+				components.Text(c, label).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").FontSize(scaledFontSize(c, 12))
+			})
+			sel.Popup(func(panel ui.Element) {
+				panel.Width(320).MaxWidth(420).Label(a.t("原文件夹前缀"))
+				components.ScrollView(c, components.ScrollViewOptions{}).FillWidth().MaxHeight(240).Children(func() {
+					for _, folder := range options {
+						sel.Item(folder).Label(a.t("选择原文件夹前缀 %s", folder)).Children(func() { components.Text(c, folder).SingleLine() })
+					}
+				})
+			})
+			if sel.Trigger.Changed() {
+				a.chooseBatchPrefix(selected)
+			}
+		} else {
+			label := a.batch.prefixFrom
+			if label == "" {
+				label = a.t("所选条目没有可替换的文件夹前缀。")
+			}
+			components.Text(c, label).Grow(1).MinWidth(0).Wrap().FontSize(scaledFontSize(c, 12))
 		}
-		if input.Changed() {
-			a.lastInput = time.Now()
+		if iconButton(c, lucide.Copy(), a.t("复制原文件夹前缀"), components.ButtonGhost).Tooltip(a.t("复制原文件夹前缀")).Size(28, 28).Disabled(a.busy || a.batch.prefixFrom == "").Clicked() {
+			a.copyBatchPrefix()
 		}
+	})
+	components.Text(c, a.t("新文件夹前缀")).Margin(14, 0, 6, 0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+	c.Key("prefix-to")
+	if textBox(c, &a.batch.prefixTo, components.TextBoxOptions{}).FillWidth().Label(a.t("新文件夹前缀")).Placeholder(a.t("输入新的文件夹前缀")).Disabled(a.busy).Changed() {
+		a.lastInput = time.Now()
 	}
 	if !a.batchPrefixValid() {
-		a.batchNotice(c, false, a.t("请输入有效的原文件夹前缀；新前缀留空可移除原前缀。"))
+		message := a.t("新文件夹前缀无效，请使用 / 分隔层级，并避免空名称和特殊字符。")
+		if len(options) == 0 {
+			message = a.t("所选条目没有可替换的文件夹前缀。")
+		} else if a.batch.prefixFrom == "" {
+			message = a.t("请选择原文件夹前缀。")
+		} else if strings.TrimSpace(a.batch.prefixTo) == "" {
+			message = a.t("请输入新文件夹前缀。")
+		}
+		a.batchNotice(c, false, message)
 		return
 	}
 	components.Text(c, a.t("路径预览")).Margin(18, 0, 8, 0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
-	components.ScrollView(c, components.ScrollViewOptions{}).Key("batch-prefix-preview").Label(a.t("路径预览")).FillWidth().Grow(1).MinHeight(90).Children(func() {
+	components.Text(c, a.t("将修改 %d 项，%d 项不修改", len(ready), len(conflicts)+len(unchanged))).FontSize(scaledFontSize(c, 12)).Bold()
+	if len(conflicts)+len(unchanged) == 0 {
+		muted(c, a.t("所有选中条目都会修改。"))
+		return
+	}
+	components.Text(c, a.t("不修改的条目")).Margin(14, 0, 8, 0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+	skipped := map[string]string{}
+	for _, entry := range conflicts {
+		skipped[entry.Path] = a.t("目标路径已存在或重名")
+	}
+	for _, entry := range unchanged {
+		reason := a.t("路径未变化")
+		if entry.Folder != a.batch.prefixFrom && !strings.HasPrefix(entry.Folder, a.batch.prefixFrom+"/") {
+			reason = a.t("前缀不匹配")
+		}
+		skipped[entry.Path] = reason
+	}
+	components.ScrollView(c, components.ScrollViewOptions{}).Key("batch-prefix-excluded").Label(a.t("不修改的条目")).FillWidth().Grow(1).MinHeight(90).Children(func() {
 		ui.Column(c).FillWidth().Gap(12).Children(func() {
 			for _, entry := range chosen {
-				ui.Column(c).Key(entry.Path).FillWidth().Gap(4).Children(func() {
-					components.Text(c, entry.Path).FillWidth().Wrap().FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
-					components.Text(c, a.batchEntryDestination(entry)).FillWidth().Wrap().FontSize(scaledFontSize(c, 12)).Bold()
-				})
+				if reason, ok := skipped[entry.Path]; ok {
+					ui.Column(c).Key(entry.Path).FillWidth().Gap(4).Children(func() {
+						components.Text(c, entry.Path).FillWidth().Wrap().FontSize(scaledFontSize(c, 12))
+						muted(c, reason)
+					})
+				}
 			}
 		})
 	})
-	if len(conflicts) > 0 {
-		a.batchNotice(c, true, a.t("%d 项目标路径已存在或重名，将跳过。", len(conflicts)))
-	}
-	if len(unchanged) > 0 {
-		a.batchNotice(c, false, a.t("%d 项前缀不匹配或无需更改，将保留。", len(unchanged)))
-	}
-	if len(ready) == 0 {
-		a.batchNotice(c, false, a.t("没有可修改的条目，请检查前缀。"))
-	}
 }
 
 // A lock keeps the operation lease busy until its current request has returned.

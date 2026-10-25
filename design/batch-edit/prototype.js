@@ -9,7 +9,7 @@
   const sceneKeys = {
     browse: "sceneBrowse", empty: "sceneEmpty", select: "sceneSelect", move: "sceneMove",
     conflict: "sceneConflict", trash: "sceneTrash", progress: "sceneProgress",
-    prefix: "scenePrefix", success: "sceneSuccess", partial: "scenePartial", "trash-success": "sceneTrash",
+    prefix: "scenePrefix", "prefix-excluded": "scenePrefixExcluded", "prefix-no-folder": "scenePrefixNoFolder", "trash-confirm": "sceneTrashConfirm", success: "sceneSuccess", partial: "scenePartial", "trash-success": "sceneTrash",
   };
   const seed = [
     { id: "cf", name: "Cloudflare", folder: "开发", username: "infra@example.test", website: "https://dash.cloudflare.com" },
@@ -95,7 +95,10 @@
     if (!["browse", "empty"].includes(scene)) s.selected = new Set(defaultIDs);
     if (["move", "conflict"].includes(scene)) s.destination = scene === "conflict" ? "归档" : "家庭/设备";
     if (s.destination !== null) s.folderQuery = s.destination;
-    if (scene === "prefix") { s.operation = "prefix"; s.prefixInitialized = true; s.selected = new Set(["fg", "gh2"]); s.prefixFrom = "工作"; s.prefixTo = "工作0"; }
+    if (["prefix", "prefix-excluded", "prefix-no-folder"].includes(scene)) { s.operation = "prefix"; s.prefixInitialized = true; s.selected = new Set(["fg", "li"]); s.prefixFrom = "工作"; s.prefixTo = "工作0"; }
+    if (scene === "prefix-excluded") { s.selected = new Set(["fg", "gh2", "li", "cf"]); items.push({ ...byID("fg"), id: "prefix-existing", folder: "工作0" }); }
+    if (scene === "prefix-no-folder") { selected().forEach(item => { item.folder = ""; }); s.prefixFrom = ""; s.prefixTo = ""; }
+    if (scene === "trash-confirm") s.dialog = "trash-confirm";
     if (scene === "conflict") s.selected.add("gh2");
     if (scene === "progress") { s.destination = "家庭/设备"; s.progress = { action: "move", ids: [...s.selected], done: 2, total: 4 }; }
     if (scene === "partial") applyPartial();
@@ -127,12 +130,34 @@
 
   const targetPath = item => s.operation === "prefix"
     ? s.prefixFrom && (item.folder === s.prefixFrom || item.folder.startsWith(`${s.prefixFrom}/`))
-      ? [s.prefixTo, path(item).slice(s.prefixFrom.length + 1)].filter(Boolean).join("/") : path(item)
+      ? [s.prefixTo.trim(), path(item).slice(s.prefixFrom.length + 1)].filter(Boolean).join("/") : path(item)
     : [s.destination, item.name].filter(Boolean).join("/");
+
+  const prefixOptions = () => [...new Set(selected().flatMap(item => {
+    if (!item.folder) return [];
+    const parts = item.folder.split("/");
+    return [item.folder, ...parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join("/"))];
+  }))];
+
+  function setPrefixSource(next) {
+    const previous = s.prefixFrom;
+    if (!s.prefixInitialized || s.prefixTo !== "" && s.prefixTo === previous) s.prefixTo = next;
+    s.prefixFrom = next; s.prefixInitialized = true;
+  }
+
+  function syncPrefixSource() {
+    if (s.operation !== "prefix" || busy()) return;
+    const options = prefixOptions();
+    if (!s.prefixInitialized || !options.includes(s.prefixFrom)) setPrefixSource(selected()[0]?.folder || options[0] || "");
+  }
+
+  const prefixDestinationValid = () => s.prefixTo.trim() !== "" && s.prefixTo.split("/").every(segment => segment && segment !== "." && segment !== "..") && !s.prefixTo.includes("\\");
 
   function movePlan() {
     const chosen = selected();
-    if (s.operation !== "prefix" && s.destination === null || s.operation === "prefix" && !s.prefixFrom) return { ready: [], conflicts: [], unchanged: [] };
+    if (s.operation !== "prefix" && s.destination === null) return { ready: [], conflicts: [], unchanged: [] };
+    if (s.operation === "prefix" && !s.prefixFrom) return { ready: [], conflicts: [], unchanged: chosen };
+    if (s.operation === "prefix" && !prefixDestinationValid()) return { ready: [], conflicts: [], unchanged: chosen };
     const key = item => targetPath(item).normalize("NFC").toLocaleLowerCase();
     const grouped = new Map();
     chosen.forEach(item => grouped.set(key(item), (grouped.get(key(item)) || 0) + 1));
@@ -151,6 +176,21 @@
     return `<header class="review-bar"><div class="review-brand"><strong class="review-title">${t("reviewTitle")}</strong><span>${t("reviewNote")}</span></div>
       <nav class="review-nav" aria-label="${t("scenesLabel")}">${["browse", "select", "move", "prefix", "conflict", "progress", "success", "trash", "partial"].map(scene => `<button data-scene="${scene}" class="${s.scene === scene ? "active" : ""}">${t(sceneKeys[scene])}</button>`).join("")}</nav>
       <div class="review-tools"><select id="language" aria-label="${t("language")}"><option value="zh-CN" ${language === "zh-CN" ? "selected" : ""}>${t("chineseLanguage")}</option><option value="en" ${language === "en" ? "selected" : ""}>${t("englishLanguage")}</option></select>${iconButton("theme", "appearance", theme === "dark" ? "sun" : "moon")}<button class="text-button" data-action="reset">${t("reset")}</button><a class="text-button" href="canvas.html?lang=${language}">${t("overview")}${icon("external")}</a></div></header>`;
+  }
+
+  function prefixSummary(plan) {
+    const excluded = selected().filter(item => !plan.ready.includes(item));
+    const reason = item => !s.prefixFrom ? "prefixNoSourceReason" : !prefixDestinationValid() ? "prefixInvalidDestinationReason" : plan.conflicts.includes(item) ? "prefixConflictReason"
+      : item.folder !== s.prefixFrom && !item.folder.startsWith(`${s.prefixFrom}/`) ? "prefixMismatchReason" : "prefixUnchangedReason";
+    return `<section class="prefix-summary" aria-labelledby="prefix-summary-title"><h3 class="section-label" id="prefix-summary-title">${t("pathPreview")}</h3><p class="prefix-summary-count" role="status">${t("prefixSummary", { ready: plan.ready.length, skipped: excluded.length })}</p>${excluded.length ? `<div class="prefix-excluded-list" role="group" aria-label="${t("prefixExcluded")}">${excluded.map(item => `<div class="prefix-excluded-row"><span>${esc(path(item))}</span><p>${t(reason(item))}</p></div>`).join("")}</div>` : `<p class="muted prefix-all-ready">${t("prefixAllReady")}</p>`}</section>`;
+  }
+
+  function prefixSourceField() {
+    const options = prefixOptions();
+    const value = options.length > 1
+      ? `<select id="prefix-from" aria-label="${t("prefixFrom")}" ${busy() ? "disabled" : ""}>${options.map(folder => `<option value="${esc(folder)}" ${folder === s.prefixFrom ? "selected" : ""}>${esc(folder)}</option>`).join("")}</select>`
+      : `<span class="prefix-source-value ${s.prefixFrom ? "" : "muted"}" aria-label="${t("prefixFrom")}">${esc(s.prefixFrom || t("prefixNoSource"))}</span>`;
+    return `<div class="prefix-field"><span class="prefix-label">${t("prefixFrom")}</span><div class="prefix-source">${value}${button("copy-prefix", t("copy"), "quiet prefix-copy", "copy", busy() || !s.prefixFrom, `id="copy-prefix" aria-label="${t("copyPrefix")}" title="${t("copyPrefix")}"`)}</div>${!s.prefixFrom ? `<p class="prefix-source-hint">${t("prefixChooseSource")}</p>` : ""}</div>`;
   }
 
   function navigation() {
@@ -198,7 +238,7 @@
     return `<div class="batch-panel selection-panel"><div class="panel-toolbar"></div>
       <div class="selection-heading"><h2>${t("selectedCount", { count: p ? p.total : count })}</h2></div>
       <div class="batch-actions organization-actions" role="group" aria-label="${t("batchActions")}">${button("folder-mode", t("moveSection"), "quiet", "folder", busy(), `id="batch-folder-mode" aria-pressed="${s.operation === "folder"}"`)}${button("prefix-mode", t("replacePrefix"), "quiet", "edit", busy(), `id="batch-prefix-mode" aria-pressed="${s.operation === "prefix"}"`)}${button("trash", trashLabel, "quiet danger-text", running("trash") ? "spinner" : "trash", busy(), progress("trash"))}</div>
-      ${s.operation === "prefix" ? `<section class="move-section prefix-section" aria-labelledby="batch-operation-title">${operationHeading}<p class="muted">${t("prefixHelp")}</p><label>${t("prefixFrom")}<input id="prefix-from" value="${esc(s.prefixFrom)}" aria-label="${t("prefixFrom")}" ${busy() ? "disabled" : ""}></label><label>${t("prefixTo")}<input id="prefix-to" value="${esc(s.prefixTo)}" placeholder="${t("removePrefix")}" aria-label="${t("prefixTo")}" ${busy() ? "disabled" : ""}></label><h3 class="section-label">${t("pathPreview")}</h3><div class="prefix-preview">${selected().map(item => `<div><span>${esc(path(item))}</span><strong>${esc(targetPath(item))}</strong></div>`).join("")}</div>${plan.conflicts.length ? `<p class="inline-notice warning">${t("prefixConflict", { count: plan.conflicts.length })}</p>` : ""}</section>` : `<section class="move-section" aria-labelledby="batch-operation-title">${operationHeading}
+      ${s.operation === "prefix" ? `<section class="move-section prefix-section" aria-labelledby="batch-operation-title">${operationHeading}<p class="muted">${t("prefixHelp")}</p>${prefixSourceField()}<label>${t("prefixTo")}<input id="prefix-to" value="${esc(s.prefixTo)}" placeholder="${t("prefixToPlaceholder")}" aria-label="${t("prefixTo")}" ${busy() ? "disabled" : ""}>${!s.prefixTo.trim() ? `<span class="prefix-input-hint">${t("prefixToRequired")}</span>` : ""}</label>${prefixSummary(plan)}</section>` : `<section class="move-section" aria-labelledby="batch-operation-title">${operationHeading}
         <div class="folder-search search-wrap">${icon("search")}<input id="folder-search" placeholder="${t("folderSearch")}" aria-label="${t("folderSearchLabel")}" value="${esc(s.folderQuery)}" ${busy() ? "disabled" : ""}></div>
         <div class="folder-list ${query ? "flat" : ""}" role="group" aria-label="${t("chooseDestination")}">${query ? shown.map(folder => folderOption(folder, folderLabel(folder), 0, false)).join("") : folderTree()}${canCreate ? `<button class="folder-option folder-create" data-folder="${esc(candidate)}">${icon("folderPlus")}<span>${esc(t("createFolder", { folder: candidate }))}</span></button>` : ""}${!shown.length && !canCreate ? `<p class="muted">${t("noFolders")}</p>` : ""}</div>
         ${moveNotices(plan)}
@@ -259,6 +299,7 @@
   }
 
   function modal() {
+    if (s.dialog === "trash-confirm") return `<dialog class="modal" aria-labelledby="modal-title" aria-describedby="modal-description"><header class="modal-header"><h2 id="modal-title">${t("trashConfirmTitle", { count: s.selected.size })}</h2></header><div class="modal-body"><p id="modal-description">${t("trashConfirmDescription")}</p></div><footer class="modal-footer">${button("cancel-dialog", t("cancel"), "secondary")}${button("confirm-trash", t("trashAction"), "danger", "trash")}</footer></dialog>`;
     if (s.dialog !== "check") return "";
     return `<dialog class="modal" aria-labelledby="modal-title"><header class="modal-header"><h2 id="modal-title">${t("checkBothTitle")}</h2></header><div class="modal-body"><div class="path-preview"><p class="field-label">${t("originalPath")}</p><p>${esc(path(byID("li")))}</p><p class="field-label">${t("destinationPath")}</p><p>${esc(`${s.result.destination}/${byID("li").name}`)}</p></div></div><footer class="modal-footer">${button("cancel-dialog", t("back"), "primary")}</footer></dialog>`;
   }
@@ -270,6 +311,7 @@
   }
 
   function render() {
+    syncPrefixSource();
     const previous = document.activeElement;
     const focusID = previous?.id;
     const range = previous instanceof HTMLInputElement ? [previous.selectionStart, previous.selectionEnd] : null;
@@ -306,7 +348,7 @@
     toastTimer = setTimeout(() => { s.toast = null; s.undo = null; render(); }, ms);
   }
 
-  function closeDialog() { s.dialog = null; render(); document.querySelector('[data-action="check-both"]')?.focus({ preventScroll: true }); }
+  function closeDialog() { const action = s.dialog === "trash-confirm" ? "trash" : "check-both"; s.dialog = null; render(); document.querySelector(`[data-action="${action}"]`)?.focus({ preventScroll: true }); }
 
   function toggleEntry(id, event) {
     if (busy()) return;
@@ -326,7 +368,7 @@
     const ids = action === "move" ? plan.ready.map(item => item.id) : [...s.selected];
     if (!ids.length || busy()) return;
     const destination = s.destination || "";
-    const conflicts = plan?.conflicts.map(item => item.id) || [];
+    const retained = plan ? [...plan.conflicts, ...(s.operation === "prefix" ? plan.unchanged : [])].map(item => item.id) : [];
     s.dialog = null; s.progress = { action, ids, total: ids.length, done: 0 }; s.toast = null; render();
     const step = () => {
       if (!s.progress) return;
@@ -337,8 +379,8 @@
         const prefix = action === "move" && s.operation === "prefix";
         applySuccess(action, ids, destination);
         if (prefix) { for (const [id, next] of changedPaths) byID(id).folder = next.split("/").slice(0, -1).join("/"); s.toast = { key: "prefixSuccess", values: { count: ids.length } }; }
-        // Skipped conflicts stay selected so they can be handled next.
-        if (conflicts.length) { s.mode = true; s.selected = new Set(conflicts); }
+        // Entries excluded from the operation stay selected for another action.
+        if (retained.length) { s.mode = true; s.selected = new Set(retained); }
         render(); autoDismiss(action === "trash" ? 8000 : 5000);
       }, 300);
     };
@@ -351,11 +393,6 @@
       case "folder-mode": s.operation = "folder"; render(); break;
       case "prefix-mode": {
         s.operation = "prefix";
-        if (!s.prefixInitialized) {
-          let parts = selected()[0]?.folder.split("/") || [];
-          for (const item of selected().slice(1)) { const next = item.folder.split("/"); let length = 0; while (length < parts.length && length < next.length && parts[length] === next[length]) length++; parts = parts.slice(0, length); }
-          s.prefixFrom = parts.join("/"); s.prefixTo = s.prefixFrom; s.prefixInitialized = true;
-        }
         render(); break;
       }
       case "theme": theme = theme === "dark" ? "light" : "dark"; render(); break;
@@ -367,8 +404,9 @@
         s.mode = true; s.result = null; ids.forEach(id => all ? s.selected.delete(id) : s.selected.add(id)); render(); break;
       }
       case "clear-search": s.query = ""; render(); document.getElementById("search")?.focus(); break;
-      case "trash": startOperation("trash"); break;
-      case "trash-one": s.mode = true; s.selected = new Set([s.active]); startOperation("trash"); break;
+      case "trash": if (s.selected.size) { s.dialog = "trash-confirm"; render(); } break;
+      case "trash-one": s.mode = true; s.selected = new Set([s.active]); s.dialog = "trash-confirm"; render(); break;
+      case "confirm-trash": startOperation("trash"); break;
       case "cancel-dialog": closeDialog(); break;
       case "confirm-move": startOperation("move"); break;
       case "reveal": s.reveal = !s.reveal; render(); break;
@@ -400,6 +438,7 @@
       }
       case "close-toast": clearTimeout(toastTimer); s.toast = null; s.undo = null; render(); break;
       case "copy": toast("copiedDemo"); break;
+      case "copy-prefix": toast("prefixCopiedDemo"); break;
       default: toast("previewOnly");
     }
   }
@@ -430,7 +469,8 @@
       s.destination = node.dataset.folder; s.folderQuery = s.destination; render();
       document.querySelector(`[data-folder="${CSS.escape(s.destination)}"]`)?.focus({ preventScroll: true });
     }));
-    for (const [id, field] of [["prefix-from", "prefixFrom"], ["prefix-to", "prefixTo"]]) document.getElementById(id)?.addEventListener("input", event => { s[field] = event.target.value; render(); });
+    document.getElementById("prefix-from")?.addEventListener("change", event => { setPrefixSource(event.target.value); render(); });
+    document.getElementById("prefix-to")?.addEventListener("input", event => { s.prefixTo = event.target.value; render(); });
     document.getElementById("language")?.addEventListener("change", event => { language = event.target.value; render(); });
   }
 

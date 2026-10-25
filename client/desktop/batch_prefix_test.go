@@ -1,14 +1,17 @@
 package desktop
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
+	"github.com/knothhe/passpine/client/i18n"
 )
 
 func prefixFixture(t *testing.T, paths []string, failures map[string]string) (*application, *batchBackend, func()) {
@@ -25,8 +28,229 @@ func prefixFixture(t *testing.T, paths []string, failures map[string]string) (*a
 	return a, backend, settle
 }
 
+func selectBatchPrefixUI(t *testing.T, a *application, view *ui.Tester, folder string) {
+	t.Helper()
+	if err := view.Click(a.t("修改前缀")); err != nil {
+		t.Fatal(err)
+	}
+	for step := 0; step < 8 && !view.Focused(a.t("原文件夹前缀")); step++ {
+		view.Key(0, ui.KeyTab)
+	}
+	if !view.Focused(a.t("原文件夹前缀")) {
+		t.Fatal("source prefix selector is not reachable by keyboard")
+	}
+	view.Key(0, ui.KeyEnter)
+	if err := view.Click(a.t("选择原文件夹前缀 %s", folder)); err != nil {
+		t.Fatal(err)
+	}
+	if a.batch.prefixFrom != folder {
+		t.Fatalf("source prefix selection = %q, want %q", a.batch.prefixFrom, folder)
+	}
+}
+
+func TestBatchPrefixSourceDefaultsToFirstSelectedFolderAndOffersAncestors(t *testing.T) {
+	a, _, _ := prefixFixture(t, []string{"second/folder/Zulu", "first/nested/Alpha"}, nil)
+	if a.batch.prefixFrom != "first/nested" || a.batch.prefixTo != "first/nested" {
+		t.Fatalf("source should default to the first selected entry in list order: %q / %q", a.batch.prefixFrom, a.batch.prefixTo)
+	}
+	options := a.batchPrefixOptions()
+	for _, want := range []string{"first", "first/nested", "second", "second/folder"} {
+		if !slices.Contains(options, want) {
+			t.Fatalf("source selector omitted ancestor %q: %v", want, options)
+		}
+	}
+	if len(options) != 4 || slices.Contains(options, "") {
+		t.Fatalf("source options contain duplicates or an empty prefix: %v", options)
+	}
+	a.chooseBatchPrefix("first")
+	if a.batch.prefixFrom != "first" || a.batch.prefixTo != "first" {
+		t.Fatal("an untouched replacement did not follow the newly chosen source")
+	}
+	for _, to := range []string{"archive", ""} {
+		a.batch.prefixTo = to
+		a.chooseBatchPrefix("second")
+		a.chooseBatchPrefix("first")
+		if a.batch.prefixTo != to {
+			t.Fatalf("changing the source replaced the custom/unfinished replacement %q", to)
+		}
+	}
+	a.batch.prefixTo = "custom/destination"
+	delete(a.batch.selected, "first/nested/Alpha")
+	a.syncBatchPrefixSource()
+	if a.batch.prefixFrom != "second/folder" || a.batch.prefixTo != "custom/destination" {
+		t.Fatal("removing the selected source did not choose the remaining entry folder and preserve the replacement draft")
+	}
+}
+
+func TestBatchPrefixRootFirstSelectionKeepsAvailableSourcesReachable(t *testing.T) {
+	for _, test := range []struct {
+		path, want string
+	}{{"test/Zulu", "test"}, {"test/a/Zulu", ""}} {
+		t.Run(test.path, func(t *testing.T) {
+			a, _, _ := prefixFixture(t, []string{"Alpha", test.path}, nil)
+			if a.batch.prefixFrom != test.want {
+				t.Fatalf("root-first source = %q, want %q", a.batch.prefixFrom, test.want)
+			}
+			view := ui.NewTester(testView(a), 860, 760)
+			view.SetPreferences(ui.Preferences{ReduceMotion: true})
+			if test.want == "" {
+				selectBatchPrefixUI(t, a, view, "test")
+				if a.batch.prefixFrom != "test" {
+					t.Fatal("root-first selection made its non-root prefixes unreachable")
+				}
+			} else if a.batch.prefixTo != "test" {
+				t.Fatal("the sole available source was not used as the read-only default")
+			}
+		})
+	}
+}
+
+func TestBatchPrefixSourceSelectionCannotAcceptTypedPathsAndCopiesCurrentSource(t *testing.T) {
+	for _, language := range []string{"zh-CN", "en"} {
+		t.Run(language, func(t *testing.T) {
+			a, backend, _ := prefixFixture(t, []string{"test/a/b", "test/b/c"}, nil)
+			a.state.Settings.Language = language
+			view := ui.NewTester(testView(a), 1180, 760)
+			view.SetPreferences(ui.Preferences{ReduceMotion: true})
+			selectBatchPrefixUI(t, a, view, "test")
+			view.Type("../arbitrary-input")
+			if a.batch.prefixFrom != "test" {
+				t.Fatal("typing into a source selector created an arbitrary prefix")
+			}
+			copied := ""
+			a.clipboardWriter = func(value string, sensitive bool) error {
+				if sensitive {
+					t.Fatal("a folder prefix was copied as a credential")
+				}
+				copied = value
+				return nil
+			}
+			if err := view.Click(a.t("复制原文件夹前缀")); err != nil {
+				t.Fatal(err)
+			}
+			if copied != "test" || !view.HasText(a.t("已复制")) {
+				t.Fatalf("copy did not use the current source or report success: %q", copied)
+			}
+			a.clipboardWriter = func(string, bool) error { return errors.New("clipboard unavailable") }
+			if err := view.Click(a.t("复制原文件夹前缀")); err != nil {
+				t.Fatal(err)
+			}
+			if !view.HasText(a.t(i18n.ClipboardWriteFailed)) || view.HasText(a.t("已复制")) {
+				t.Fatal("clipboard failure was not reported or retained stale success feedback")
+			}
+			a.clipboardWriter = func(value string, sensitive bool) error { copied = value; return nil }
+			if err := view.Click(a.t("复制原文件夹前缀")); err != nil {
+				t.Fatal(err)
+			}
+			if !view.HasText(a.t("已复制")) || view.HasText(a.t(i18n.ClipboardWriteFailed)) || a.errorText != "" {
+				t.Fatal("retrying the copy retained an obsolete clipboard error")
+			}
+			if len(backend.actions("move")) != 0 || len(backend.actions("unlock")) != 0 {
+				t.Fatal("choosing or copying a metadata prefix started a vault action")
+			}
+		})
+	}
+}
+
+func TestBatchPrefixSingleSourceIsReadOnlyAndRootEntriesHaveNoSource(t *testing.T) {
+	t.Run("one option", func(t *testing.T) {
+		a, _, _ := prefixFixture(t, []string{"test/account"}, nil)
+		if options := a.batchPrefixOptions(); !slices.Equal(options, []string{"test"}) {
+			t.Fatalf("single-level source options = %v", options)
+		}
+		view := ui.NewTester(testView(a), 860, 760)
+		view.SetPreferences(ui.Preferences{ReduceMotion: true})
+		if err := view.Click(a.t("修改前缀")); err != nil {
+			t.Fatal(err)
+		}
+		copyReached := false
+		for step := 0; step < 6 && !view.Focused(a.t("新文件夹前缀")); step++ {
+			view.Key(0, ui.KeyTab)
+			if view.Focused(a.t("原文件夹前缀")) {
+				t.Fatal("one source was rendered as an editable or selectable control")
+			}
+			copyReached = copyReached || view.Focused(a.t("复制原文件夹前缀"))
+		}
+		if !copyReached || !view.Focused(a.t("新文件夹前缀")) {
+			t.Fatal("read-only source copy or replacement input is not keyboard reachable")
+		}
+		copied := ""
+		a.clipboardWriter = func(value string, sensitive bool) error { copied = value; return nil }
+		if err := view.Click(a.t("复制原文件夹前缀")); err != nil || copied != "test" {
+			t.Fatalf("read-only source could not be copied: %q, %v", copied, err)
+		}
+	})
+	t.Run("root entries", func(t *testing.T) {
+		a, backend, _ := prefixFixture(t, []string{"Alpha", "Zulu"}, nil)
+		if len(a.batchPrefixOptions()) != 0 || a.batch.prefixFrom != "" || a.batchMoveConfigured() {
+			t.Fatal("root entries invented a replaceable folder prefix")
+		}
+		writes := 0
+		a.clipboardWriter = func(string, bool) error { writes++; return nil }
+		view := ui.NewTester(testView(a), 860, 760)
+		if err := view.Click(a.t("复制原文件夹前缀")); err != nil {
+			t.Fatal(err)
+		}
+		if !view.HasText(a.t("所选条目没有可替换的文件夹前缀。")) || writes != 0 {
+			t.Fatal("missing source was not explained or allowed a meaningless clipboard write")
+		}
+		a.batch.prefixTo = "archive"
+		a.startBatchMove()
+		if len(backend.actions("move")) != 0 {
+			t.Fatal("a missing source sent a prefix move")
+		}
+	})
+}
+
+func prefixTextCount(view *ui.Tester, text string) int {
+	count := 0
+	for _, got := range view.Texts() {
+		if got == text {
+			count++
+		}
+	}
+	return count
+}
+
+func TestBatchPrefixSummaryListsOnlyExcludedEntriesAndReasons(t *testing.T) {
+	for _, language := range []string{"zh-CN", "en"} {
+		t.Run(language, func(t *testing.T) {
+			a, backend, _ := prefixFixture(t, []string{"test/a/b", "test/b/c", "unrelated/d"}, nil)
+			backend.paths = append(backend.paths, "next/a/b")
+			a.state.Entries = nil
+			a.state = backend.metadata(a.state)
+			a.cacheReady = false
+			a.chooseBatchPrefix("test")
+			a.batch.prefixTo = "next"
+			a.state.Settings.Language = language
+			view := ui.NewTester(testView(a), 860, 760)
+			view.SetPreferences(ui.Preferences{ReduceMotion: true})
+			if !view.HasText(a.t("将修改 %d 项，%d 项不修改", 1, 2)) || !view.HasText(a.t("不修改的条目")) || !view.HasText(a.t("前缀不匹配")) || !view.HasText(a.t("目标路径已存在或重名")) {
+				t.Fatalf("excluded summary or reasons are missing: %v", view.Texts())
+			}
+			// Every original path already appears once in the entry list. Only
+			// excluded entries should appear a second time in the summary panel.
+			if prefixTextCount(view, "test/a/b") != 2 || prefixTextCount(view, "unrelated/d") != 2 || prefixTextCount(view, "test/b/c") != 1 || view.HasText("next/b/c") {
+				t.Fatalf("summary included successful path previews or hid an excluded path: %v", view.Texts())
+			}
+			managerResizeScreenshot(t, view, "batch-prefix-excluded-"+language)
+			a.batch.prefixTo = "test"
+			view.Frame()
+			if !view.HasText(a.t("将修改 %d 项，%d 项不修改", 0, 3)) || !view.HasText(a.t("路径未变化")) {
+				t.Fatal("unchanged paths were not summarized as excluded entries")
+			}
+			a.batch.prefixTo = ""
+			view.Frame()
+			a.startBatchMove()
+			if a.batchMoveConfigured() || !view.HasText(a.t("请输入新文件夹前缀。")) || len(backend.actions("move")) != 0 {
+				t.Fatal("an empty replacement removed the prefix instead of remaining an unfinished draft")
+			}
+		})
+	}
+}
+
 func TestBatchPrefixPreservesHierarchyAndMatchesFolderBoundaries(t *testing.T) {
-	for _, to := range []string{"test0", "", "archive/test0"} {
+	for _, to := range []string{"test0", "archive/test0"} {
 		t.Run(to, func(t *testing.T) {
 			a, backend, settle := prefixFixture(t, []string{"test/a/b", "test/b/c", "test0/a/b", "testing/d"}, nil)
 			a.batch.prefixFrom, a.batch.prefixTo = "test", to
@@ -67,7 +291,7 @@ func TestBatchPrefixValidationAndCaseConflicts(t *testing.T) {
 	if len(ready) != 0 || len(conflicts) != 2 {
 		t.Fatal("internal case-insensitive conflicts were not skipped")
 	}
-	for _, input := range []struct{ from, to string }{{"", "next"}, {"test/..", "next"}, {"test", "../escape"}} {
+	for _, input := range []struct{ from, to string }{{"", "next"}, {"test/..", "next"}, {"test", "../escape"}, {"test", ""}} {
 		a.batch.prefixFrom, a.batch.prefixTo = input.from, input.to
 		a.startBatchMove()
 		if a.batchMoveConfigured() || len(backend.actions("move")) != 0 {
@@ -78,9 +302,10 @@ func TestBatchPrefixValidationAndCaseConflicts(t *testing.T) {
 
 func TestBatchPrefixRetriesOriginalTargetsAfterPartialFailure(t *testing.T) {
 	a, backend, settle := prefixFixture(t, []string{"test/a/b", "test/b/c"}, map[string]string{"test/b/c": "vault_busy"})
-	if a.batch.prefixFrom != "test" || a.batch.prefixTo != "test" {
-		t.Fatal("common folder prefix was not prefilled")
+	if a.batch.prefixFrom != "test/a" || a.batch.prefixTo != "test/a" {
+		t.Fatal("first selected entry folder was not prefilled")
 	}
+	a.chooseBatchPrefix("test")
 	a.batch.prefixTo = "test0"
 	a.startBatchMove()
 	settle()
@@ -99,6 +324,7 @@ func TestBatchPrefixRetriesOriginalTargetsAfterPartialFailure(t *testing.T) {
 
 func TestBatchPrefixLockedMovePreservesUnsentEntriesForRetry(t *testing.T) {
 	a, backend, settle := prefixFixture(t, []string{"test/a/b", "test/b/c"}, map[string]string{"test/a/b": "locked"})
+	a.chooseBatchPrefix("test")
 	a.batch.prefixTo = "test0"
 	a.startBatchMove()
 	settle()
@@ -135,6 +361,7 @@ func TestBatchPrefixLockAfterSnapshotDoesNotRestoreHiddenNames(t *testing.T) {
 	a, backend, _ := prefixFixture(t, []string{"test/a/b", "test/b/c"}, map[string]string{"test/b/c": "vault_busy"})
 	a.service = &interruptedBatchBackend{batchBackend: backend, hideNames: true}
 	a.state.Settings.BrowseWhileLocked = false
+	a.chooseBatchPrefix("test")
 	a.batch.prefixTo = "test0"
 	callbacks := make(chan func(), 4)
 	a.runOnMain = func(callback func()) { callbacks <- callback }
@@ -206,6 +433,7 @@ func TestBatchMoveLockAfterSnapshotDoesNotRevealDestinationInNotification(t *tes
 
 func TestBatchStaleLeaseReleasesBusyAndRefreshesWithoutOldResult(t *testing.T) {
 	a, _, _ := prefixFixture(t, []string{"test/a/b", "test/b/c"}, nil)
+	a.chooseBatchPrefix("test")
 	a.batch.prefixTo = "test0"
 	callbacks := make(chan func(), 8)
 	a.runOnMain = func(callback func()) { callbacks <- callback }
@@ -243,6 +471,7 @@ func TestBatchPrefixSessionLockStopsWorkerAndPreservesResult(t *testing.T) {
 	a, backend, settle := prefixFixture(t, []string{"test/a/b", "test/b/c"}, nil)
 	interrupted := &interruptedBatchBackend{batchBackend: backend, started: make(chan struct{}), release: make(chan struct{})}
 	a.service = interrupted
+	a.chooseBatchPrefix("test")
 	a.batch.prefixTo = "test0"
 	a.startBatchMove()
 	select {
@@ -321,6 +550,7 @@ func TestBatchPrefixUIAndResponsivePreview(t *testing.T) {
 			if err := view.Click(a.t("修改前缀")); err != nil {
 				t.Fatal(err)
 			}
+			selectBatchPrefixUI(t, a, view, "test")
 			for step := 0; step < 8 && !view.Focused(a.t("新文件夹前缀")); step++ {
 				view.Key(0, ui.KeyTab)
 			}
@@ -330,8 +560,8 @@ func TestBatchPrefixUIAndResponsivePreview(t *testing.T) {
 			view.Key(ui.Cmd, ui.KeyA)
 			view.Type("test0")
 			view.Frame()
-			if !view.HasText("test0/a/b") || !view.HasText("test0/b/c") {
-				t.Fatalf("preview did not show the preserved hierarchy: from=%q to=%q mode=%q texts=%v", a.batch.prefixFrom, a.batch.prefixTo, a.batch.moveMode, view.Texts())
+			if !view.HasText(a.t("将修改 %d 项，%d 项不修改", 2, 0)) || view.HasText("test0/a/b") || view.HasText("test0/b/c") {
+				t.Fatalf("summary should replace per-entry successful target previews: %v", view.Texts())
 			}
 			managerResizeScreenshot(t, view, fmt.Sprintf("batch-prefix-%s-%d", test.language, test.width))
 			if err := view.Click(a.t("修改 %d 项", 2)); err != nil {
@@ -373,6 +603,7 @@ func TestBatchPrefixUIWithRealVaultPreservesContents(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	selectBatchPrefixUI(t, a, view, "test")
 	for step := 0; step < 8 && !view.Focused("新文件夹前缀"); step++ {
 		view.Key(0, ui.KeyTab)
 	}

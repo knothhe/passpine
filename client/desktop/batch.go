@@ -32,6 +32,7 @@ type batchState struct {
 	list              components.ListState
 	progress          *batchProgress
 	result            *batchResult
+	trashConfirmation *batchTrashConfirmation
 	// pending is the organization action waiting for the vault to unlock; selection
 	// itself needs only entry paths, so it works while browsing locked.
 	pending string
@@ -630,6 +631,9 @@ func (a *application) batchView(c *ui.Context) {
 		a.batchResultView(c)
 		return
 	}
+	if a.batch.moveMode == "prefix" && a.batch.progress == nil {
+		a.syncBatchPrefixSource()
+	}
 	chosen := a.selectedBatchEntries()
 	progress := a.batch.progress
 	if len(chosen) == 0 && progress == nil {
@@ -668,7 +672,7 @@ func (a *application) batchView(c *ui.Context) {
 				trashLabel = a.t("正在移到回收站 %d/%d", progress.done, progress.total)
 			}
 			if a.batchActionButton(c, trashLabel, lucide.Trash(), false, true).Disabled(a.busy && !trashing).Clicked() {
-				a.startBatchTrash()
+				a.confirmBatchTrash()
 			}
 		})
 		ready, conflicts, unchanged := a.batchMovePlan()

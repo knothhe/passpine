@@ -27,6 +27,7 @@ func TestBatchActionsArePeersAboveTheirExecution(t *testing.T) {
 		for _, width := range []int{1180, 860} {
 			t.Run(fmt.Sprintf("%s-%d", language, width), func(t *testing.T) {
 				a, _, _ := prefixFixture(t, []string{"test/a/b", "test/b/c"}, nil)
+				a.chooseBatchPrefix("test")
 				a.setBatchMoveMode(false)
 				a.chooseBatchFolder("test")
 				a.state.Settings.Language = language
@@ -53,6 +54,7 @@ func TestBatchActionsArePeersAboveTheirExecution(t *testing.T) {
 
 func TestBatchPeerActionsKeepDraftsAndWaitForExecution(t *testing.T) {
 	a, backend, settle := prefixFixture(t, []string{"test/a/b", "test/b/c"}, nil)
+	a.chooseBatchPrefix("test")
 	a.setBatchMoveMode(false)
 	view := ui.NewTester(testView(a), 1180, 760)
 	view.SetPreferences(ui.Preferences{ReduceMotion: true})
@@ -80,7 +82,7 @@ func TestBatchPeerActionsKeepDraftsAndWaitForExecution(t *testing.T) {
 	if err := view.Click(a.t("修改前缀")); err != nil {
 		t.Fatal(err)
 	}
-	if a.batch.prefixFrom != "test" || a.batch.prefixTo != "test0" || !view.HasText("test0/a/b") || !view.HasText("test0/b/c") {
+	if a.batch.prefixFrom != "test" || a.batch.prefixTo != "test0" || !view.HasText(a.t("将修改 %d 项，%d 项不修改", 2, 0)) {
 		t.Fatal("returning to the prefix action lost its draft or preview")
 	}
 	if err := view.Click(a.t("移动到")); err != nil {
@@ -95,8 +97,8 @@ func TestBatchPeerActionsKeepDraftsAndWaitForExecution(t *testing.T) {
 	if err := view.Click(a.t("修改前缀")); err != nil {
 		t.Fatal(err)
 	}
-	for _, draft := range []struct{ from, to string }{{"", "archive"}, {"test", ""}, {"", ""}} {
-		a.batch.prefixFrom, a.batch.prefixTo = draft.from, draft.to
+	for _, to := range []string{"archive", ""} {
+		a.batch.prefixTo = to
 		view.Frame()
 		if err := view.Click(a.t("移动到")); err != nil {
 			t.Fatal(err)
@@ -104,8 +106,8 @@ func TestBatchPeerActionsKeepDraftsAndWaitForExecution(t *testing.T) {
 		if err := view.Click(a.t("修改前缀")); err != nil {
 			t.Fatal(err)
 		}
-		if a.batch.prefixFrom != draft.from || a.batch.prefixTo != draft.to {
-			t.Fatalf("returning to an unfinished prefix draft replaced cleared input: from=%q to=%q, want %+v", a.batch.prefixFrom, a.batch.prefixTo, draft)
+		if a.batch.prefixFrom != "test" || a.batch.prefixTo != to {
+			t.Fatalf("returning to an unfinished prefix draft changed its source or input: from=%q to=%q, want test/%q", a.batch.prefixFrom, a.batch.prefixTo, to)
 		}
 	}
 	a.batch.prefixFrom, a.batch.prefixTo = "test", "test0"
@@ -124,6 +126,7 @@ func TestBatchPeerActionsAndFormRemainKeyboardReachable(t *testing.T) {
 	for _, ready := range []bool{false, true} {
 		t.Run(fmt.Sprintf("execution-ready=%t", ready), func(t *testing.T) {
 			a, _, _ := prefixFixture(t, []string{"test/a/b", "test/b/c"}, nil)
+			a.chooseBatchPrefix("test")
 			if ready {
 				a.batch.prefixTo = "test0"
 			}
@@ -136,7 +139,7 @@ func TestBatchPeerActionsAndFormRemainKeyboardReachable(t *testing.T) {
 			if ready {
 				labels = append(labels, a.t("修改 %d 项", 2))
 			}
-			labels = append(labels, a.t("原文件夹前缀"), a.t("新文件夹前缀"))
+			labels = append(labels, a.t("原文件夹前缀"), a.t("复制原文件夹前缀"), a.t("新文件夹前缀"))
 			for _, label := range labels {
 				view.Key(0, ui.KeyTab)
 				if !view.Focused(label) {
@@ -149,6 +152,7 @@ func TestBatchPeerActionsAndFormRemainKeyboardReachable(t *testing.T) {
 
 func TestBatchPeerActionsCannotSwitchDuringExecution(t *testing.T) {
 	a, backend, settle := prefixFixture(t, []string{"test/a/b", "test/b/c"}, nil)
+	a.chooseBatchPrefix("test")
 	a.batch.prefixTo = "test0"
 	interrupted := &interruptedBatchBackend{batchBackend: backend, started: make(chan struct{}), release: make(chan struct{})}
 	released := false

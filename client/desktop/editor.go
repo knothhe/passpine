@@ -455,6 +455,7 @@ func (a *application) editorView(c *ui.Context) {
 
 func (a *application) dialogs(c *ui.Context) {
 	a.generatorDialog(c)
+	a.batchTrashDialog(c)
 	if a.discardOpen {
 		c.Key("discard-editor")
 	}
