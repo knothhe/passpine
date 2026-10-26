@@ -178,17 +178,21 @@ func Run(service *app.Service, version string, updateConfigs ...update.Config) e
 	mygo.Theme.OnUpdated(a.updateNativeMenuTheme)
 	mygo.Power.OnSuspend(func() { a.lock() })
 	mygo.Power.OnLockScreen(func() { a.lock() })
+	// The service starts its watchers before the native event loop exists;
+	// their callbacks wait for readiness instead of racing GTK startup.
+	gate := newMainThreadGate(mygo.RunOnMain)
+	a.runOnMain = gate.run
 	service.SetOnOpen(func() {
-		mygo.RunOnMain(func() {
+		a.runOnMain(func() {
 			a.navigate("entries", "")
 			a.show()
 		})
 	})
-	service.SetOnChange(func() { mygo.RunOnMain(func() { a.queueMetadataRefresh(true) }) })
-	service.SetOnGitChange(func() { mygo.RunOnMain(func() { a.refreshGitState() }) })
-	service.SetOnSettingsChange(func() { mygo.RunOnMain(func() { a.refreshConfigSync() }) })
+	service.SetOnChange(func() { a.runOnMain(func() { a.queueMetadataRefresh(true) }) })
+	service.SetOnGitChange(func() { a.runOnMain(func() { a.refreshGitState() }) })
+	service.SetOnSettingsChange(func() { a.runOnMain(func() { a.refreshConfigSync() }) })
 	service.SetOnLock(func() {
-		mygo.RunOnMain(func() {
+		a.runOnMain(func() {
 			a.handleSessionLock()
 		})
 	})
@@ -224,6 +228,7 @@ func Run(service *app.Service, version string, updateConfigs ...update.Config) e
 			a.startUpdates(updateConfig)
 		})
 		go a.clock()
+		gate.open()
 		// Publishing the endpoint admits uninstall requests. Wait for the
 		// native event loop so an early request cannot shut down the service
 		// before the ready callback has initialized its window and work.

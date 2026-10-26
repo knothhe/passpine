@@ -63,9 +63,10 @@ test('designated requirement must pin the leaf certificate instead of a build ha
   assert.throws(() => assertCertificateRequirement(''), /certificate-based/);
 });
 
-test('the macOS signing identity reaches only the signed macOS build step', () => {
-  const ci = fs.readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
-  const release = fs.readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
+// Windows checkouts convert workflows to CRLF, which the job and step
+// boundaries below must not depend on.
+const assertSigningScope = (ciSource, releaseSource) => {
+  const [ci, release] = [ciSource, releaseSource].map(source => source.replace(/\r\n/g, '\n'));
   const steps = ci.split(/\n(?=      - name: )/);
   const users = steps.filter(step => /secrets\.PASSPINE_MACOS_SIGNING/.test(step));
   assert.equal(users.length, 1);
@@ -74,6 +75,14 @@ test('the macOS signing identity reaches only the signed macOS build step', () =
   assert.ok(!steps.some(step => /bash scripts\/build-client\.sh/.test(step) && /runner\.os != 'Windows'|runner\.os == 'macOS'/.test(step)), 'macOS release packages must use the signed build.');
   const jobs = release.split(/\n(?=  [a-z]+:\n)/);
   assert.deepEqual(jobs.filter(job => /PASSPINE_MACOS_SIGNING/.test(job)).map(job => job.trim().split(':')[0]), ['build']);
+};
+
+test('the macOS signing identity reaches only the signed macOS build step', () => {
+  const ci = fs.readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const release = fs.readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
+  assertSigningScope(ci, release);
+  const crlf = source => source.replace(/\r?\n/g, '\r\n');
+  assertSigningScope(crlf(ci), crlf(release));
 });
 
 test('identity list keeps names, trust status and keychain order', () => {
