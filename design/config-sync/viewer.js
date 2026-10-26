@@ -1,0 +1,3 @@
+document.querySelector('#title').textContent=window.configSyncCopy.title;
+document.querySelector('#note').textContent=window.configSyncCopy.canvasNote;
+for(const b of window.H2_DESIGN_CANVAS.boards){const el=document.createElement('section');el.className='board';el.style.cssText=`left:${b.x}px;top:${b.y}px`;const a=document.createElement('a');a.textContent=window.configSyncCopy[b.titleKey];a.href=b.file;a.target='_blank';const frame=document.createElement('iframe');frame.src=b.file;frame.width=b.w;frame.height=b.h;frame.title=a.textContent;el.append(a,frame);document.querySelector('#canvas').append(el)}

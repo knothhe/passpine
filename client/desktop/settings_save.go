@@ -72,6 +72,7 @@ func (a *application) saveSettingsAutomatically() {
 					a.settingsObserved = a.settings
 				}
 			} else {
+				a.settingsSaveRevision++
 				updateDownloadChanged := a.settingsSaved.AutoDownloadUpdates != result.Data.Settings.AutoDownloadUpdates
 				a.settingsSaved = result.Data.Settings
 				a.state.Settings = result.Data.Settings

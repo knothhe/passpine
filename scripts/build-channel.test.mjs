@@ -8,6 +8,34 @@ import { test } from 'node:test';
 import { assertReleaseBuild, buildChannel, clientBuildConfig } from './build-channel.mjs';
 import { readUpdateSigningConfig } from './update-artifacts.mjs';
 
+test('native macOS builds require the SDK Keychain backend before any build side effects', { skip: process.platform === 'win32' }, t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine cgo build-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const scripts = path.join(root, 'scripts'), bin = path.join(root, 'bin');
+  fs.mkdirSync(scripts); fs.mkdirSync(bin);
+  fs.copyFileSync(new URL('./build-client.sh', import.meta.url), path.join(scripts, 'build-client.sh'));
+  fs.writeFileSync(path.join(bin, 'uname'), '#!/bin/sh\nprintf "%s\\n" "$PASSPINE_TEST_UNAME"\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, 'node'), '#!/bin/sh\nprintf "%s" "${CGO_ENABLED-unset}" > "$PASSPINE_TEST_CGO_RECORD"\nexit 73\n', { mode: 0o755 });
+  const run = (platform, cgo, channel) => {
+    const record = path.join(root, `record-${platform}-${String(cgo)}-${channel}`);
+    const env = { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, PASSPINE_TEST_UNAME: platform, PASSPINE_TEST_CGO_RECORD: record, PASSPINE_BUILD_CHANNEL: channel };
+    if (cgo === undefined) delete env.CGO_ENABLED;
+    else env.CGO_ENABLED = cgo;
+    const result = spawnSync('bash', [path.join(scripts, 'build-client.sh')], { env, encoding: 'utf8' });
+    assert.notEqual(result.status, 0, 'the fixture must stop before any real build');
+    return { result, value: fs.existsSync(record) ? fs.readFileSync(record, 'utf8') : undefined };
+  };
+  for (const channel of ['dev', 'release']) {
+    for (const value of ['0', '', 'invalid']) {
+      const rejected = run('Darwin', value, channel);
+      assert.match(rejected.result.stderr, /require CGO_ENABLED=1 for R2 Keychain storage/);
+      assert.equal(rejected.value, undefined, 'rejected builds must not run dependency generation or packaging');
+    }
+    for (const value of [undefined, '1']) assert.equal(run('Darwin', value, channel).value, '1');
+  }
+  assert.equal(run('Linux', '0', 'dev').value, '0', 'the macOS requirement must not rewrite Linux build flags');
+});
+
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-build-channel-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

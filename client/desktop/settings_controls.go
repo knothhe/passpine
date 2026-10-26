@@ -101,7 +101,7 @@ func (a *application) settingsContent(c *ui.Context, categories []components.Set
 					}
 					lastCategory, lastGroup = result.Category, result.Group
 					count++
-					if item.ID == "git" || item.ID == "browser-status" || item.ID == "about-content" || item.ID == "updates-content" || item.ID == "cli-content" {
+					if item.ID == "git" || item.ID == "browser-status" || item.ID == "about-content" || item.ID == "updates-content" || item.ID == "cli-content" || item.ID == "config-sync-content" {
 						if item.ID == "browser-status" {
 							components.Text(c, item.Title).FontSize(scaledFontSize(c, 14)).Bold()
 							muted(c, item.Description)

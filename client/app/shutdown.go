@@ -12,6 +12,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 		return err
 	}
 	previous := s.updatePaused.Swap(true)
+	s.cancelConfigSync()
 	s.cancelDeviceAuthentication()
 	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()

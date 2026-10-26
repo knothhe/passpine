@@ -29,6 +29,9 @@ func (a *application) loadPreferencesPage(page string) {
 	if page == "settings" && a.settingsState.Category == "cli" {
 		a.manageCLI("status")
 	}
+	if page == "settings" && a.settingsState.Category == "config-sync" {
+		a.refreshConfigSync()
+	}
 	if !a.settingsLoaded {
 		a.settings, a.settingsSaved, a.settingsObserved = a.state.Settings, a.state.Settings, a.state.Settings
 		a.settingsLoaded = true
@@ -50,6 +53,9 @@ func (a *application) loadPreferencesPage(page string) {
 }
 
 func (a *application) hidePreferences() {
+	if a.page == "settings" && a.settingsState.Category == "config-sync" && (a.configSync.operation == "config-sync-oauth-start" || a.configSync.status.OAuthStage == "bucket") {
+		a.manageConfigSync("config-sync-cancel", nil)
+	}
 	a.preferences.epoch++
 	a.preferences.pendingRead = nil
 	a.backupOpen, a.backupPassphrase = false, ""

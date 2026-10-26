@@ -24,11 +24,15 @@ import (
 )
 
 type preferences struct {
-	Current  string      `json:"current"`
-	Vaults   []VaultInfo `json:"vaults"`
-	Settings Settings    `json:"settings"`
+	Current            string                  `json:"current"`
+	Vaults             []VaultInfo             `json:"vaults"`
+	Settings           Settings                `json:"settings"`
+	BrowserPreferences *BrowserSyncPreferences `json:"browserPreferences,omitempty"`
 }
 type Service struct {
+	configSync       configSyncState
+	configSyncMu     sync.Mutex
+	onSettingsChange func()
 	updateRequests   sync.RWMutex
 	updatePaused     atomic.Bool
 	device           deviceunlock.Provider
@@ -127,6 +131,7 @@ func New(o Options) (*Service, error) {
 	} else if !os.IsNotExist(e) {
 		return nil, e
 	}
+	s.initConfigSync()
 
 	if s.prefs.Settings.ThemeStyle == "" {
 		s.prefs.Settings.ThemeStyle = defaultThemeStyle()
@@ -204,6 +209,7 @@ func (s *Service) SetClipboard(f func(ClipboardWrite) error) {
 	s.mu.Unlock()
 }
 func (s *Service) Close() error {
+	s.cancelConfigSync()
 	s.cancellation.Add(1)
 	s.cancelDeviceAuthentication()
 	if current := s.cancelVault.Load(); current != nil {
@@ -224,6 +230,7 @@ func (s *Service) Close() error {
 	}
 	server := s.server
 	s.mu.Unlock()
+	s.closeConfigSync()
 	if server != nil {
 		return server.Close()
 	}
@@ -272,6 +279,7 @@ func (s *Service) watch() {
 			if syncNow {
 				go s.runAutomaticGitSync(syncVaultID)
 			}
+			s.scheduleConfigSync()
 		}
 	}
 }
@@ -317,6 +325,7 @@ func (s *Service) savePreferences() error {
 func (s *Service) snapshot() Data { return s.snapshotWithEntries(true) }
 func (s *Service) snapshotWithEntries(includeEntries bool) Data {
 	d := Data{EntriesVersion: s.entriesVersion, Configured: s.active != nil, Locked: true, Preview: s.preview, Vaults: append([]VaultInfo{}, s.prefs.Vaults...), Entries: []Entry{}, Settings: s.prefs.Settings, Capabilities: []string{"rename", "revision", "trash", "generate", "copy", "copy-generated", "otp", "interactive_fetch", "interactive_copy"}, VaultID: s.prefs.Current}
+	s.configSyncSnapshot(&d)
 	d.DeviceUnlockAvailable = !s.preview && s.device != nil && s.device.Available()
 	d.DeviceUnlockEnrolled = s.deviceEnrolled()
 	for _, v := range s.prefs.Vaults {
@@ -370,6 +379,9 @@ type browserResponseLease struct {
 }
 
 func (s *Service) executeWithBrowserLease(r Request, source string, browserLease *browserResponseLease) Response {
+	if strings.HasPrefix(r.Action, "config-sync") {
+		return s.executeConfigSync(r, source)
+	}
 	if r.Action == "git-status" || r.Action == "git-init" || r.Action == "git-sync" || r.Action == "git-remote" {
 		return s.executeGit(r, source)
 	}
@@ -649,6 +661,10 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 		}
 		if s.active != nil {
 			s.active.SetTimeouts(time.Duration(settings.IdleMinutes)*time.Minute, time.Duration(settings.MaxSessionMinutes)*time.Minute)
+		}
+		s.configSync.dirty = true
+		if s.configSync.status.Ready {
+			s.configSync.next = time.Now().Add(2 * time.Second)
 		}
 		return Data{}, s.pruneActivity(time.Now())
 	case "browser-install":
@@ -1028,7 +1044,7 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 		return encode(Response{RequestID: r.RequestID, Protocol: nativehost.Protocol, Status: "error", Code: "protocol_mismatch"})
 	}
 	switch r.Action {
-	case "configure", "status", "list", "unlock", "lock", "generate":
+	case "configure", "status", "list", "unlock", "lock", "generate", "config-sync-browser":
 	case "touch":
 		var fields map[string]json.RawMessage
 		if json.Unmarshal(raw, &fields) != nil {
@@ -1052,7 +1068,7 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 	default:
 		return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "unsupported_action"})
 	}
-	if r.Kind != "" || r.Directory != "" || r.KeyFile != "" || r.PublicKeyFile != "" || r.Passphrase != "" || r.Settings != nil || r.ID != "" {
+	if r.Kind != "" || r.Directory != "" || r.KeyFile != "" || r.PublicKeyFile != "" || r.Passphrase != "" || r.Settings != nil || r.ID != "" || r.SyncConnection != nil || (r.SyncPreferences != nil || r.SyncSpaceID != "") && r.Action != "config-sync-browser" {
 		return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})
 	}
 	if r.Interactive && r.Action != "fetch" && r.Action != "copy" && r.Action != "unlock" {
@@ -1067,6 +1083,9 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 	out.Data.Vaults = nil
 	out.Data.Folders = nil
 	out.Data.BrowserRegistrations = nil
+	if out.Data.ConfigSync != nil {
+		out.Data.ConfigSync = &ConfigSyncStatus{Enabled: out.Data.ConfigSync.Enabled, Ready: out.Data.ConfigSync.Ready, SpaceID: out.Data.ConfigSync.SpaceID}
+	}
 	// Git remotes and filesystem errors can contain local checkout paths.
 	// The extension does not need the desktop's repository diagnostics.
 	copyGitData(&out.Data, Data{})

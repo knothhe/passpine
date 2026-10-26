@@ -164,6 +164,9 @@ func (a *application) navigateSettingsCategory(category string) {
 	if category == "cli" {
 		a.manageCLI("status")
 	}
+	if category == "config-sync" {
+		a.refreshConfigSync()
+	}
 	a.closeNavigationOverlay()
 	a.invalidate()
 }
@@ -202,6 +205,9 @@ func (a *application) handleMainWindowClose(event *mygo.CloseEvent) {
 		return
 	}
 	if a.tray != nil && a.state.Settings.CloseToTray {
+		if a.configSync.operation == "config-sync-oauth-start" || a.configSync.status.OAuthStage == "bucket" {
+			a.manageConfigSync("config-sync-cancel", nil)
+		}
 		event.PreventDefault()
 		if a.window != nil {
 			a.window.Hide()

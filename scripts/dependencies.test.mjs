@@ -25,4 +25,6 @@ test('only direct client modules are included and stale versions cannot silently
 test('the project catalog contains only the current direct client dependencies', () => {
   const deps = generateDependencies(undefined, true);
   assert.ok(deps.every(dep => dep.group === 'desktop' && dep.license && dep.name && dep.version));
+  assert.equal(deps.find(dep => dep.module === 'github.com/knothhe/r2connect')?.license, 'MIT');
+  assert.ok(deps.some(dep => dep.module === 'github.com/godbus/dbus/v5'), 'native Linux tray and shortcuts still use godbus directly');
 });

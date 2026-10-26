@@ -9,6 +9,7 @@ import { canonicalShortcut, FILL_COMMAND, OPEN_COMMAND } from '../src/lib/shortc
 import { hasPageShortcutAccess, readPageShortcuts, type PageShortcutCommand } from '../src/lib/page-shortcuts';
 import { initializePageShortcuts } from '../src/lib/page-shortcut-registration';
 import { initializeToolbarAppearance } from '../src/lib/appearance';
+import { initializeConfigurationSync } from '../src/lib/config-sync';
 import { PROTOCOL, type EntryDocument, type FillResult, type NativeRequest, type SessionStatus, type Snapshot, type TabContext, type UIRequest, type VaultState } from '../src/lib/types';
 
 interface NativeSession {
@@ -19,10 +20,12 @@ interface NativeSession {
 export default defineBackground(() => {
   initializeToolbarAppearance();
   initializePageShortcuts();
+  const configurationSync = initializeConfigurationSync();
   let generation = 0;
   let selected: { target: Awaited<ReturnType<typeof loadClientTarget>>; connection: NativeConnection } | undefined;
   const invalidateTarget = () => {
     generation++;
+    configurationSync.invalidate();
     selected?.connection.disconnect();
     selected = undefined;
   };
@@ -39,15 +42,17 @@ export default defineBackground(() => {
     const assertCurrent = () => {
       if (capturedGeneration !== generation || selected !== captured) throw new PassPineError('native_connection_failed');
     };
-    return {
+    const nativeSession: NativeSession = {
       assertCurrent,
       async request<T>(request: NativeRequest): Promise<T> {
         assertCurrent();
         const response = await captured.connection.request<T>(request);
         assertCurrent();
+        if (request.action === 'configure' || request.action === 'status') configurationSync.observe({ id: capturedGeneration, target: captured.target, assertCurrent, request: next => nativeSession.request(next) }, response);
         return response;
       },
     };
+    return nativeSession;
   };
   const activeTab = async () => (await browser.tabs.query({ active: true, currentWindow: true }))[0];
   const currentTab = async (expected: TabContext) => {

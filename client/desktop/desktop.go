@@ -16,6 +16,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
 	"github.com/knothhe/passpine/client/buildinfo"
+	"github.com/knothhe/passpine/client/cloudsync"
 	"github.com/knothhe/passpine/client/i18n"
 	sidebar "github.com/knothhe/passpine/client/internal/clientshell"
 	"github.com/knothhe/passpine/client/internal/secureclipboard"
@@ -37,6 +38,7 @@ type application struct {
 	buildVersion                                                         string
 	updates                                                              updateUI
 	cli                                                                  cliSettingsState
+	configSync                                                           configurationSyncUI
 	aboutExpanded                                                        map[string]bool
 	service                                                              Backend
 	runOnMain                                                            func(func())
@@ -76,6 +78,7 @@ type application struct {
 	settingsState                                                        components.SettingsState
 	settingsLoaded                                                       bool
 	settingsSaved                                                        app.Settings
+	settingsSaveRevision                                                 uint64
 	settingsObserved                                                     app.Settings
 	settingsDirty, settingsSaving                                        bool
 	setup                                                                bool
@@ -183,6 +186,7 @@ func Run(service *app.Service, version string, updateConfigs ...update.Config) e
 	})
 	service.SetOnChange(func() { mygo.RunOnMain(func() { a.queueMetadataRefresh(true) }) })
 	service.SetOnGitChange(func() { mygo.RunOnMain(func() { a.refreshGitState() }) })
+	service.SetOnSettingsChange(func() { mygo.RunOnMain(func() { a.refreshConfigSync() }) })
 	service.SetOnLock(func() {
 		mygo.RunOnMain(func() {
 			a.handleSessionLock()
@@ -211,6 +215,7 @@ func Run(service *app.Service, version string, updateConfigs ...update.Config) e
 			a.settingsSaved = d.Settings
 			a.settingsObserved = d.Settings
 			a.settingsLoaded = true
+			a.acceptConfigSyncState(d)
 			a.applyTheme()
 			a.applyLanguage()
 			a.startNativeIntegrations()
@@ -236,6 +241,7 @@ func Run(service *app.Service, version string, updateConfigs ...update.Config) e
 func newApplication(service Backend) *application {
 	a := &application{service: service, runOnMain: mygo.RunOnMain, page: "entries", filter: "all", selectedIndex: -1, generator: generatorState{length: 24, lower: true, upper: true, numbers: true, symbols: true, exclude: true}, lastInput: time.Now(), stop: make(chan struct{})}
 	a.lifecycle.resumeTarget = "main"
+	a.configSync = newConfigurationSyncUI()
 	a.quit.quit = mygo.App.Quit
 	a.restoreManagerLayout()
 	a.initializeEntryList()
@@ -533,6 +539,8 @@ func (a *application) handleSessionLock() {
 }
 
 func (a *application) clearSecrets() {
+	a.configSync.manual.secrets = cloudsync.Secrets{}
+	a.configSync.r2.secrets = cloudsync.Secrets{}
 	a.batchUndo = nil
 	a.cancelUnlockAction()
 	a.preferences.pendingRead = nil
@@ -958,7 +966,7 @@ func (a *application) header(c *ui.Context) {
 		return
 	}
 	title := map[string]string{"entries": a.t("密码库"), "recovery": a.t("恢复中心"), "settings": a.t("设置"), "activity": a.t("操作记录")}[a.page]
-	if (a.setup || !a.state.Configured) && !(a.page == "settings" && a.settingsState.Category == "about" && !a.setup) {
+	if (a.setup || !a.state.Configured) && !a.settingsAvailableWithoutVault() {
 		title = a.t("打开密码库")
 	}
 	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
@@ -1078,7 +1086,7 @@ func (a *application) contentView(c *ui.Context) {
 		// also animate the stable account list when only its inspector changes.
 		page := ui.Column(c).Key(a.pagePresentationKey()).Fill().Padding(sidebar.HeaderHeight(c), 0, 0, 0)
 		page.Children(func() {
-			if (!a.state.Configured || a.setup) && !(a.page == "settings" && a.settingsState.Category == "about" && !a.setup) {
+			if (!a.state.Configured || a.setup) && !a.settingsAvailableWithoutVault() {
 				a.setupView(c)
 				return
 			}

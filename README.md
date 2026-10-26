@@ -79,6 +79,7 @@ bash scripts/check.sh                            # 运行检查与测试
 - [官网开发与部署](website/README.md)
 - [Chrome Web Store 提交材料](docs/chrome-web-store/README.md)
 - [桌面设置与生命周期](docs/desktop-settings.md)
+- [R2 / S3 配置同步](docs/config-sync.md)
 - [客户端自动更新](docs/updates.md)
 - [架构与安全设计](docs/ARCHITECTURE.md)
 - [版本与发布](docs/versioning.md)
