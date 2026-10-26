@@ -9,7 +9,8 @@
   const sceneKeys = {
     browse: "sceneBrowse", empty: "sceneEmpty", select: "sceneSelect", move: "sceneMove",
     conflict: "sceneConflict", trash: "sceneTrash", progress: "sceneProgress",
-    success: "sceneSuccess", partial: "scenePartial", "trash-success": "sceneTrashSuccess",
+    strip: "sceneStrip", mixed: "sceneMixed", "trash-confirm": "sceneTrashConfirm", success: "sceneSuccess", partial: "scenePartial", "trash-success": "sceneTrash",
+    "cleanup-success": "sceneCleanupSuccess", "undo-running": "sceneUndoRunning", "undo-partial": "sceneUndoPartial",
   };
   const seed = [
     { id: "cf", name: "Cloudflare", folder: "开发", username: "infra@example.test", website: "https://dash.cloudflare.com" },
@@ -24,6 +25,8 @@
     { id: "nas", name: "NAS 家庭存储", folder: "家庭/设备", username: "admin", website: "https://nas.example.test" },
     { id: "oldli", name: "Linear", folder: "归档", username: "archive@example.test", website: "https://linear.app" },
     { id: "long", name: "家庭资料与长期订阅记录", folder: "生活/家庭资料", username: "family@example.test", website: "https://example.test" },
+    { id: "st", name: "Stripe", folder: "工作/财务", username: "billing@example.test", website: "https://dashboard.stripe.com" },
+    { id: "hr", name: "招聘平台", folder: "工作/招聘", username: "talent@example.test", website: "https://jobs.example.test" },
   ];
   const paths = {
     sidebar: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
@@ -38,7 +41,6 @@
     minus: '<path d="M5 12h14"/>',
     arrow: '<path d="M4 12h16m-6-6 6 6-6 6"/>',
     back: '<path d="M20 12H4m6-6-6 6 6 6"/>',
-    chevron: '<path d="m9 5 7 7-7 7"/>',
     down: '<path d="m6 9 6 6 6-6"/>',
     copy: '<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
     eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
@@ -51,77 +53,188 @@
     warning: '<path d="m12 3 10 18H2Z"/><path d="M12 9v5m0 3h.01"/>',
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/>',
     checkCircle: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
-    selection: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><path d="m15 7 2 2 4-5M3 15h7M3 20h7M15 15h6M15 20h6"/>',
     external: '<path d="M14 3h7v7M21 3l-9 9M10 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/>',
     restore: '<path d="M3 10a9 9 0 1 1 1 8M3 4v6h6M12 7v5l3 2"/>',
+    spinner: '<path d="M12 3a9 9 0 1 1-9 9"/>',
+    cleanup: '<path d="m16 3 5 5-9 9-5-5Z"/><path d="m7 12-4 9h9l3-5M5 17l4 4M8 14l5 5"/>',
+    chevron: '<path d="m9 6 6 6-6 6"/>',
+    branch: '<circle cx="6" cy="18" r="2"/><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><path d="M6 8v8M18 8a6 6 0 0 1-6 6H8"/>',
+    sync: '<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/>',
+    shield: '<path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6Z"/><path d="m9 12 2 2 4-4"/>',
+    openLink: '<path d="M7 17 17 7M9 7h8v8"/>',
   };
   const esc = value => String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   const t = (key, values = {}) => catalogs[language][key].replace(/\{(\w+)\}/g, (_, name) => String(values[name] ?? ""));
   const icon = name => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.info}</svg>`;
   const path = item => item.folder ? `${item.folder}/${item.name}` : item.name;
   const folderLabel = folder => folder || t("rootFolder");
+  const domain = website => { try { return new URL(website).hostname.replace(/^www\./, ""); } catch { return ""; } };
   const defaultIDs = ["cf", "gh", "fg", "li"];
   const root = document.getElementById("root");
-  let items, trashItems, s, timer, toastTimer, anchor = null;
+  let items, trashItems, emptyFolders, s, timer, toastTimer, anchor = null;
   const button = (action, label, variant = "secondary", glyph = "", disabled = false, extra = "") => `<button class="button ${variant}" data-action="${action}" ${disabled ? "disabled" : ""} ${extra}>${glyph ? icon(glyph) : ""}<span>${esc(label)}</span></button>`;
   const iconButton = (action, key, glyph, disabled = false) => `<button class="icon-button" data-action="${action}" aria-label="${esc(t(key))}" title="${esc(t(key))}" ${disabled ? "disabled" : ""}>${icon(glyph)}</button>`;
   const byID = id => items.find(item => item.id === id);
   const selected = () => [...s.selected].map(byID).filter(Boolean);
   const collection = () => s.scope === "trash" ? trashItems : items.filter(item => s.scope === "__root__" ? item.folder === "" : s.scope === "all" || item.folder === s.scope || item.folder.startsWith(`${s.scope}/`));
   const visible = () => collection().filter(item => path(item).toLocaleLowerCase().includes(s.query.trim().toLocaleLowerCase()));
-  const folders = () => [...new Set(items.flatMap(item => item.folder.split("/").filter(Boolean).map((_, i, a) => a.slice(0, i + 1).join("/"))))].sort();
+  const folders = () => [...new Set([...items.flatMap(item => item.folder.split("/").filter(Boolean).map((_, i, a) => a.slice(0, i + 1).join("/"))), ...emptyFolders])].sort();
   const busy = () => Boolean(s.progress);
 
   function init(scene, updateURL = true) {
     clearTimeout(timer); clearTimeout(toastTimer);
     items = seed.map(item => ({ ...item }));
     trashItems = [];
+    emptyFolders = ["归档/旧项目", "临时", "临时/待整理"];
     s = { scene, mode: scene !== "browse", scope: "all", query: "", selected: new Set(), active: "gh", dialog: null,
-      destination: null, folderQuery: "", folderPickerOpen: true, result: null, progress: null, toast: null, sidebar: false, reveal: false };
+      destination: null, folderQuery: "", keep: null, stripFrom: "", collapsed: new Set(folders()), result: null, progress: null, toast: null, undo: null, undoResult: null, sidebar: false, reveal: false };
     anchor = null;
     if (!["browse", "empty"].includes(scene)) s.selected = new Set(defaultIDs);
-    if (["move", "conflict"].includes(scene)) { s.dialog = "move"; s.destination = scene === "conflict" ? "归档" : "家庭/设备"; s.folderPickerOpen = false; }
-    if (scene === "conflict") s.selected.add("gh2");
-    if (scene === "trash") s.dialog = "trash";
-    if (s.dialog) s.returnAction = s.dialog;
-    if (scene === "progress") s.progress = { action: "move", ids: [...s.selected], done: 2, total: 4, frozen: true };
+    if (scene === "move") { s.selected = new Set(["fg", "li"]); s.destination = "家庭/设备"; }
+    if (scene === "strip") { s.selected = new Set(["fg", "li", "nt", "gh2"]); s.destination = "归档/旧项目"; }
+    if (scene === "mixed") s.destination = "家庭/设备";
+    if (scene === "conflict") { s.destination = "归档"; s.keep = "name"; s.selected.add("gh2"); }
+    if (s.destination !== null) s.folderQuery = s.destination;
+    if (scene === "trash-confirm") s.dialog = "trash-confirm";
+    if (scene === "progress") { s.destination = "家庭/设备"; s.progress = { action: "move", ids: [...s.selected], done: 2, total: 4 }; }
     if (scene === "partial") applyPartial();
     if (scene === "success") applySuccess("move", defaultIDs, "工作/归档");
-    if (scene === "trash-success") applySuccess("trash", defaultIDs);
+    if (["trash", "trash-success"].includes(scene)) applySuccess("trash", defaultIDs);
+    if (scene === "cleanup-success") applyCleanup();
+    if (["undo-running", "undo-partial"].includes(scene)) {
+      applySuccess("move", defaultIDs, "工作/归档");
+      if (scene === "undo-running") { s.progress = { action: "undo", total: 4, done: 2 }; s.toast = { key: "progressUndoing", values: { done: 2, total: 4 }, running: true }; }
+      else {
+        const records = s.undo.records;
+        records.slice(0, 2).forEach(record => { byID(record.original.id).folder = record.original.folder; });
+        items.push({ ...records[2].original, id: "undo-existing" });
+        byID(records[3].original.id).username = "changed@example.test";
+        s.undo.records = records.slice(2);
+        s.undo.completed = 2;
+        s.undoResult = { completed: 2, failed: [{ record: records[2], reason: "undoOriginalExists" }, { record: records[3], reason: "undoTargetChanged" }] };
+        s.toast = null;
+      }
+    }
     if (updateURL && review) history.replaceState(null, "", `?${new URLSearchParams({ scene, lang: language, theme })}`);
     render();
+    document.querySelector(".folder-option.selected")?.scrollIntoView({ block: "nearest" });
   }
 
-  function applySuccess(action, ids, destination = "") {
+  function applySuccess(action, ids, destination = "", changedPaths = null) {
     const originals = ids.map(byID).filter(Boolean).map(item => ({ ...item }));
-    if (action === "move") ids.forEach(id => { if (byID(id)) byID(id).folder = destination; });
+    if (action === "move") ids.forEach(id => { const item = byID(id); if (item) item.folder = changedPaths ? changedPaths.get(id).split("/").slice(0, -1).join("/") : [destination, s.keep === "name" ? "" : item.folder].filter(Boolean).join("/"); });
     else { trashItems.push(...originals); items = items.filter(item => !ids.includes(item.id)); }
-    s.mode = false; s.selected.clear(); s.active = null; s.dialog = null; s.progress = null;
-    s.result = { kind: action === "move" ? "moved" : "trashed", count: originals.length, destination, originals };
-    s.toast = { key: action === "move" ? "movedSuccess" : "trashedSuccess", values: { count: originals.length }, action: action === "move" ? "destination" : "view-trash" };
+    s.mode = false; s.selected.clear(); s.active = null; s.dialog = null; s.progress = null; s.result = null;
+    s.destination = null; s.folderQuery = "";
+    s.undo = { action, completed: 0, records: originals.map(original => ({ original, appliedPath: action === "move" ? path(byID(original.id)) : path(original) })) };
+    s.undoResult = null;
+    s.toast = action === "move"
+      ? { key: "movedSuccess", values: { count: originals.length, folder: folderLabel(destination) }, action: "undo", actionKey: "undo" }
+      : { key: "trashedSuccess", values: { count: originals.length }, sub: "trashLocalNotice", action: "undo", actionKey: "undo" };
   }
 
   function applyPartial() {
-    const originals = defaultIDs.map(id => ({ ...byID(id) }));
+    const originals = ["cf", "gh"].map(id => ({ ...byID(id) }));
     ["cf", "gh"].forEach(id => { byID(id).folder = "工作/归档"; s.selected.delete(id); });
     items.push({ ...byID("li"), id: "li-destination", folder: "工作/归档" });
-    s.result = { kind: "partial", success: 2, destination: "工作/归档", originals,
+    s.result = { kind: "partial", success: 2, destination: "工作/归档",
       failed: [{ id: "fg", reason: "writeBlocked", review: false }, { id: "li", reason: "destinationSaved", review: true }] };
+    s.undo = { action: "move", completed: 0, records: originals.map(original => ({ original, appliedPath: path(byID(original.id)) })) };
+    s.toast = { key: "partialCompleted", values: { count: 2 }, action: "undo", actionKey: "undo" };
+  }
+
+  function applyCleanup() {
+    const removed = [...emptyFolders]; emptyFolders = [];
+    s.mode = false; s.selected.clear(); s.result = null; s.undoResult = null;
+    s.undo = { action: "cleanup", completed: 0, records: removed.map(folder => ({ folder })) };
+    s.toast = { key: "cleanupSuccess", values: { count: removed.length }, sub: "cleanupUndoHelp", action: "undo", actionKey: "undo" };
+  }
+
+  function restoreUndoRecord(receipt, record) {
+    if (receipt.action === "cleanup") {
+      if (items.some(item => path(item) === record.folder)) return "undoOriginalExists";
+      if (!emptyFolders.includes(record.folder)) emptyFolders.push(record.folder);
+      return null;
+    }
+    const original = record.original;
+    if (items.some(item => item.id !== original.id && path(item).toLocaleLowerCase() === path(original).toLocaleLowerCase())) return "undoOriginalExists";
+    if (receipt.action === "trash") {
+      const recovery = trashItems.find(item => item.id === original.id);
+      if (!recovery) return "undoTargetChanged";
+      items.push({ ...original }); trashItems = trashItems.filter(item => item.id !== original.id); return null;
+    }
+    const current = byID(original.id);
+    if (!current || path(current) !== record.appliedPath || current.username !== original.username || current.website !== original.website) return "undoTargetChanged";
+    current.folder = original.folder; return null;
+  }
+
+  function startUndo() {
+    if (!s.undo || busy()) return;
+    clearTimeout(toastTimer);
+    const receipt = s.undo, records = [...receipt.records], failed = [];
+    let completed = receipt.completed;
+    s.undoResult = null; s.progress = { action: "undo", total: records.length, done: 0 };
+    const step = () => {
+      const record = records[s.progress.done];
+      const reason = restoreUndoRecord(receipt, record);
+      if (reason) failed.push({ record, reason });
+      else {
+        completed++;
+        if (s.result) s.result.success = Math.max(0, s.result.success - 1);
+      }
+      s.progress.done++;
+      s.toast = { key: "progressUndoing", values: { done: s.progress.done, total: records.length }, running: true }; render();
+      if (s.progress.done < records.length) { timer = setTimeout(step, 400); return; }
+      timer = setTimeout(() => {
+        s.progress = null;
+        receipt.completed = completed;
+        if (failed.length) { receipt.records = failed.map(failure => failure.record); s.undoResult = { completed, failed }; s.toast = null; }
+        else { s.undo = null; s.toast = { key: "undoSuccess", values: { count: completed } }; autoDismiss(); }
+        render();
+      }, 350);
+    };
+    s.toast = { key: "progressUndoing", values: { done: 0, total: records.length }, running: true }; render();
+    timer = setTimeout(step, 400);
+  }
+
+  // Folders shared by every selected entry, shallowest first. Removing any of them
+  // keeps the structure beneath it, so no selected entry can fail to match.
+  function commonFolders() {
+    const chosen = selected();
+    if (!chosen.length || chosen.some(item => !item.folder)) return [];
+    const split = chosen.map(item => item.folder.split("/")), shared = [];
+    for (let i = 0; i < split[0].length && split.every(parts => parts[i] === split[0][i]); i++) shared.push(split[0][i]);
+    return shared.map((_, i) => shared.slice(0, i + 1).join("/"));
+  }
+
+  // Until the user picks, removing the deepest shared folder is the default; without
+  // a shared folder that option is unavailable and the full path is kept instead.
+  const keepMode = () => {
+    const mode = s.keep || "strip";
+    return mode === "strip" && !commonFolders().length ? "full" : mode;
+  };
+  const keptPath = item => keepMode() === "name" ? item.name : keepMode() === "strip" ? path(item).slice(s.stripFrom.length + 1) : path(item);
+  const targetPath = item => [s.destination, keptPath(item)].filter(Boolean).join("/");
+
+  function syncStripSource() {
+    if (busy()) return;
+    const options = commonFolders();
+    if (!options.includes(s.stripFrom)) s.stripFrom = options.at(-1) || "";
   }
 
   function movePlan() {
-    const chosen = selected();
-    if (s.destination === null) return { ready: [], conflicts: [], unchanged: [] };
-    const grouped = new Map();
-    chosen.forEach(item => { const key = `${s.destination}/${item.name}`.normalize("NFC").toLocaleLowerCase(); grouped.set(key, [...(grouped.get(key) || []), item]); });
-    const plan = { ready: [], conflicts: [], unchanged: [] };
+    const plan = { ready: [], skipped: [], status: new Map() };
+    if (s.destination === null) return plan;
+    const chosen = selected(), grouped = new Map();
+    const key = item => targetPath(item).normalize("NFC").toLocaleLowerCase();
+    chosen.forEach(item => grouped.set(key(item), (grouped.get(key(item)) || 0) + 1));
     chosen.forEach(item => {
-      if (item.folder === s.destination) { plan.unchanged.push(item); return; }
-      const target = s.destination ? `${s.destination}/${item.name}` : item.name;
-      const internal = grouped.get(`${s.destination}/${item.name}`.normalize("NFC").toLocaleLowerCase()).length > 1;
-      const exists = items.some(other => other.id !== item.id && path(other).normalize("NFC").toLocaleLowerCase() === target.normalize("NFC").toLocaleLowerCase());
-      if (internal || exists) plan.conflicts.push({ ...item, reason: internal ? "selectedConflict" : "existingConflict" });
-      else plan.ready.push(item);
+      const target = key(item);
+      const status = targetPath(item) === path(item) ? "unchanged"
+        : items.some(other => other.id !== item.id && path(other).normalize("NFC").toLocaleLowerCase() === target) ? "exists"
+        : grouped.get(target) > 1 ? "duplicate" : "ready";
+      plan.status.set(item.id, status);
+      (status === "ready" ? plan.ready : plan.skipped).push(item);
     });
     return plan;
   }
@@ -129,8 +242,39 @@
   function reviewBar() {
     if (!review) return "";
     return `<header class="review-bar"><div class="review-brand"><strong class="review-title">${t("reviewTitle")}</strong><span>${t("reviewNote")}</span></div>
-      <nav class="review-nav" aria-label="${t("scenesLabel")}">${["browse", "select", "move", "conflict", "trash", "partial"].map(scene => `<button data-scene="${scene}" class="${s.scene === scene ? "active" : ""}">${t(sceneKeys[scene])}</button>`).join("")}</nav>
+      <nav class="review-nav" aria-label="${t("scenesLabel")}">${["browse", "select", "move", "strip", "mixed", "conflict", "progress", "success", "trash", "partial", "cleanup-success", "undo-running", "undo-partial"].map(scene => `<button data-scene="${scene}" class="${s.scene === scene ? "active" : ""}">${t(sceneKeys[scene])}</button>`).join("")}</nav>
       <div class="review-tools"><select id="language" aria-label="${t("language")}"><option value="zh-CN" ${language === "zh-CN" ? "selected" : ""}>${t("chineseLanguage")}</option><option value="en" ${language === "en" ? "selected" : ""}>${t("englishLanguage")}</option></select>${iconButton("theme", "appearance", theme === "dark" ? "sun" : "moon")}<button class="text-button" data-action="reset">${t("reset")}</button><a class="text-button" href="canvas.html?lang=${language}">${t("overview")}${icon("external")}</a></div></header>`;
+  }
+
+  // Each option previews the deepest selected path, where the three choices differ most.
+  function keepField() {
+    const options = commonFolders(), mode = keepMode();
+    const sample = selected().reduce((longest, item) => !longest || path(item).length > path(longest).length ? item : longest, null);
+    const base = s.destination === null ? "…/" : s.destination ? `${s.destination}/` : "";
+    const source = options.length > 1
+      ? `<select id="strip-from" aria-label="${t("keepStripFrom")}" ${busy() ? "disabled" : ""}>${options.map(folder => `<option value="${esc(folder)}" ${folder === s.stripFrom ? "selected" : ""}>${esc(folder)}</option>`).join("")}</select>`
+      : options.length ? `<code class="keep-source">${esc(options[0])}</code>` : "";
+    const option = (value, label, kept, extra = "", unavailable = "") => `<label class="keep-option ${unavailable ? "disabled" : ""}"><input type="radio" id="keep-${value}" name="keep" value="${value}" ${mode === value ? "checked" : ""} ${unavailable || busy() ? "disabled" : ""}><span class="keep-body"><span class="keep-title"><span>${esc(label)}</span>${extra}</span>${unavailable ? `<span class="keep-hint">${esc(unavailable)}</span>` : sample ? `<span class="keep-example"><span class="keep-example-base">${esc(base)}</span>${esc(kept)}</span>` : ""}</span></label>`;
+    return `<fieldset class="keep-field" ${busy() ? "disabled" : ""}><legend class="section-label">${t("keepLabel")}</legend>
+      ${option("strip", t("keepStrip"), options.length && sample ? path(sample).slice(s.stripFrom.length + 1) : "", source, options.length ? "" : t("keepStripUnavailable"))}
+      ${option("full", t("keepFull"), sample ? path(sample) : "")}
+      ${option("name", t("keepName"), sample?.name || "")}</fieldset>`;
+  }
+
+  // Skipped entries come first, so their reasons stay visible without scrolling.
+  function pathPreview(plan) {
+    const heading = `<h4 class="section-label" id="path-preview-title">${t("pathPreview")}</h4>`;
+    if (s.destination === null) return `<section class="path-preview-section" aria-labelledby="path-preview-title">${heading}<p class="muted preview-empty">${t("previewEmpty")}</p></section>`;
+    const reasons = { exists: "previewExists", duplicate: "previewDuplicate", unchanged: "previewUnchanged" };
+    const rows = [...plan.skipped, ...plan.ready].map(item => {
+      const status = plan.status.get(item.id);
+      return `<li class="preview-row ${status}"><span class="preview-from">${esc(path(item))}</span><span class="preview-to">${icon("arrow")}<span class="visually-hidden">${t("previewTo")}</span><span>${esc(targetPath(item))}</span></span>${status === "ready" ? "" : `<span class="preview-reason">${icon(status === "unchanged" ? "info" : "warning")}<span>${t(reasons[status])}</span></span>`}</li>`;
+    }).join("");
+    const summary = plan.skipped.length ? t("previewSummary", { ready: plan.ready.length, skipped: plan.skipped.length }) : t("previewSummaryAll", { count: plan.ready.length });
+    const notice = (glyph, key) => `<p class="inline-notice">${icon(glyph)}<span>${t(key)}</span></p>`;
+    return `<section class="path-preview-section" aria-labelledby="path-preview-title">${heading}<p class="preview-summary" role="status">${summary}</p>
+      ${!plan.ready.length ? notice("info", "noMovable") : ""}${s.destination.startsWith("工作/共享账号") ? notice("info", "policyNotice") : ""}
+      <ul class="preview-list" aria-label="${t("previewListLabel")}">${rows}</ul></section>`;
   }
 
   function navigation() {
@@ -139,89 +283,124 @@
     return `<aside class="sidebar ${s.sidebar ? "is-open" : ""}" aria-label="${t("navigation")}"><div class="sidebar-main"><p class="sidebar-section-label">${t("passwordLibrary")}</p>${navItem("all", t("allEntries"), "key", items.length)}<p class="sidebar-section-label">${t("folders")}</p>${items.some(item => !item.folder) ? navItem("__root__", t("rootFolder"), "folder") : ""}${topFolders.map(folder => navItem(folder, folder, "folder")).join("")}</div><div class="sidebar-bottom">${navItem("drafts", t("drafts"), "draft")}${navItem("trash", t("trash"), "trash", trashItems.length || "")}<button class="nav-item" data-action="demo">${icon("settings")}<span class="nav-label">${t("settings")}</span></button></div></aside>`;
   }
 
+  function checkbox(state) {
+    return `<span class="check-slot" aria-hidden="true"><span class="entry-check ${state}">${state === "checked" ? icon("check") : state === "mixed" ? icon("minus") : ""}</span></span>`;
+  }
+
   function list() {
     const rows = visible();
     const title = s.scope === "all" ? t("allEntries") : s.scope === "trash" ? t("trash") : s.scope === "__root__" ? t("rootFolder") : s.scope;
     const all = rows.length > 0 && rows.every(item => s.selected.has(item.id));
-    return `<section class="library" aria-labelledby="list-title"><header class="library-heading"><h1 id="list-title">${esc(title)}</h1><div class="heading-buttons">${s.scope !== "trash" ? `<button class="text-button" data-action="mode" ${busy() ? "disabled" : ""}>${t(s.mode ? "finish" : "select")}</button>${s.mode ? "" : iconButton("demo", "newEntry", "plus")}` : ""}</div></header>
+    const some = rows.some(item => s.selected.has(item.id));
+    return `<section class="library" aria-labelledby="list-title"><header class="library-heading"><div class="library-title"><h1 id="list-title">${esc(title)}</h1><p class="library-count" aria-label="${t("entryCountLabel")}">${t(s.query ? "resultCount" : "entryCount", { count: rows.length, total: collection().length })}</p></div><div class="heading-buttons">${s.scope !== "trash" ? `${iconButton("cleanup", "cleanupFolders", "cleanup", busy() || s.mode)}<button class="text-button" data-action="mode" ${busy() ? "disabled" : ""}>${t(s.mode ? "cancel" : "select")}</button>${s.mode ? "" : iconButton("demo", "newEntry", "plus")}` : ""}</div></header>
       <div class="search-wrap">${icon("search")}<input id="search" aria-label="${t("searchLabel")}" placeholder="${t("search")}" value="${esc(s.query)}" ${busy() ? "disabled" : ""}>${s.query ? iconButton("clear-search", "clearSearch", "close") : ""}</div>
-      ${s.mode ? `<div class="selection-toolbar"><button class="text-button selection-count" data-action="all" role="checkbox" aria-checked="${all ? "true" : s.selected.size ? "mixed" : "false"}" aria-label="${t(all ? "clearSelection" : "allResults")}" ${busy() || !rows.length ? "disabled" : ""}><span class="entry-check ${all ? "checked" : s.selected.size ? "mixed" : ""}" aria-hidden="true">${all ? icon("check") : s.selected.size ? icon("minus") : ""}</span>${t("selectedFraction", { count: s.selected.size, total: rows.length })}</button><button class="text-button" data-action="all" ${busy() || !rows.length ? "disabled" : ""}>${t(all ? "clearSelection" : "allResults")}</button></div>` : ""}
-      <div class="entry-list" id="entry-list" tabindex="0" aria-label="${esc(title)}">${rows.length ? rows.map(item => {
+      ${s.mode ? `<div class="selection-toolbar"><button class="text-button select-all" data-action="all" role="checkbox" aria-checked="${all ? "true" : some ? "mixed" : "false"}" title="${t("selectAllHint")}" ${busy() || !rows.length ? "disabled" : ""}>${checkbox(all ? "checked" : some ? "mixed" : "")}<span>${t("selectAll")}</span></button></div>` : ""}
+      <div class="entry-list ${s.mode ? "selecting" : ""}" id="entry-list" tabindex="0" aria-label="${esc(title)}">${rows.length ? rows.map(item => {
         const checked = s.mode && s.selected.has(item.id), active = !s.mode && item.id === s.active;
-        return `<button class="entry-row ${checked || active ? "selected" : ""}" data-entry="${item.id}" ${s.mode ? `role="checkbox" aria-checked="${checked}"` : `aria-pressed="${active}"`} aria-label="${esc(t(s.mode ? "selectEntry" : "openEntry", { path: path(item) }))}" ${busy() ? "disabled" : ""}>
-          ${s.mode ? `<span class="entry-check ${checked ? "checked" : ""}" aria-hidden="true">${checked ? icon("check") : ""}</span>` : `<span class="avatar" aria-hidden="true">${esc(item.name.slice(0, 2).toUpperCase())}</span>`}<span class="entry-text"><span class="entry-name">${esc(item.name)}</span><span class="entry-path" title="${esc(path(item))}">${esc(path(item))}</span></span>${s.mode || s.scope === "trash" ? "" : `<span class="row-copy" data-copy="${item.id}" role="presentation">${icon("copy")}</span>`}</button>`;
-      }).join("") : `<div class="empty-state">${icon("search")}<strong>${t(s.scope === "trash" && !s.query ? "trashEmpty" : "emptyResults")}</strong><p>${t(s.scope === "trash" && !s.query ? "trashHelp" : "emptyResultsDescription")}</p></div>`}</div>
-      <footer class="library-footer"><span>${t(s.query ? "resultCount" : "entryCount", { count: rows.length, total: collection().length })}</span>${s.mode ? `<span class="muted">${t("selectedItems", { count: s.selected.size })}</span>` : ""}</footer></section>`;
-  }
-
-  function previewRow(item, suffix = "") {
-    return `<div class="preview-row">${icon("key")}<span class="entry-text"><span class="entry-name">${esc(item.name)}</span><span class="entry-path">${esc(path(item))}</span></span>${suffix}</div>`;
+        return `<button class="entry-row ${checked ? "checked" : ""} ${active ? "selected" : ""}" data-entry="${item.id}" ${s.mode ? `role="checkbox" aria-checked="${checked}"` : `aria-pressed="${active}"`} aria-label="${esc(t(s.mode ? "selectEntry" : "openEntry", { path: path(item) }))}" ${busy() ? "disabled" : ""}>
+          ${s.mode ? checkbox(checked ? "checked" : "") : ""}<span class="entry-text"><span class="entry-name">${esc(item.name)}</span><span class="entry-path" title="${esc(path(item))}">${esc(active ? item.username : path(item))}</span></span>${active ? `<span class="row-chevron">${icon("chevron")}</span>` : s.mode || s.scope === "trash" ? "" : `<span class="row-copy" data-copy="${item.id}" role="presentation">${icon("copy")}</span>`}</button>`;
+      }).join("") : `<div class="empty-state">${icon("search")}<strong>${t(s.scope === "trash" && !s.query ? "trashEmpty" : "emptyResults")}</strong><p>${t(s.scope === "trash" && !s.query ? "trashHelp" : "emptyResultsDescription")}</p></div>`}</div></section>`;
   }
 
   function batchPanel() {
-    const chosen = selected();
-    const count = chosen.length;
-    return `<div class="batch-panel"><div class="batch-heading">${count ? `<h2>${t("selectedCount", { count })}</h2><p class="batch-subtitle">${t("selectedFrom", { count: new Set(chosen.map(item => item.folder)).size })}</p>` : `<div class="empty-symbol">${icon("selection")}</div><h2>${t("chooseItems")}</h2><p class="batch-subtitle">${t("chooseItemsDescription")}</p>`}</div>
-      <div class="batch-actions">${button("move", t("moveTo"), "primary", "folder", !count)}${button("trash", t("trashAction"), "secondary danger-text", "trash", !count)}</div>
-      ${count ? `<section class="selected-preview"><div class="preview-heading"><h3>${t("selectedEntries")}</h3><span class="muted">${t("selectedItems", { count })}</span></div><div class="preview-list">${chosen.map(item => previewRow(item)).join("")}</div></section>` : ""}
-      <div class="selection-help"><p>${t("selectHelp")}</p><p>${t("scopeHelp")}</p></div></div>`;
+    const count = s.selected.size, p = s.progress;
+    if (!count && !p) return `<div class="batch-panel"><div class="panel-toolbar"></div><div class="batch-heading"><h2>${t("chooseItems")}</h2><p class="batch-subtitle">${t("chooseItemsDescription")}</p></div></div>`;
+    const running = action => p?.action === action;
+    const progress = action => running(action) ? 'aria-busy="true"' : "";
+    const plan = movePlan();
+    const folderOptions = ["", ...folders()];
+    const query = s.folderQuery.trim().toLocaleLowerCase();
+    const candidate = s.folderQuery.trim().replace(/^\/+|\/+$/g, "");
+    const canCreate = candidate && !folderOptions.includes(candidate) && !candidate.split("/").some(segment => [".", ".."].includes(segment));
+    // Searching flattens the tree to full paths, since a deep match needs its parents to be told apart.
+    const shown = query ? folderOptions.filter(folder => folderLabel(folder).toLocaleLowerCase().includes(query)) : folderOptions;
+    const moveLabel = running("move") ? t("progressMoving", { done: p.done, total: p.total }) : t("moveCount", { count: s.destination === null ? count : plan.ready.length });
+    const trashLabel = running("trash") ? t("progressTrashing", { done: p.done, total: p.total }) : t("trashAction");
+    // One move form covers moving, flattening and replacing a shared prefix; trash is a separate action.
+    return `<div class="batch-panel selection-panel"><div class="panel-toolbar"></div>
+      <div class="selection-heading"><h2>${t("selectedCount", { count: p ? p.total : count })}</h2>${button("trash", trashLabel, "quiet danger-text", running("trash") ? "spinner" : "trash", busy(), progress("trash"))}</div>
+      <section class="move-section" aria-label="${t("moveSection")}">
+        <h4 class="section-label" id="destination-title">${t("destinationLabel")}</h4>
+        <div class="folder-search search-wrap">${icon("search")}<input id="folder-search" placeholder="${t("folderSearch")}" aria-label="${t("folderSearchLabel")}" value="${esc(s.folderQuery)}" ${busy() ? "disabled" : ""}></div>
+        <div class="folder-list ${query ? "flat" : ""}" role="group" aria-labelledby="destination-title">${query ? shown.map(folder => folderOption(folder, folderLabel(folder), 0, false)).join("") : folderTree()}${canCreate ? `<button class="folder-option folder-create" data-folder="${esc(candidate)}">${icon("folderPlus")}<span>${esc(t("createFolder", { folder: candidate }))}</span></button>` : ""}${!shown.length && !canCreate ? `<p class="muted">${t("noFolders")}</p>` : ""}</div>
+        ${keepField()}
+        ${pathPreview(plan)}
+        <footer class="move-footer">${button("confirm-move", moveLabel, "primary", running("move") ? "spinner" : "", busy() || !plan.ready.length, progress("move"))}</footer>
+      </section></div>`;
   }
 
   function detailPanel() {
     const item = s.scope === "trash" ? trashItems.find(entry => entry.id === s.active) : byID(s.active);
-    if (!item) return `<div class="empty-state"><div class="empty-symbol">${icon(s.scope === "trash" ? "trash" : "key")}</div><h2>${t(s.scope === "trash" ? "trashEmpty" : "noDetail")}</h2><p>${t(s.scope === "trash" ? "trashHelp" : "noDetailDescription")}</p></div>`;
-    if (s.scope === "trash") return `<div class="batch-panel"><div class="detail-heading"><div><h2>${esc(item.name)}</h2><p class="detail-path">${esc(path(item))}</p></div></div><p class="muted">${t("trashHelp")}</p>${button("restore", t("restore"), "primary", "restore")}</div>`;
-    return `<div class="batch-panel"><header class="detail-heading"><div><h2>${esc(item.name)}</h2><p class="detail-path">${esc(path(item))}</p></div><div class="detail-actions">${iconButton("reveal", s.reveal ? "hidePassword" : "showPassword", "eye")}${iconButton("demo", "editEntry", "edit")}${iconButton("trash-one", "trashAction", "trash")}</div></header>
-      <div class="field-row"><div><p class="field-label">${t("password")}</p><span class="field-value secret-value">${s.reveal ? "Example-only-2026" : "••••••••••••••"}</span></div>${iconButton("copy", "copyPassword", "copy")}</div>
-      <div class="field-row"><div><p class="field-label">${t("username")}</p><span class="field-value">${esc(item.username)}</span></div>${iconButton("copy", "copyUsername", "copy")}</div>
-      <div class="field-row"><div><p class="field-label">${t("website")}</p><span class="field-value">${esc(item.website)}</span></div></div><div class="detail-notes"><p class="field-label">${t("notes")}</p><p>${t("demoNotes")}</p></div>${button("demo", t("openWebsite"), "secondary", "external")}</div>`;
+    if (!item) return `<div class="empty-state"><div class="empty-symbol">${icon(s.scope === "trash" ? "trash" : "shield")}</div><h2>${t(s.scope === "trash" ? "trashEmpty" : "noDetail")}</h2><p>${t(s.scope === "trash" ? "trashHelp" : "noDetailDescription")}</p>${s.scope === "trash" ? "" : `<button class="text-button empty-action" data-action="demo">${t("newEntry")}</button>`}</div>`;
+    const crumbs = `<nav class="breadcrumb" aria-label="${t("entryPath")}">${icon("folder")}${(item.folder ? item.folder.split("/") : [t("rootFolder")]).map(part => `<span>${esc(part)}</span>${icon("chevron")}`).join("")}<span class="current">${esc(item.name)}</span></nav>`;
+    if (s.scope === "trash") return `<div class="batch-panel"><div class="panel-toolbar">${crumbs}</div><div class="entry-title"><h2>${esc(item.name)}</h2><p>${t("trashHelp")}</p></div><div class="batch-actions">${button("restore", t("restore"), "primary", "restore")}</div></div>`;
+    const copyButton = key => `<button class="copy-button" data-action="copy" aria-label="${t(key)}">${icon("copy")}<span>${t("copy")}</span></button>`;
+    return `<div class="batch-panel"><div class="panel-toolbar">${crumbs}<div class="detail-actions">${iconButton("reveal", "showAllFields", "eye")}${iconButton("demo", "editEntry", "edit")}${iconButton("trash-one", "trashAction", "trash")}</div></div>
+      <div class="entry-title"><h2>${esc(item.name)}</h2><p>${esc(domain(item.website))}</p></div>
+      <div class="field-row"><div><p class="field-label">${t("username")}</p><span class="field-value">${esc(item.username)}</span></div>${copyButton("copyUsername")}</div>
+      <div class="field-row"><div><p class="field-label">${t("password")}</p><span class="field-value secret-value">${s.reveal ? "Example-only-2026" : "••••••••••••"}</span></div>${iconButton("reveal", s.reveal ? "hidePassword" : "showPassword", "eye")}${copyButton("copyPassword")}</div>
+      <div class="field-row"><div><p class="field-label">${t("website")}</p><span class="field-value">${esc(item.website)}</span></div>${iconButton("demo", "openWebsite", "openLink")}${copyButton("copyWebsite")}</div>
+      <div class="detail-notes"><p class="field-label">${t("notes")}</p><p>${t("demoNotes")}</p></div>
+      <p class="file-row"><span>${t("encryptedFile")}</span><code>${esc(path(item))}.gpg</code></p></div>`;
   }
 
   function resultPanel() {
     const r = s.result;
-    if (r.kind === "partial") return `<div class="batch-panel"><div class="result-summary warning">${icon("warning")}<h2>${t("partialTitle", { success: r.success, failed: r.failed.length })}</h2><p class="batch-subtitle">${t("partialDescription")}</p></div><div class="result-list">${r.failed.map(failure => {
+    const retryable = r.failed.some(failure => !failure.review);
+    return `<div class="batch-panel"><div class="panel-toolbar"></div><div class="result-summary">${icon("warning")}<h2>${t("partialTitle", { success: r.success, failed: r.failed.length })}</h2><p class="result-description">${t("partialUndoHelp")}</p></div><div class="result-list">${r.failed.map(failure => {
       const item = byID(failure.id);
-      return `<div class="result-row"><div class="preview-heading"><strong>${esc(item.name)}</strong><span class="status-tag ${failure.review ? "warning" : ""}">${t(failure.review ? "needsReview" : "retryable")}</span></div><p class="entry-path">${esc(path(item))}</p><p class="result-description">${t(failure.reason)}</p>${failure.review ? `<button class="text-button" data-action="check-both">${t("checkBoth")}${icon("arrow")}</button>` : ""}</div>`;
-    }).join("")}</div><div class="batch-actions">${button("retry", t("retryFailed"), "primary", "restore", !r.failed.some(f => !f.review))}${button("result-close", t("finish"))}</div><div class="selection-help"><p>${t("partialHelp")}</p></div></div>`;
-    const moved = r.kind === "moved";
-    return `<div class="batch-panel"><div class="result-summary success">${icon("checkCircle")}<h2>${t(moved ? "movedSuccess" : "trashedSuccess", { count: r.count })}</h2><p class="batch-subtitle">${t(moved ? "movedDestination" : "trashDescription", { folder: folderLabel(r.destination) })}</p></div><div class="batch-actions">${button(moved ? "destination" : "view-trash", t(moved ? "viewDestination" : "viewTrash"), "primary", moved ? "folder" : "trash")}${button("result-close", t("finish"))}</div><section class="selected-preview"><div class="preview-heading"><h3>${t("selectedEntries")}</h3><span class="muted">${t("selectedItems", { count: r.count })}</span></div>${r.originals.map(item => previewRow(moved ? { ...item, folder: r.destination } : item, `<span class="success-text">${icon("check")}</span>`)).join("")}</section>${moved ? "" : `<p class="selection-help">${t("trashLocalNotice")}</p>`}</div>`;
+      return `<div class="result-row"><strong class="entry-name">${esc(item.name)}</strong><span class="entry-path">${esc(path(item))}</span><p class="result-description">${t(failure.reason)}</p>${failure.review ? `<button class="text-button" data-action="check-both">${t("checkBoth")}${icon("arrow")}</button>` : ""}</div>`;
+    }).join("")}</div><div class="batch-actions">${retryable ? button("retry", t("retryFailed"), "primary", "restore", busy()) : ""}${button("result-close", t("finish"), retryable ? "secondary" : "primary", "", busy())}</div></div>`;
   }
 
-  function progressPanel() {
-    const p = s.progress;
-    return `<div class="batch-panel"><div class="batch-heading"><h2>${t(p.action === "move" ? "progressMoving" : "progressTrashing")}</h2><p class="batch-subtitle">${t("progressHint")}</p></div><div class="progress-block"><div class="progress-meta"><span>${t("progressFraction", { done: p.done, total: p.total })}</span><span>${Math.round(p.done / p.total * 100)}%</span></div><div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="${p.total}" aria-valuenow="${p.done}" aria-label="${t(p.action === "move" ? "progressMoving" : "progressTrashing")}"><div class="progress-fill" style="width:${p.done / p.total * 100}%"></div></div><p class="muted">${esc(path(byID(p.ids[Math.min(p.done, p.ids.length - 1)]) || seed[0]))}</p></div></div>`;
+  function undoResultPanel() {
+    const r = s.undoResult;
+    return `<div class="batch-panel"><div class="panel-toolbar"></div><div class="result-summary">${icon("warning")}<h2>${t("undoPartialTitle", { success: r.completed, failed: r.failed.length })}</h2><p class="result-description">${t("undoPartialHelp")}</p></div><div class="result-list">${r.failed.map(failure => `<div class="result-row"><strong class="entry-name">${esc(failure.record.original?.name || failure.record.folder)}</strong><span class="entry-path">${esc(failure.record.original ? path(failure.record.original) : failure.record.folder)}</span><p class="result-description">${t(failure.reason)}</p></div>`).join("")}</div>${s.result ? `<p class="inline-notice">${t("forwardFailuresKept", { count: s.result.failed.length })}</p>` : ""}<div class="batch-actions">${button("retry-undo", t("retryUndo"), "primary", "restore", busy())}${button("undo-result-close", t(s.result ? "backToResult" : "finish"), "secondary", "", busy())}</div></div>`;
+  }
+
+  function folderOption(folder, label, depth, collapsible) {
+    const chosen = s.destination === folder, open = !s.collapsed.has(folder);
+    const toggle = collapsible
+      ? `<button class="folder-toggle" data-toggle-folder="${esc(folder)}" aria-expanded="${open}" aria-label="${esc(t(open ? "collapseFolder" : "expandFolder", { folder }))}">${icon("chevron")}</button>`
+      : `<span class="folder-toggle" aria-hidden="true"></span>`;
+    return `<div class="folder-node" style="--depth:${depth}">${toggle}<button class="folder-option ${chosen ? "selected" : ""}" data-folder="${esc(folder)}" aria-pressed="${chosen}" ${busy() ? "disabled" : ""} aria-label="${esc(t("chooseFolder", { folder: folderLabel(folder) }))}">${icon("folder")}<span class="folder-option-path">${esc(label)}</span>${chosen ? icon("check") : ""}</button></div>`;
+  }
+
+  function folderTree() {
+    const all = folders();
+    const childCount = folder => all.filter(other => other.startsWith(`${folder}/`) && !other.slice(folder.length + 1).includes("/")).length;
+    const hidden = folder => [...s.collapsed].some(parent => folder.startsWith(`${parent}/`));
+    return [folderOption("", t("rootFolder"), 0, false), ...all.filter(folder => !hidden(folder)).map(folder => {
+      const parts = folder.split("/");
+      return folderOption(folder, parts.at(-1), parts.length - 1, childCount(folder) > 0);
+    })].join("");
   }
 
   function modal() {
-    if (!s.dialog) return "";
-    if (s.dialog === "check") return `<dialog class="modal" aria-labelledby="modal-title"><header class="modal-header"><h2 id="modal-title">${t("checkBothTitle")}</h2></header><div class="modal-body"><p class="modal-description">${t("checkBothDescription")}</p><div class="path-preview"><p class="field-label">${t("originalPath")}</p><p>${esc(path(byID("li")))}</p><p class="field-label">${t("destinationPath")}</p><p>${esc(`${s.result.destination}/${byID("li").name}`)}</p></div></div><footer class="modal-footer">${button("cancel-dialog", t("back"), "primary")}</footer></dialog>`;
-    const count = selected().length;
-    if (s.dialog === "trash") return `<dialog class="modal trash-modal" aria-labelledby="modal-title" aria-describedby="modal-description"><header class="modal-header"><h2 id="modal-title">${t("trashTitle", { count })}</h2></header><div class="modal-body"><p class="modal-description" id="modal-description">${t("trashDescription")}</p><div class="confirm-preview">${selected().slice(0, 4).map(item => previewRow(item)).join("")}${count > 4 ? `<p class="muted">${t("moreItems", { count: count - 4 })}</p>` : ""}</div><p class="inline-notice">${icon("info")}${t("trashLocalNotice")}</p></div><footer class="modal-footer">${button("cancel-dialog", t("cancel"), "secondary", "", false, 'autofocus id="cancel-dialog"')}${button("confirm-trash", t("trashConfirm", { count }), "danger", "trash", !count)}</footer></dialog>`;
-    const plan = movePlan();
-    const folderOptions = ["", ...folders()];
-    const candidate = s.folderQuery.trim().replace(/^\/+|\/+$/g, "");
-    const canCreate = candidate && !folderOptions.includes(candidate) && !candidate.split("/").some(segment => [".", ".."].includes(segment));
-    const shown = folderOptions.filter(folder => folderLabel(folder).toLocaleLowerCase().includes(s.folderQuery.trim().toLocaleLowerCase()));
-    return `<dialog class="modal move-modal" aria-labelledby="modal-title" aria-describedby="modal-description"><header class="modal-header"><h2 id="modal-title">${t("moveShort")}</h2><p class="modal-description" id="modal-description">${t("moveDescription", { count })}</p></header><div class="modal-body"><p class="destination-label">${t("destination")}</p>${s.destination !== null ? `<button id="destination-trigger" class="destination-trigger" data-action="choose-folder" aria-expanded="${s.folderPickerOpen}">${icon("folder")}<span>${esc(folderLabel(s.destination))}</span>${icon("down")}</button>` : ""}${s.folderPickerOpen ? `<div class="folder-picker"><div class="folder-search search-wrap">${icon("search")}<input id="folder-search" placeholder="${t("folderSearch")}" aria-label="${t("folderSearchLabel")}" value="${esc(s.folderQuery)}"></div><div class="folder-list" role="group" aria-label="${t("chooseDestination")}">${shown.map(folder => `<button class="folder-option ${s.destination === folder ? "selected" : ""}" data-folder="${esc(folder)}" aria-pressed="${s.destination === folder}">${icon("folder")}<span class="folder-option-path">${esc(folderLabel(folder))}</span>${s.destination === folder ? icon("check") : ""}</button>`).join("")}${canCreate ? `<button class="folder-option folder-create" data-folder="${esc(candidate)}">${icon("folderPlus")}<span>${esc(t("createFolder", { folder: candidate }))}</span></button>` : ""}${!shown.length && !canCreate ? `<p class="muted">${t("noFolders")}</p>` : ""}</div></div>` : ""}
-      ${s.destination === null ? `<p class="selection-help">${t("moveRule")}</p>` : `<div class="move-summary"><p class="muted">${t("moveRule")}</p><div class="move-counts"><span>${t("readyCount", { count: plan.ready.length })}</span>${plan.conflicts.length ? `<span class="danger-text">${t("conflictCount", { count: plan.conflicts.length })}</span>` : ""}${plan.unchanged.length ? `<span class="muted">${t("unchangedCount", { count: plan.unchanged.length })}</span>` : ""}</div></div>
-      ${plan.conflicts.length ? `<section class="conflict-summary"><h3>${t("conflictHeading", { count: plan.conflicts.length })}</h3><p>${t("conflictDescription")}</p><div class="conflict-list">${plan.conflicts.map(item => `<div class="conflict-row">${icon("warning")}<div><strong>${esc(item.name)}</strong><span class="entry-path">${esc(path(item))}</span><span class="result-description">${t(item.reason)}</span></div></div>`).join("")}</div></section>` : ""}
-      ${plan.ready.length ? `<section class="path-preview"><h3>${t("previewDestination")}</h3>${plan.ready.map(item => `<div class="path-preview-row"><span class="old-path">${esc(path(item))}</span>${icon("arrow")}<span class="new-path">${esc(s.destination ? `${s.destination}/${item.name}` : item.name)}</span></div>`).join("")}</section>` : `<p class="inline-notice">${icon("info")}${t("noMovable")}</p>`}
-      ${s.destination.startsWith("工作/共享账号") ? `<p class="policy-notice">${icon("info")}${t("policyNotice")}</p>` : ""}`}</div>
-      <footer class="modal-footer">${button("cancel-dialog", t("cancel"), "secondary", "", false, 'id="cancel-dialog"')}${plan.conflicts.length ? button("adjust-selection", t("resolveSelection"), "secondary") : ""}${button("confirm-move", t(plan.conflicts.length ? "skipMove" : "moveCount", { count: plan.ready.length }), "primary", "", !plan.ready.length)}</footer></dialog>`;
+    if (s.dialog === "trash-confirm") return `<dialog class="modal" aria-labelledby="modal-title" aria-describedby="modal-description"><header class="modal-header"><h2 id="modal-title">${t("trashConfirmTitle", { count: s.selected.size })}</h2></header><div class="modal-body"><p id="modal-description">${t("trashConfirmDescription")}</p></div><footer class="modal-footer">${button("cancel-dialog", t("cancel"), "secondary")}${button("confirm-trash", t("trashAction"), "danger", "trash")}</footer></dialog>`;
+    if (s.dialog !== "check") return "";
+    return `<dialog class="modal" aria-labelledby="modal-title"><header class="modal-header"><h2 id="modal-title">${t("checkBothTitle")}</h2></header><div class="modal-body"><div class="path-preview"><p class="field-label">${t("originalPath")}</p><p>${esc(path(byID("li")))}</p><p class="field-label">${t("destinationPath")}</p><p>${esc(`${s.result.destination}/${byID("li").name}`)}</p></div></div><footer class="modal-footer">${button("cancel-dialog", t("back"), "primary")}</footer></dialog>`;
+  }
+
+  function toastView() {
+    if (!s.toast) return "";
+    const { key, values, sub, action, actionKey, running } = s.toast;
+    return `<div class="toast-region" role="status"><div class="toast ${running ? "undo-running" : ""}">${icon(running ? "spinner" : "checkCircle")}<span class="toast-copy"><span>${esc(t(key, values))}</span>${sub ? `<span class="toast-sub">${t(sub)}</span>` : ""}</span>${action ? `<button class="text-button toast-action" data-action="${action}" ${busy() ? "disabled" : ""}>${t(actionKey)}</button>` : ""}${running ? "" : iconButton("close-toast", "close", "close")}</div></div>`;
   }
 
   function render() {
+    syncStripSource();
     const previous = document.activeElement;
     const focusID = previous?.id;
     const range = previous instanceof HTMLInputElement ? [previous.selectionStart, previous.selectionEnd] : null;
     const listScroll = document.getElementById("entry-list")?.scrollTop || 0;
     const inspectorScroll = document.querySelector(".inspector-scroll")?.scrollTop || 0;
-    const modalScroll = document.querySelector(".modal-body")?.scrollTop || 0;
+    const folderScroll = document.querySelector(".folder-list")?.scrollTop || 0;
     const wasDialog = Boolean(document.querySelector("dialog[open]"));
     document.documentElement.dataset.theme = theme;
     document.documentElement.lang = language;
     document.title = t("pageTitle");
-    root.innerHTML = `${reviewBar()}<section class="app-window" aria-label="${t("brand")}"><header class="titlebar"><div class="titlebar-left">${iconButton("demo", "previous", "back", true)}${iconButton("demo", "next", "arrow", true)}<button class="icon-button sidebar-toggle" data-action="sidebar" aria-label="${t("toggleSidebar")}">${icon("sidebar")}</button><strong class="app-title">${t("passwordLibrary")}</strong></div><div class="titlebar-right"><span class="vault-name">${icon("folder")}${t("personalVault")}${icon("down")}</span><span class="sync-label">${t("savedLocally")}</span>${iconButton("demo", "lock", "lock")}</div></header><div class="workspace">${navigation()}${s.sidebar ? `<button class="sidebar-backdrop" data-action="sidebar" aria-label="${t("toggleSidebar")}"></button>` : ""}${list()}<section class="inspector" aria-live="polite"><div class="inspector-scroll">${s.progress ? progressPanel() : s.result ? resultPanel() : s.mode ? batchPanel() : detailPanel()}</div></section></div>${s.toast ? `<div class="toast-region" role="status"><div class="toast">${icon("checkCircle")}<span class="toast-copy">${t(s.toast.key, s.toast.values)}</span>${s.toast.action ? `<button class="text-button" data-action="${s.toast.action}">${t(s.toast.action === "destination" ? "viewDestination" : "viewTrash")}</button>` : ""}${iconButton("close-toast", "close", "close")}</div></div>` : ""}</section>${modal()}`;
+    root.innerHTML = `${reviewBar()}<section class="app-window" aria-label="${t("brand")}"><header class="titlebar"><div class="titlebar-left"><div class="titlebar-controls">${iconButton("demo", "previous", "back", true)}${iconButton("demo", "next", "arrow", true)}<button class="icon-button" data-action="sidebar" aria-label="${t("toggleSidebar")}" title="${t("toggleSidebar")}">${icon("sidebar")}</button></div><strong class="app-title">${t("passwordLibrary")}</strong></div><div class="titlebar-right"><button class="vault-switcher" data-action="demo" aria-label="${t("switchVault")}">${icon("folder")}<span>${t("personalVault")}</span>${icon("down")}</button><button class="status-button" data-action="demo">${icon("branch")}<span>${t("gitNotInitialized")}</span></button><button class="status-button" data-action="demo" aria-label="${t("syncVault")}">${icon("sync")}<span>${t("sync")}</span></button>${iconButton("demo", "lock", "lock")}</div></header><div class="workspace">${navigation()}${s.sidebar ? `<button class="sidebar-backdrop" data-action="sidebar" aria-label="${t("toggleSidebar")}"></button>` : ""}<div class="main-card">${list()}<section class="inspector" aria-live="polite"><div class="inspector-scroll">${s.undoResult ? undoResultPanel() : s.result ? resultPanel() : s.mode ? batchPanel() : detailPanel()}</div></section></div></div>${toastView()}</section>${modal()}`;
     const modalNode = document.querySelector("dialog");
     if (modalNode) {
       modalNode.showModal();
@@ -230,22 +409,24 @@
     }
     document.getElementById("entry-list").scrollTop = listScroll;
     document.querySelector(".inspector-scroll").scrollTop = inspectorScroll;
-    const body = document.querySelector(".modal-body"); if (body) body.scrollTop = modalScroll;
+    const folderList = document.querySelector(".folder-list"); if (folderList) folderList.scrollTop = folderScroll;
     bind();
-    if (focusID && document.getElementById(focusID) && (!modalNode || wasDialog || focusID === "folder-search")) {
+    if (focusID && document.getElementById(focusID) && (!modalNode || wasDialog)) {
       const next = document.getElementById(focusID); next.focus({ preventScroll: true });
       if (range && next instanceof HTMLInputElement) next.setSelectionRange(...range);
-    } else if (modalNode && !wasDialog) (s.dialog === "trash" ? document.getElementById("cancel-dialog") : document.getElementById("folder-search") || document.getElementById("destination-trigger"))?.focus({ preventScroll: true });
+    } else if (modalNode && !wasDialog) modalNode.querySelector("button")?.focus({ preventScroll: true });
   }
 
-  function toast(key, values = {}, action = null) {
-    clearTimeout(toastTimer); s.toast = { key, values, action }; render();
-    toastTimer = setTimeout(() => { s.toast = null; render(); }, 5000);
+  function toast(key, values = {}) {
+    s.toast = { key, values }; render(); autoDismiss();
   }
 
-  function closeDialog() { s.dialog = null; render(); document.querySelector(`[data-action="${s.returnAction || "move"}"]`)?.focus({ preventScroll: true }); }
-  function clearForScope() { s.selected.clear(); s.result = null; anchor = null; }
-  function enterDialog(kind) { s.dialog = kind; s.returnAction = kind; s.result = null; if (kind === "move") { s.destination = null; s.folderQuery = ""; s.folderPickerOpen = true; } render(); }
+  function autoDismiss(ms = 5000) {
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { s.toast = null; s.undo = null; render(); }, ms);
+  }
+
+  function closeDialog() { const action = s.dialog === "trash-confirm" ? "trash" : "check-both"; s.dialog = null; render(); document.querySelector(`[data-action="${action}"]`)?.focus({ preventScroll: true }); }
 
   function toggleEntry(id, event) {
     if (busy()) return;
@@ -265,21 +446,18 @@
     const ids = action === "move" ? plan.ready.map(item => item.id) : [...s.selected];
     if (!ids.length || busy()) return;
     const destination = s.destination || "";
-    const originals = ids.map(id => ({ ...byID(id) }));
-    const conflicts = plan?.conflicts.map(item => item.id) || [];
+    const retained = plan ? plan.skipped.map(item => item.id) : [];
     s.dialog = null; s.progress = { action, ids, total: ids.length, done: 0 }; s.toast = null; render();
     const step = () => {
       if (!s.progress) return;
       s.progress.done++; render();
       if (s.progress.done < ids.length) timer = setTimeout(step, 320);
       else timer = setTimeout(() => {
-        applySuccess(action, ids, destination);
-        if (conflicts.length) {
-          s.mode = true; s.selected = new Set(conflicts); s.result = null;
-          s.toast = { key: "movedSuccess", values: { count: originals.length }, action: "destination" };
-          s.lastDestination = destination;
-        }
-        render();
+        const changedPaths = new Map(ids.map(id => [id, targetPath(byID(id))]));
+        applySuccess(action, ids, destination, action === "move" ? changedPaths : null);
+        // Entries excluded from the operation stay selected for another action.
+        if (retained.length) { s.mode = true; s.selected = new Set(retained); }
+        render(); autoDismiss(8000);
       }, 300);
     };
     timer = setTimeout(step, 350);
@@ -291,41 +469,39 @@
       case "theme": theme = theme === "dark" ? "light" : "dark"; render(); break;
       case "reset": init("select"); break;
       case "sidebar": s.sidebar = !s.sidebar; render(); break;
-      case "mode": s.mode = !s.mode; s.selected.clear(); s.result = null; render(); break;
+      case "mode": s.mode = !s.mode; s.selected.clear(); s.result = null; s.destination = null; s.folderQuery = ""; render(); break;
       case "all": {
         const ids = visible().map(item => item.id), all = ids.every(id => s.selected.has(id));
         s.mode = true; s.result = null; ids.forEach(id => all ? s.selected.delete(id) : s.selected.add(id)); render(); break;
       }
-      case "clear-search": s.query = ""; clearForScope(); render(); document.getElementById("search")?.focus(); break;
-      case "move": enterDialog("move"); break;
-      case "choose-folder": s.folderPickerOpen = !s.folderPickerOpen; render(); if (s.folderPickerOpen) document.getElementById("folder-search")?.focus({ preventScroll: true }); break;
-      case "trash": enterDialog("trash"); break;
-      case "trash-one": s.mode = true; s.selected = new Set([s.active]); enterDialog("trash"); break;
-      case "cancel-dialog": closeDialog(); break;
-      case "adjust-selection": s.dialog = null; render(); break;
-      case "confirm-move": startOperation("move"); break;
+      case "clear-search": s.query = ""; render(); document.getElementById("search")?.focus(); break;
+      case "trash": if (s.selected.size) { s.dialog = "trash-confirm"; render(); } break;
+      case "trash-one": s.mode = true; s.selected = new Set([s.active]); s.dialog = "trash-confirm"; render(); break;
       case "confirm-trash": startOperation("trash"); break;
+      case "cancel-dialog": closeDialog(); break;
+      case "confirm-move": startOperation("move"); break;
+      case "cleanup": if (!s.mode && emptyFolders.length) { applyCleanup(); render(); autoDismiss(8000); } else toast("cleanupNone"); break;
       case "reveal": s.reveal = !s.reveal; render(); break;
-      case "destination": {
-        const destination = s.result?.destination ?? s.lastDestination ?? "";
-        s.scope = destination || "__root__"; s.query = ""; s.mode = false; s.result = null; s.toast = null; s.selected.clear(); s.active = items.find(item => item.folder === destination)?.id; render(); break;
-      }
-      case "view-trash": s.scope = "trash"; s.mode = false; s.result = null; s.toast = null; s.query = ""; s.active = trashItems[0]?.id; render(); break;
+      case "undo": case "retry-undo": startUndo(); break;
+      case "undo-result-close": s.undoResult = null; render(); break;
       case "result-close": s.result = null; s.mode = false; s.selected.clear(); s.active = null; render(); break;
-      case "check-both": s.dialog = "check"; s.returnAction = "check-both"; render(); break;
+      case "check-both": s.dialog = "check"; render(); break;
       case "retry": {
-        const retry = s.result.failed.filter(failure => !failure.review);
         const r = s.result;
+        const retry = r.failed.filter(failure => !failure.review);
+        const originals = retry.map(failure => ({ ...byID(failure.id) }));
         retry.forEach(failure => { byID(failure.id).folder = r.destination; s.selected.delete(failure.id); });
         r.success += retry.length; r.failed = r.failed.filter(failure => failure.review);
-        toast("movedSuccess", { count: retry.length }); break;
+        const records = originals.map(original => ({ original, appliedPath: path(byID(original.id)) }));
+        s.undo = { action: "move", completed: s.undo?.action === "move" ? s.undo.completed : 0, records: [...(s.undo?.action === "move" ? s.undo.records : []), ...records] };
+        s.toast = { key: "partialCompleted", values: { count: s.undo.records.length }, action: "undo", actionKey: "undo" }; render(); autoDismiss(8000); break;
       }
       case "restore": {
         const item = trashItems.find(entry => entry.id === s.active);
         if (item && !items.some(existing => path(existing) === path(item))) { items.push(item); trashItems = trashItems.filter(entry => entry.id !== item.id); s.active = trashItems[0]?.id; toast("restored", { count: 1 }); }
         break;
       }
-      case "close-toast": s.toast = null; render(); break;
+      case "close-toast": clearTimeout(toastTimer); s.toast = null; s.undo = null; render(); break;
       case "copy": toast("copiedDemo"); break;
       default: toast("previewOnly");
     }
@@ -337,7 +513,7 @@
     root.querySelectorAll("[data-scope]").forEach(node => node.addEventListener("click", () => {
       if (busy()) return;
       if (node.dataset.scope === "drafts") { toast("previewOnly"); return; }
-      s.scope = node.dataset.scope; s.query = ""; clearForScope(); s.active = null; s.sidebar = false;
+      s.scope = node.dataset.scope; s.query = ""; s.selected.clear(); s.result = null; anchor = null; s.active = null; s.sidebar = false;
       if (s.scope === "trash") { s.mode = false; s.active = trashItems[0]?.id; }
       render(); document.getElementById("entry-list").scrollTop = 0;
     }));
@@ -345,9 +521,21 @@
       if (event.target.closest("[data-copy]")) { toast("copiedDemo"); return; }
       toggleEntry(node.dataset.entry, event);
     }));
-    document.getElementById("search")?.addEventListener("input", event => { s.query = event.target.value; clearForScope(); render(); });
-    document.getElementById("folder-search")?.addEventListener("input", event => { s.folderQuery = event.target.value; render(); });
-    root.querySelectorAll("[data-folder]").forEach(node => node.addEventListener("click", () => { s.destination = node.dataset.folder; s.folderPickerOpen = false; s.folderQuery = ""; render(); document.getElementById("destination-trigger")?.focus({ preventScroll: true }); }));
+    // Searching only filters the list; the selection survives it.
+    document.getElementById("search")?.addEventListener("input", event => { s.query = event.target.value; s.result = null; render(); });
+    document.getElementById("folder-search")?.addEventListener("input", event => { s.folderQuery = event.target.value; s.destination = folders().includes(s.folderQuery.trim()) ? s.folderQuery.trim() : null; render(); });
+    document.querySelectorAll("[data-toggle-folder]").forEach(node => node.addEventListener("click", () => {
+      const folder = node.dataset.toggleFolder;
+      s.collapsed.has(folder) ? s.collapsed.delete(folder) : s.collapsed.add(folder); render();
+      document.querySelector(`[data-toggle-folder="${CSS.escape(folder)}"]`)?.focus({ preventScroll: true });
+    }));
+    document.querySelectorAll("[data-folder]").forEach(node => node.addEventListener("click", () => {
+      s.destination = node.dataset.folder; s.folderQuery = s.destination; render();
+      document.querySelector(`[data-folder="${CSS.escape(s.destination)}"]`)?.focus({ preventScroll: true });
+    }));
+    // Choosing which prefix to remove also chooses that option; it only changes the draft.
+    document.getElementById("strip-from")?.addEventListener("change", event => { s.stripFrom = event.target.value; s.keep = "strip"; render(); });
+    document.querySelectorAll('input[name="keep"]').forEach(node => node.addEventListener("change", () => { s.keep = node.value; render(); }));
     document.getElementById("language")?.addEventListener("change", event => { language = event.target.value; render(); });
   }
 

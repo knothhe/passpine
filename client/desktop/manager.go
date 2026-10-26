@@ -20,7 +20,6 @@ func (a *application) entriesTitle() string {
 // collapsed or presented as a narrow-window overlay. Each owns its scroll state.
 func (a *application) managerColumnsView(c *ui.Context) {
 	ui.Column(c).Key("manager-frame-inset").Fill().MinWidth(0).Padding(managerFrameInset).Background(c.Theme().Background).Children(func() {
-		a.gitRecoveryView(c)
 		ui.Row(c).Key("manager-columns").Fill().MinWidth(0).Radius(12).Border(1, c.Theme().Border).Background(c.Theme().Surface).Clip().Children(func() {
 			list := ui.Column(c).Key("entry-list-column").Label(a.t("条目列表")).Width(a.managerListWidth(c)).MinWidth(managerListMinWidth).Shrink(1).FillHeight()
 			list.Children(func() {
@@ -29,7 +28,9 @@ func (a *application) managerColumnsView(c *ui.Context) {
 			ui.Column(c).Key("entry-inspector-column").Grow(1).MinWidth(managerDetailMinWidth).FillHeight().Children(func() {
 				ui.Column(c).Key("entry-inspector-body").Fill().MinWidth(0).Clip().Children(func() {
 					ui.Box(c).Absolute().Left(0).Top(0).Bottom(0).Width(1).Background(c.Theme().Border)
-					if a.state.Locked {
+					if a.batch.active && (!a.state.Locked || a.batch.pending == "") {
+						a.batchView(c)
+					} else if a.state.Locked {
 						a.unlockView(c)
 					} else if a.editor.open {
 						a.editorView(c)
@@ -89,7 +90,10 @@ func (a *application) navigationSidebar(c *ui.Context) {
 				}
 				if a.state.Configured && !a.setup && (!a.state.Locked || a.state.Settings.BrowseWhileLocked) {
 					a.entries()
-					components.Text(c, a.t("文件夹")).Margin(16, 8, 4, 8).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+					ui.Row(c).FillWidth().Margin(12, 8, 4, 8).AlignItems(ui.Center).Children(func() {
+						components.Text(c, a.t("文件夹")).Grow(1).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+						a.folderCleanupButton(c)
+					})
 					for _, folder := range a.folders {
 						folder := folder
 						if strings.Contains(folder, "/") {
@@ -126,6 +130,8 @@ func (a *application) navigateManager(filter string) {
 		return
 	}
 	if a.page != "entries" || a.filter != filter {
+		// Selection belongs to one folder's list; switching folders clears it.
+		a.exitBatch()
 		a.navigate("entries", filter)
 		a.query = ""
 		a.dropDetail()
@@ -146,6 +152,7 @@ func (a *application) navigateRecovery(kind int) {
 		return
 	}
 	if a.page != "recovery" || a.recoveryKind != kind {
+		a.exitBatch()
 		a.recoveryKind = kind
 		a.recovery = nil
 		a.recoverySelection, a.restoreDestination = "", ""

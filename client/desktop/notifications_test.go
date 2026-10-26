@@ -113,3 +113,108 @@ func TestDialogFailureUsesSingleGlobalFeedbackAndLockClearsIt(t *testing.T) {
 		t.Fatal("feedback survived clearing secrets")
 	}
 }
+
+func TestActionNotificationReplacingExpiredToastKeepsOnlyNewAction(t *testing.T) {
+	a := fixture()
+	v := ui.NewTester(testView(a), 1120, 760)
+	v.SetPreferences(ui.Preferences{ReduceMotion: true})
+	oldCalls, newCalls := 0, 0
+	a.notifyWithAction(a.t("已将 %d 项移动到“%s”", 1, "归档"), "", a.t("撤销"), 8*time.Second, func() { oldCalls++ })
+	oldAction := a.notifications.onAction
+	v.Frame()
+	if a.notifications.expiresAt.IsZero() {
+		t.Fatal("the old toast did not start its deadline")
+	}
+	// A new completion can arrive after the old toast's deadline but before
+	// the next frame has expired it. Do not let that expiry consume the new
+	// action's serial while the replacement is being painted.
+	a.notifications.expiresAt = time.Now().Add(-time.Second)
+	a.notifyWithAction(a.t("已修改 %d 项的文件夹前缀", 1), "", a.t("撤销"), 8*time.Second, func() { newCalls++ })
+	newAction := a.notifications.onAction
+	v.Frame()
+	oldAction()
+	if err := v.Click(a.t("撤销")); err != nil {
+		t.Fatal(err)
+	}
+	if oldCalls != 0 || newCalls != 1 {
+		t.Fatalf("replacement toast executed the wrong action: old=%d new=%d", oldCalls, newCalls)
+	}
+	oldAction()
+	newAction()
+	if oldCalls != 0 || newCalls != 1 {
+		t.Fatal("an obsolete or already consumed toast action ran again")
+	}
+}
+
+func TestPersistentErrorActionSurvivesTimeAndRunsOnce(t *testing.T) {
+	a := fixture()
+	v := ui.NewTester(testView(a), 1120, 760)
+	v.SetPreferences(ui.Preferences{ReduceMotion: true})
+	calls := 0
+	message := a.t("已撤销 %d 项，%d 项未完成", 1, 1)
+	a.notifyErrorWithAction(message, "", a.t("重试撤销"), func() { calls++ })
+	action := a.notifications.onAction
+	v.Frame()
+	v.Advance(10 * time.Second)
+	if !v.HasText(message) || !a.notifications.expiresAt.IsZero() {
+		t.Fatal("a persistent undo failure inherited a toast expiry")
+	}
+	if err := v.Click(a.t("重试撤销")); err != nil {
+		t.Fatal(err)
+	}
+	action()
+	if calls != 1 {
+		t.Fatalf("persistent action executed %d times, want once", calls)
+	}
+}
+
+func TestSuccessActionReplacingPersistentErrorInvalidatesOldAction(t *testing.T) {
+	a := fixture()
+	v := ui.NewTester(testView(a), 1120, 760)
+	v.SetPreferences(ui.Preferences{ReduceMotion: true})
+	oldCalls, newCalls := 0, 0
+	oldMessage := a.t("已撤销 %d 项，%d 项未完成", 1, 1)
+	a.notifyErrorWithAction(oldMessage, "", a.t("重试撤销"), func() { oldCalls++ })
+	oldAction := a.notifications.onAction
+	v.Frame()
+	newMessage := a.t("已将 %d 项移到回收站", 2)
+	a.notifyWithAction(newMessage, "", a.t("撤销"), 8*time.Second, func() { newCalls++ })
+	newAction := a.notifications.onAction
+	v.Frame()
+	if v.HasText(oldMessage) || !v.HasText(newMessage) {
+		t.Fatal("new success did not replace the persistent failure")
+	}
+	oldAction()
+	if err := v.Click(a.t("撤销")); err != nil {
+		t.Fatal(err)
+	}
+	newAction()
+	if oldCalls != 0 || newCalls != 1 {
+		t.Fatalf("replacing a persistent toast corrupted action ownership: old=%d new=%d", oldCalls, newCalls)
+	}
+}
+
+func TestDisplayedActionIsInvalidatedByNewOperation(t *testing.T) {
+	a := fixture()
+	v := ui.NewTester(testView(a), 1120, 760)
+	v.SetPreferences(ui.Preferences{ReduceMotion: true})
+	calls := 0
+	a.notifyWithAction(a.t("已修改 %d 项的文件夹前缀", 1), "", a.t("撤销"), 8*time.Second, func() { calls++ })
+	oldAction := a.notifications.onAction
+	v.Frame()
+	if a.notice != "" || !v.HasText(a.t("撤销")) {
+		t.Fatal("the earlier actionable outcome was not painted")
+	}
+	callbacks := make(chan func(), 1)
+	a.runOnMain = func(callback func()) { callbacks <- callback }
+	state := a.state
+	a.service = backendFunc(func(app.Request) app.Response {
+		return app.Response{Status: "ok", Data: state}
+	})
+	a.call(app.Request{Action: "list"}, nil)
+	awaitMain(t, callbacks)
+	oldAction()
+	if calls != 0 {
+		t.Fatal("a previously displayed action survived a later explicit operation")
+	}
+}

@@ -63,7 +63,8 @@ export function validatePackage(filename, version) {
     if (browser) {
       const manifest = JSON.parse(contents);
       const firefox = path.basename(filename).endsWith('-firefox.zip');
-      if (manifest.key !== browserIdentity.key || (firefox && manifest.browser_specific_settings?.gecko?.id !== browserIdentity.firefoxID)
+      if (!firefox && Object.hasOwn(manifest, 'key')) throw new Error(`Chrome Web Store archive must omit manifest.key: ${filename}`);
+      if ((firefox && (manifest.key !== browserIdentity.key || manifest.browser_specific_settings?.gecko?.id !== browserIdentity.firefoxID))
         || /dev/i.test(manifest.version_name || '')) throw new Error(`Browser archive must use the release identity: ${filename}`);
     } else if (!/<key>CFBundleIdentifier<\/key>\s*<string>com\.knothhe\.passpine<\/string>/.test(contents)) {
       throw new Error(`macOS archive must use the release identity: ${filename}`);

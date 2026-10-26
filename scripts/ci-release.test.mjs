@@ -61,6 +61,46 @@ test('Release runs automatically only for version tags and passes the verified t
   assert.match(workflowBlock(release, ['jobs', 'build', 'with']), /^ +tag: \$\{\{ needs\.verify\.outputs\.tag \}\}\s*$/m);
 });
 
+test('Release synchronizes Homebrew only after successful publication and passes only its deploy key', () => {
+  const source = fs.readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
+  const job = workflowBlock(source, ['jobs', 'homebrew']);
+  assert.match(job, /^ +needs: \[verify, publish\]\s*$/m);
+  assert.match(job, /^ +uses: \.\/\.github\/workflows\/homebrew\.yml\s*$/m);
+  assert.match(workflowBlock(source, ['jobs', 'homebrew', 'with']), /^ +tag: \$\{\{ needs\.verify\.outputs\.tag \}\}\s*$/m);
+  const secrets = workflowBlock(source, ['jobs', 'homebrew', 'secrets']);
+  assert.deepEqual(mappingKeys(secrets), ['HOMEBREW_TAP_SSH_KEY']);
+  assert.match(secrets, /HOMEBREW_TAP_SSH_KEY: \$\{\{ secrets\.HOMEBREW_TAP_SSH_KEY \}\}/);
+  assert.match(workflowBlock(source, ['jobs', 'homebrew', 'permissions']), /^ +contents: write\s*$/m);
+  assert.doesNotMatch(job, /always\(|continue-on-error|PASSPINE_UPDATE_PRIVATE_KEY/);
+});
+
+test('Homebrew shares one queued workflow for public-tap publication, compatibility, and manual repair', () => {
+  const source = fs.readFileSync(new URL('../.github/workflows/homebrew.yml', import.meta.url), 'utf8');
+  assert.deepEqual(mappingKeys(workflowBlock(source, ['on'])), ['workflow_call', 'workflow_dispatch']);
+  for (const trigger of ['workflow_call', 'workflow_dispatch']) {
+    const tag = workflowBlock(source, ['on', trigger, 'inputs', 'tag']);
+    assert.match(tag, /^ +required: true\s*$/m);
+    assert.match(tag, /^ +type: string\s*$/m);
+  }
+  assert.match(workflowBlock(source, ['on', 'workflow_call', 'secrets', 'HOMEBREW_TAP_SSH_KEY']), /^ +required: true\s*$/m);
+  const job = workflowBlock(source, ['jobs', 'sync']);
+  assert.equal([...job.matchAll(/^ +ref: main\s*$/gm)].length, 2);
+  assert.equal([...job.matchAll(/^ +persist-credentials: true\s*$/gm)].length, 2);
+  assert.equal([...job.matchAll(/^ +fetch-depth: 0\s*$/gm)].length, 2);
+  assert.match(job, /^ +repository: knothhe\/homebrew-tap\s*$/m);
+  assert.match(job, /^ +path: tap\s*$/m);
+  assert.match(job, /ssh-key: \$\{\{ secrets\.HOMEBREW_TAP_SSH_KEY \}\}/);
+  assert.match(job, /RELEASE_TAG: \$\{\{ inputs\.tag \}\}/);
+  assert.match(job, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(job, /run: node source\/scripts\/sync-homebrew\.mjs --publish "\$RELEASE_TAG" --tap-root "\$GITHUB_WORKSPACE\/tap"/);
+  assert.match(job, /run: node source\/scripts\/sync-homebrew\.mjs --publish "\$RELEASE_TAG"\s*$/m);
+  assert.doesNotMatch(job, /always\(|continue-on-error|PASSPINE_UPDATE_PRIVATE_KEY/);
+  const concurrency = workflowBlock(source, ['jobs', 'sync', 'concurrency']);
+  assert.match(concurrency, /^ +group: homebrew-tap-passpine-main\s*$/m);
+  assert.match(concurrency, /^ +cancel-in-progress: false\s*$/m);
+  assert.match(concurrency, /^ +queue: max\s*$/m);
+});
+
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-ci-release-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -114,7 +154,8 @@ function createPackage(root, name, version = '0.1.6') {
     const browser = name.startsWith('passpine-');
     const entry = browser ? 'manifest.json' : 'Passpine.app/Contents/Info.plist';
     fs.mkdirSync(path.dirname(path.join(input, entry)), { recursive: true });
-    fs.writeFileSync(path.join(input, entry), browser ? JSON.stringify({ version, key: browserIdentity.key, browser_specific_settings: { gecko: { id: browserIdentity.firefoxID } } }) : `<plist><key>CFBundleIdentifier</key><string>com.knothhe.passpine</string><key>CFBundleShortVersionString</key>\n<string>${version}</string><key>CFBundleVersion</key>\n<string>${version}</string></plist>`);
+    const manifest = { version, ...(name.endsWith('-firefox.zip') ? { key: browserIdentity.key, browser_specific_settings: { gecko: { id: browserIdentity.firefoxID } } } : {}) };
+    fs.writeFileSync(path.join(input, entry), browser ? JSON.stringify(manifest) : `<plist><key>CFBundleIdentifier</key><string>com.knothhe.passpine</string><key>CFBundleShortVersionString</key>\n<string>${version}</string><key>CFBundleVersion</key>\n<string>${version}</string></plist>`);
     execFileSync('zip', ['-q', filename, entry], { cwd: input });
   }
   const bytes = fs.readFileSync(filename);
@@ -190,9 +231,9 @@ test('publication rejects changed packages, another commit and duplicate or unex
   assert.throws(() => collectPackages('v0.1.6', directory, root), /checksum mismatch/);
 });
 
-test('release validation rejects Dev browser and macOS identities with a stable version', archiveTest, t => {
+test('release validation rejects Dev Firefox and macOS identities with a stable version', archiveTest, t => {
   const { root } = fixture(t);
-  for (const name of ['passpine-0.1.6-chrome.zip', 'passpine-0.1.6-firefox.zip', 'Passpine-0.1.6-macos-arm64.zip']) {
+  for (const name of ['passpine-0.1.6-firefox.zip', 'Passpine-0.1.6-macos-arm64.zip']) {
     createPackage(root, name);
     const archive = path.join(root, 'packages', name);
     validatePackage(archive, '0.1.6');
@@ -202,13 +243,28 @@ test('release validation rejects Dev browser and macOS identities with a stable 
     const contents = fs.readFileSync(source, 'utf8');
     if (browser) {
       const manifest = JSON.parse(contents);
-      if (name.endsWith('firefox.zip')) manifest.browser_specific_settings.gecko.id = 'passpine-dev@knothhe.com';
-      else manifest.key = 'dev-public-key';
+      manifest.browser_specific_settings.gecko.id = 'passpine-dev@knothhe.com';
       fs.writeFileSync(source, JSON.stringify(manifest));
     } else fs.writeFileSync(source, contents.replace('com.knothhe.passpine</string>', 'com.knothhe.passpine.dev</string>'));
     fs.rmSync(archive);
     execFileSync('zip', ['-qr', archive, '.'], { cwd: path.join(root, 'input') });
     assert.throws(() => validatePackage(archive, '0.1.6'), /release identity/);
+  }
+});
+
+test('Chrome release archives accept an omitted key and reject any key field', archiveTest, t => {
+  const { root } = fixture(t);
+  const name = 'passpine-0.1.6-chrome.zip';
+  createPackage(root, name);
+  const archive = path.join(root, 'packages', name);
+  validatePackage(archive, '0.1.6');
+  const source = path.join(root, 'input', 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(source, 'utf8'));
+  for (const key of [browserIdentity.key, 'dev-public-key', '', null]) {
+    fs.writeFileSync(source, JSON.stringify({ ...manifest, key }));
+    fs.rmSync(archive);
+    execFileSync('zip', ['-q', archive, 'manifest.json'], { cwd: path.join(root, 'input') });
+    assert.throws(() => validatePackage(archive, '0.1.6'), /must omit manifest\.key/);
   }
 });
 

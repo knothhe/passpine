@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -66,7 +67,9 @@ type Service struct {
 	cancellation     atomic.Uint64
 	cancelVault      atomic.Pointer[vault.Vault]
 	cachedEntries    []vault.Entry
+	cachedFolders    []string
 	cachedAt         time.Time
+	folderUndos      map[string]folderUndoReceipt
 }
 
 func DefaultSettings() Settings {
@@ -328,15 +331,17 @@ func (s *Service) snapshotWithEntries(includeEntries bool) Data {
 		d.Configured = st.Configured
 		if includeEntries && (st.Unlocked || s.prefs.Settings.BrowseWhileLocked) {
 			if time.Since(s.cachedAt) > 2*time.Second {
-				list, e := s.active.ListMetadata()
+				list, folders, e := s.active.ListMetadataWithFolders()
 				if e == nil {
-					if !sameEntries(s.cachedEntries, list) {
+					if !sameEntries(s.cachedEntries, list) || !slices.Equal(s.cachedFolders, folders) {
 						s.entriesVersion++
 					}
 					s.cachedEntries = list
+					s.cachedFolders = folders
 					s.cachedAt = time.Now()
 				}
 			}
+			d.Folders = append([]string{}, s.cachedFolders...)
 			for _, v := range s.cachedEntries {
 				d.Entries = append(d.Entries, Entry{Path: v.Path, Name: v.Name, Folder: v.Folder})
 			}
@@ -380,7 +385,7 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 	// Metadata polling is not user activity. Desktop edits also call Touch,
 	// while browser credential actions are recorded here before taking mu.
 	switch r.Action {
-	case "fetch", "copy", "save", "delete", "draft", "generate", "copy-generated", "recovery", "restore", "purge", "unlock", "lock", "switch", "create", "open", "settings", "export", "verify-backup":
+	case "fetch", "copy", "save", "delete", "move", "create-folder", "cleanup-folders", "undo-cleanup-folders", "trash", "draft", "generate", "copy-generated", "recovery", "restore", "purge", "unlock", "lock", "switch", "create", "open", "settings", "export", "verify-backup":
 		s.lastActivity.Store(time.Now().UnixNano())
 	}
 	if r.Action == "clone" {
@@ -429,7 +434,7 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 		extra.DeviceUnlockNotice = s.enrollDevice(r.Passphrase, epoch)
 	}
 	switch r.Action {
-	case "save", "delete", "restore", "switch", "create", "open", "git-sync", "unlock":
+	case "save", "delete", "move", "create-folder", "cleanup-folders", "undo-cleanup-folders", "trash", "restore", "switch", "create", "open", "git-sync", "unlock":
 		s.entriesVersion++
 		s.cachedAt = time.Time{}
 	}
@@ -437,8 +442,12 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 		if s.active != nil {
 			s.active.Lock()
 		}
-		extra = Data{}
-		err = vault.ErrCancelled
+		// A finished folder change cannot be revoked by a later lock; report
+		// it so the caller can still offer undo.
+		if err != nil || !organizesFolders(r.Action) {
+			extra = Data{}
+			err = vault.ErrCancelled
+		}
 	}
 	out := Response{RequestID: r.RequestID, Protocol: 1, Status: "ok", Data: s.snapshotWithEntries(source != "browser" || r.Action == "configure" || r.Action == "list")}
 	if out.Data.Locked && needsUnlock(r.Action) {
@@ -449,7 +458,7 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 	}
 	if err == nil && s.active != nil {
 		switch r.Action {
-		case "fetch", "copy", "save", "delete", "draft", "generate", "recovery", "restore":
+		case "fetch", "copy", "save", "delete", "move", "create-folder", "cleanup-folders", "undo-cleanup-folders", "trash", "draft", "generate", "recovery", "restore":
 			s.active.Activity()
 		}
 	}
@@ -475,6 +484,7 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 		out.Data.Locked = true
 		if !s.prefs.Settings.BrowseWhileLocked {
 			out.Data.Entries = []Entry{}
+			out.Data.Folders = nil
 		}
 		out.Status = "error"
 		out.Code, out.Message = classify(vault.ErrCancelled)
@@ -482,6 +492,10 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 	return out
 }
 func mergeData(out *Data, v Data) {
+	out.RemovedFolders = v.RemovedFolders
+	out.RestoredFolders = v.RestoredFolders
+	out.RemainingFolders = v.RemainingFolders
+	out.UndoID = v.UndoID
 	out.Entry = v.Entry
 	out.Destination = v.Destination
 	out.OriginalEntry = v.OriginalEntry
@@ -649,6 +663,12 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 		return Data{}, e
 	}
 	switch r.Action {
+	case "create-folder":
+		return Data{Destination: r.Destination}, s.active.CreateFolder(r.Destination)
+	case "cleanup-folders":
+		return s.cleanupFolders()
+	case "undo-cleanup-folders":
+		return s.undoCleanupFolders(r)
 	case "fetch":
 		if r.Kind == "draft" {
 			rec, e := s.active.ReadRecovery(r.ID)
@@ -724,6 +744,32 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 		return dataDocument(doc), e
 	case "delete":
 		rec, e := s.active.Trash(r.Entry, r.Revision)
+		if e == nil {
+			s.autoSync()
+		}
+		return Data{TrashID: rec.ID}, e
+	// Batch organization acts on the latest version when no revision was read.
+	// Undo supplies the move's exact output revision to reject subsequent edits.
+	case "move":
+		revision := r.Revision
+		var e error
+		if revision == "" {
+			revision, e = s.active.Revision(r.Entry)
+		}
+		var doc vault.Document
+		if e == nil {
+			doc, e = s.active.MoveWithRevision(r.Entry, r.Destination, revision)
+		}
+		if e == nil {
+			s.autoSync()
+		}
+		return Data{Entry: r.Destination, OriginalEntry: r.Entry, Revision: doc.Revision}, e
+	case "trash":
+		revision, e := s.active.Revision(r.Entry)
+		var rec vault.RecoveryRecord
+		if e == nil {
+			rec, e = s.active.Trash(r.Entry, revision)
+		}
 		if e == nil {
 			s.autoSync()
 		}
@@ -909,6 +955,8 @@ func classify(e error) (string, string) {
 		return "not_configured", "请先在客户端创建或打开密码库"
 	case errors.Is(e, vault.ErrConflict):
 		return "revision_conflict", "条目已发生变化，请重新打开后编辑"
+	case errors.Is(e, vault.ErrSourceRemains):
+		return "source_remains", "目标已保存，原条目未移除"
 	case errors.Is(e, vault.ErrExists):
 		return "already_exists", "目标位置已存在条目"
 	case errors.Is(e, vault.ErrPath):
@@ -1017,6 +1065,7 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 	out.Data.VaultName = browserVaultName(out.Data)
 	out.Data.Directory = ""
 	out.Data.Vaults = nil
+	out.Data.Folders = nil
 	out.Data.BrowserRegistrations = nil
 	// Git remotes and filesystem errors can contain local checkout paths.
 	// The extension does not need the desktop's repository diagnostics.
@@ -1080,9 +1129,20 @@ func (s *Service) log(action, source, outcome string) {
 	}
 }
 
+// needsUnlock lists actions that read or encrypt entry contents. Folder
+// organization only renames files and directories; a move that must be
+// re-encrypted for other recipients is rejected by the vault while locked.
 func needsUnlock(action string) bool {
 	switch action {
-	case "fetch", "copy", "save", "delete", "draft", "recovery", "restore", "purge", "export", "verify-backup":
+	case "fetch", "copy", "save", "delete", "trash", "draft", "recovery", "restore", "purge", "export", "verify-backup":
+		return true
+	}
+	return false
+}
+
+func organizesFolders(action string) bool {
+	switch action {
+	case "move", "create-folder", "cleanup-folders", "undo-cleanup-folders":
 		return true
 	}
 	return false

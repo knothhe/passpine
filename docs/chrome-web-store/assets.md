@@ -1,6 +1,6 @@
 # 图片与拍摄记录
 
-对应 Passpine 0.1.2，2026-10-22 生成并逐张查看。规格依据见[官方来源](sources.md)。所有账号和生成的示例密码仅用于演示；没有读取个人浏览器配置或密码库。
+截图对应 Passpine 0.1.7，2026-10-24 在 Linux 上重新拍摄并逐张查看（0.1.2 版本于 2026-10-22 在 macOS 拍摄）。规格依据见[官方来源](sources.md)。所有账号和生成的示例密码仅用于演示；没有读取个人浏览器配置或密码库。
 
 ## 可上传的文件
 
@@ -20,7 +20,7 @@
 
 ## 实拍来源与验证范围
 
-- 使用当前 `browser/.output/chrome-mv3` 生产构建，Chrome for Testing 153.0.8010.12，独立临时 profile。通过真正的 `chrome.action.openPopup()` 工具栏弹窗入口拍摄，没有将 popup 当普通标签页打开或绕过消息来源校验。
+- 使用 0.1.7 的 `browser/.output/chrome-mv3` 生产构建，Linux 上 Playwright 提供的 Chromium 156.0.8078.4（品牌版 Chrome 不支持 `--load-extension`），独立临时 profile。通过真正的 `chrome.action.openPopup()` 工具栏弹窗入口拍摄，没有将 popup 当普通标签页打开或绕过消息来源校验。
 - 隔离 Go 客户端服务由 [store-demo/main.go](../../scripts/store-demo/main.go) 创建：使用正式 `app.Service`、真实 OpenPGP 密钥/条目加密及 Native Messaging 转发；五个虚构账号保存在临时目录。关闭设备解锁、Git 同步和操作记录，不操作个人账户。测试结束关闭服务和浏览器，并删除测试 profile、密码库和私钥。
 - 语言与浅色主题通过扩展真实设置控件切换。账号名称、目录和备注是用户数据，中文截图中保留其英文内容。
 - 原始弹窗为 380×460，保存在 `source-screenshots/<语言>/`。最终图将完整实拍等比放大到 456×552，加入品牌底图和外围说明；没有重绘或修改扩展内部 UI。等待转场结束，检查无叠影、裁字或遮挡。
@@ -42,8 +42,22 @@ node scripts/capture-store-screenshots.mjs
 
 字体使用 Avenir Next / PingFang SC，回退至 Helvetica Neue / Arial；不同机器的外围字形可能不同。脚本只使用临时测试目录，不能传入个人浏览器 profile 或个人密码库。重新拍摄后逐张查看，并核对尺寸、语言与当前版本。
 
+## 0.1.7 复核
+
+对比 `v0.1.2..v0.1.7` 的扩展界面代码：
+
+| 截图 | 0.1.7 是否需要重拍 | 原因 |
+| --- | --- | --- |
+| `01-accounts.png` | 否 | 账号行只修改了可访问名称和悬停提示，外观不变 |
+| `02-details.png` | **是**（中英文） | 详情页右上角的填充图标改为带文字的“填充账号与密码 / Fill login”按钮；弹窗打开时没有可填充的网页，因此按钮按实际状态显示为禁用 |
+| `03-generator.png` | 否 | 生成器组件未改动 |
+
+商店图标与宣传图不受影响。脚本一次重拍全部六张，2026-10-24 已用 0.1.7 重拍，保证同一组截图字体与环境一致。
+
+这次在 Linux 上拍摄，本机没有 Avenir Next / PingFang SC，底图文字与弹窗系统字体均回退为 Liberation Sans 及系统中文字体，字形不如 0.1.2 的 macOS 版本精致；搜索快捷键显示为 `Ctrl K`（macOS 为 `⌘ K`）。界面内容与 0.1.7 一致。如需与先前一致的字体，可在 macOS 上用同一命令重拍全部六张。
+
 ## 扩展 ZIP
 
-[passpine-0.1.2-chrome.zip](package/passpine-0.1.2-chrome.zip) 是此次本地构建的 Chrome 安装包，`manifest.json` 位于 ZIP 根目录，已核对无源码、测试服务、浏览器 profile 或私钥。只有这个扩展 ZIP 用于商店 Package 上传；文案、政策和图片分别填写或上传。
+[passpine-0.1.7-chrome.zip](package/passpine-0.1.7-chrome.zip) 是历史本地构建记录，`manifest.json` 位于 ZIP 根目录，无源码、测试服务、浏览器 profile 或私钥。该旧包包含 `key`，会被 Chrome Web Store 拒绝，不用于上传。
 
-重新打包可执行 `pnpm --dir browser exec wxt zip`，将新版本 Chrome ZIP 复制到 `package/`，同步所有材料的版本号并重新核对。首次草稿创建后，仍需确认商店分配的 ID 与客户端允许来源一致。
+重新打包在仓库根目录执行 `pnpm run package:browser`，使用生成的 `browser/.output/passpine-<版本>-chrome.zip`；商店配置会省略 `key`，本地解包构建仍保留公钥。更新存档时将新版本 ZIP 复制到 `package/`，同步校验和及材料版本并重新核对。首次草稿创建后，仍需确认商店分配的 ID 与客户端允许来源一致。

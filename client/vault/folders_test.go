@@ -1,0 +1,298 @@
+package vault
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
+	"testing"
+)
+
+func TestCreateFolderCreatesParentsAndListsEmptyFolders(t *testing.T) {
+	v := newFixture(t)
+	for _, folder := range []string{"test/a/b/c", "test/a/b/c", "test/有 空格/child"} {
+		if err := v.CreateFolder(folder); err != nil {
+			t.Fatal(err)
+		}
+	}
+	entries, folders, err := v.ListMetadataWithFolders()
+	want := []string{"test", "test/a", "test/a/b", "test/a/b/c", "test/有 空格", "test/有 空格/child"}
+	if err != nil || len(entries) != 0 || !slices.Equal(folders, want) {
+		t.Fatalf("empty folder metadata: entries=%v folders=%v err=%v", entries, folders, err)
+	}
+	for _, folder := range want {
+		info, err := os.Stat(filepath.Join(v.config.Directory, filepath.FromSlash(folder)))
+		if err != nil || !info.IsDir() {
+			t.Fatalf("folder %q was not created: %v", folder, err)
+		}
+		if runtime.GOOS != "windows" && info.Mode().Perm() != 0700 {
+			t.Fatalf("folder %q permissions = %v", folder, info.Mode())
+		}
+	}
+	children, err := os.ReadDir(filepath.Join(v.config.Directory, "test/a/b/c"))
+	if err != nil || len(children) != 0 {
+		t.Fatalf("creating a folder should not add marker or policy files: %v %v", children, err)
+	}
+	doc := mustSave(t, v, "source", "folder-test-secret", "")
+	if err := v.Move(doc.Path, "test/a/b/c/source", doc.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if moved, err := v.Read("test/a/b/c/source"); err != nil || moved.Raw != doc.Raw {
+		t.Fatalf("moving into the new folder changed the entry: %v", err)
+	}
+}
+
+func TestCreateFolderRejectsInvalidLockedAndBlockedPaths(t *testing.T) {
+	v := newFixture(t)
+	for _, folder := range []string{"", "/absolute", "rejected/../escape", "rejected//child", "rejected/.git/child", `rejected\child`, "rejected/CON/child", "rejected/child/"} {
+		if err := v.CreateFolder(folder); !errors.Is(err, ErrPath) {
+			t.Fatalf("accepted invalid folder %q: %v", folder, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(v.config.Directory, "rejected")); !os.IsNotExist(err) {
+		t.Fatal("invalid path created a parent directory", err)
+	}
+	blocked := filepath.Join(v.config.Directory, "blocked")
+	if err := os.WriteFile(blocked, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.CreateFolder("blocked/child"); err == nil {
+		t.Fatal("created a directory through a regular file")
+	}
+	if data, err := os.ReadFile(blocked); err != nil || string(data) != "keep" {
+		t.Fatal("failed creation changed the existing file", err)
+	}
+	// Folder creation is metadata only and works while the vault is locked.
+	v.Lock()
+	if err := v.CreateFolder("locked/child"); err != nil {
+		t.Fatal("locked vault rejected folder creation", err)
+	}
+	if info, err := os.Stat(filepath.Join(v.config.Directory, "locked/child")); err != nil || !info.IsDir() {
+		t.Fatal("locked creation did not write the directory", err)
+	}
+}
+
+func TestCleanupEmptyFoldersAfterMovingEntryToParent(t *testing.T) {
+	v := newFixture(t)
+	doc := mustSave(t, v, "test/a/b/c/d", "keep-this-secret", "")
+	if err := v.Move(doc.Path, "test/a/b/d", doc.Revision); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := v.CleanupEmptyFolders()
+	if err != nil || removed != 1 {
+		t.Fatalf("cleanup should remove only c: removed=%d err=%v", removed, err)
+	}
+	if _, err := os.Stat(filepath.Join(v.config.Directory, "test/a/b/c")); !os.IsNotExist(err) {
+		t.Fatal("empty source folder remains", err)
+	}
+	if moved, err := v.Read("test/a/b/d"); err != nil || moved.Raw != doc.Raw {
+		t.Fatal("cleanup changed the moved entry", err)
+	}
+}
+
+func TestCleanupEmptyFoldersPreservesFilesPoliciesAndHiddenDirectories(t *testing.T) {
+	v := newFixture(t)
+	for _, folder := range []string{"empty/a/b", "policy/unused", "hidden/unused", "notes"} {
+		if err := v.CreateFolder(folder); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, folder := range []string{".git/empty", ".private/empty"} {
+		if err := os.MkdirAll(filepath.Join(v.config.Directory, filepath.FromSlash(folder)), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := map[string]string{"policy/.gpg-id": "keep-recipient", "hidden/.keep": "keep-hidden-file", "notes/README": "keep-note"}
+	for name, contents := range files {
+		if err := os.WriteFile(filepath.Join(v.config.Directory, filepath.FromSlash(name)), []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if removed, err := v.CleanupEmptyFolders(); err != nil || removed != 5 {
+		t.Fatalf("cleanup should remove the empty chain and two empty children: %d %v", removed, err)
+	}
+	for name, want := range files {
+		if data, err := os.ReadFile(filepath.Join(v.config.Directory, filepath.FromSlash(name))); err != nil || string(data) != want {
+			t.Fatal("cleanup changed a file", name, err)
+		}
+	}
+	for _, folder := range []string{".git/empty", ".private/empty"} {
+		if info, err := os.Stat(filepath.Join(v.config.Directory, filepath.FromSlash(folder))); err != nil || !info.IsDir() {
+			t.Fatal("cleanup removed a hidden directory", folder, err)
+		}
+	}
+	if removed, err := v.CleanupEmptyFolders(); err != nil || removed != 0 {
+		t.Fatalf("repeated cleanup should be a no-op: %d %v", removed, err)
+	}
+}
+
+func TestCleanupEmptyFoldersWhileLockedStillRequiresStoreLock(t *testing.T) {
+	v := newFixture(t)
+	if err := v.CreateFolder("keep/empty"); err != nil {
+		t.Fatal(err)
+	}
+	v.Lock()
+	unlock, err := lockStore(v.config.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	removed, err := v.CleanupEmptyFolders()
+	unlock()
+	if removed != 0 || !errors.Is(err, ErrBusy) {
+		t.Fatalf("cleanup ignored another writer: %d %v", removed, err)
+	}
+	if _, err := os.Stat(filepath.Join(v.config.Directory, "keep/empty")); err != nil {
+		t.Fatal("rejected cleanup removed a directory", err)
+	}
+	if removed, err := v.CleanupEmptyFolders(); removed != 2 || err != nil {
+		t.Fatalf("locked cleanup did not remove empty folders: %d %v", removed, err)
+	}
+	if v.Status().Unlocked {
+		t.Fatal("cleanup unlocked the vault")
+	}
+}
+
+func TestCleanupEmptyFoldersNeedsNoKeysOrCiphertextDecryption(t *testing.T) {
+	root := t.TempDir()
+	v, err := New(Config{Directory: filepath.Join(root, "store"), KeyFile: filepath.Join(root, "keys", "missing.asc")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(v.Close)
+	if err := os.MkdirAll(filepath.Join(v.config.Directory, "empty/a/b"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Neither this ciphertext nor the absent key can be decrypted. Cleanup must
+	// operate solely on directory metadata and preserve the bytes unchanged.
+	ciphertext := []byte("not valid OpenPGP data")
+	entry := filepath.Join(v.config.Directory, "account.gpg")
+	if err := os.WriteFile(entry, ciphertext, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if removed, err := v.CleanupEmptyFolders(); removed != 3 || err != nil {
+		t.Fatalf("metadata-only cleanup failed without keys: %d %v", removed, err)
+	}
+	if got, err := os.ReadFile(entry); err != nil || string(got) != string(ciphertext) {
+		t.Fatal("cleanup changed ciphertext", err)
+	}
+	if v.Status().Unlocked {
+		t.Fatal("cleanup created a decrypted session")
+	}
+}
+
+func TestEmptyFolderRemovalPreservesNewFilesAndSkipsMissingFolders(t *testing.T) {
+	root := t.TempDir()
+	if err := safeMkdirAll(root, "raced"); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(root, "raced", "new-file")
+	if err := os.WriteFile(file, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if removed, err := safeRemoveEmptyFolder(root, "raced"); removed || err != nil {
+		t.Fatalf("nonempty folder must be skipped: %v %v", removed, err)
+	}
+	if removed, err := safeRemoveEmptyFolder(root, "raced/new-file"); removed || err == nil {
+		t.Fatalf("a regular file must never be removed: %v %v", removed, err)
+	}
+	if data, err := os.ReadFile(file); err != nil || string(data) != "keep" {
+		t.Fatal("concurrent file was lost", err)
+	}
+	if removed, err := safeRemoveEmptyFolder(root, "missing/child"); removed || err != nil {
+		t.Fatalf("already removed folder should be skipped: %v %v", removed, err)
+	}
+}
+
+func TestCleanupReceiptAndRestoreNeedNoKeysOrDecryption(t *testing.T) {
+	root := t.TempDir()
+	v, err := New(Config{Directory: filepath.Join(root, "store"), KeyFile: filepath.Join(root, "missing.asc")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(v.Close)
+	if err := os.MkdirAll(filepath.Join(v.config.Directory, "empty/有 空格/child"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	ciphertext := filepath.Join(v.config.Directory, "account.gpg")
+	if err := os.WriteFile(ciphertext, []byte("not decryptable"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := v.CleanupEmptyFoldersWithPaths()
+	want := []string{"empty/有 空格/child", "empty/有 空格", "empty"}
+	if err != nil || !slices.Equal(removed, want) {
+		t.Fatalf("cleanup receipt does not describe actual removed directories: %v %v", removed, err)
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		restored, pending, err := v.RestoreEmptyFolders(append(append([]string{}, removed...), removed...))
+		if err != nil || restored != 3 || len(pending) != 0 || v.Status().Unlocked {
+			t.Fatalf("metadata-only restore attempt %d: %d %v %v", attempt, restored, pending, err)
+		}
+	}
+	if data, err := os.ReadFile(ciphertext); err != nil || string(data) != "not decryptable" {
+		t.Fatal("cleanup undo changed ciphertext", err)
+	}
+	if _, err := os.Stat(filepath.Join(v.config.Directory, "empty/有 空格/child")); err != nil {
+		t.Fatal("cleanup undo did not recreate the hierarchy", err)
+	}
+}
+
+func TestRestoreEmptyFoldersPreservesFilesAndRetriesOnlyFailures(t *testing.T) {
+	v := newFixture(t)
+	for _, folder := range []string{"blocked/child", "good/child"} {
+		if err := v.CreateFolder(folder); err != nil {
+			t.Fatal(err)
+		}
+	}
+	removed, err := v.CleanupEmptyFoldersWithPaths()
+	if err != nil || len(removed) != 4 {
+		t.Fatal(removed, err)
+	}
+	blocked := filepath.Join(v.config.Directory, "blocked")
+	if err := os.WriteFile(blocked, []byte("keep concurrent file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	v.Lock()
+	restored, pending, err := v.RestoreEmptyFolders(removed)
+	if err == nil || restored != 2 || !slices.Equal(pending, []string{"blocked", "blocked/child"}) {
+		t.Fatalf("restore did not isolate failures: %d %v %v", restored, pending, err)
+	}
+	if data, err := os.ReadFile(blocked); err != nil || string(data) != "keep concurrent file" {
+		t.Fatal("restore overwrote a concurrent file", err)
+	}
+	if err := os.WriteFile(filepath.Join(v.config.Directory, "good/keep"), []byte("user data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(blocked); err != nil {
+		t.Fatal(err)
+	}
+	if restored, pending, err := v.RestoreEmptyFolders(pending); err != nil || restored != 2 || len(pending) != 0 {
+		t.Fatalf("restore retry failed: %d %v %v", restored, pending, err)
+	}
+	if data, err := os.ReadFile(filepath.Join(v.config.Directory, "good/keep")); err != nil || string(data) != "user data" || v.Status().Unlocked {
+		t.Fatal("restore retry touched completed work or unlocked the vault", err)
+	}
+}
+
+func TestRestoreEmptyFoldersDoesNotCreateUnrecordedParentsAndRequiresStoreLock(t *testing.T) {
+	v := newFixture(t)
+	for _, folders := range [][]string{{"unrecorded/child"}, {"valid", "invalid/../escape"}} {
+		if restored, _, err := v.RestoreEmptyFolders(folders); err == nil || restored != 0 {
+			t.Fatal("restore accepted missing unrecorded parents or unsafe paths", restored, err)
+		}
+	}
+	for _, name := range []string{"unrecorded", "valid", "invalid"} {
+		if _, err := os.Stat(filepath.Join(v.config.Directory, name)); !os.IsNotExist(err) {
+			t.Fatal("restore created an unrecorded or partially validated directory", name, err)
+		}
+	}
+	unlock, err := lockStore(v.config.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, pending, err := v.RestoreEmptyFolders([]string{"blocked"})
+	unlock()
+	if !errors.Is(err, ErrBusy) || restored != 0 || !slices.Equal(pending, []string{"blocked"}) {
+		t.Fatal("restore ignored the store lock or discarded retry state", restored, pending, err)
+	}
+}

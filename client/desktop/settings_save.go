@@ -18,6 +18,7 @@ func (a *application) saveSettingsAutomatically() {
 		var err error
 		finishShortcut, err = a.prepareGlobalShortcut(settings.GlobalShortcut)
 		if err != nil {
+			a.cancelQuitOnSaveFailure()
 			a.shortcut.errorText = err.Error()
 			a.settings.GlobalShortcut = a.settingsSaved.GlobalShortcut
 			a.settingsObserved = a.settings
@@ -30,6 +31,7 @@ func (a *application) saveSettingsAutomatically() {
 	}
 	finishLogin, err := a.prepareLaunchAtLogin(settings.LaunchAtLogin)
 	if err != nil {
+		a.cancelQuitOnSaveFailure()
 		finishShortcut(false)
 		a.errorText = a.t("无法设置开机自启：%s", err)
 		a.settings.LaunchAtLogin = a.settingsSaved.LaunchAtLogin
@@ -52,6 +54,7 @@ func (a *application) saveSettingsAutomatically() {
 			finishShortcut(result.Status == "ok")
 			finishLogin(result.Status == "ok")
 			if result.Status != "ok" {
+				a.cancelQuitOnSaveFailure()
 				a.errorText = result.Message
 				if a.errorText == "" {
 					a.errorText = a.t("设置保存失败，请重试")
@@ -113,6 +116,7 @@ func (a *application) saveGitRemoteAutomatically() {
 				return
 			}
 			if result.Status != "ok" {
+				a.cancelQuitOnSaveFailure()
 				a.errorText = result.Message
 				if a.errorText == "" {
 					a.errorText = a.t("Git 远端地址保存失败，请重新编辑")

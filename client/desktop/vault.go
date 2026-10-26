@@ -30,7 +30,21 @@ func (a *application) listView(c *ui.Context) {
 					components.Text(c, a.entriesCountLabel()).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 				})
 			})
-			if iconButton(c, lucide.Plus(), a.t("新建条目"), components.ButtonGhost).Tooltip(a.t("新建条目")).Clicked() {
+			if !a.state.Locked || a.state.Settings.BrowseWhileLocked {
+				label := a.t("选择")
+				if a.batch.active {
+					label = a.t("取消")
+				}
+				c.Key("batch-mode")
+				if components.Button(c, label, components.ButtonGhost).Disabled(a.busy && !a.detailReadPending() || a.editor.open).Clicked() && !a.busy {
+					if a.batch.active {
+						a.exitBatch()
+					} else {
+						a.enterBatch()
+					}
+				}
+			}
+			if !a.batch.active && iconButton(c, lucide.Plus(), a.t("新建条目"), components.ButtonGhost).Tooltip(a.t("新建条目")).Clicked() {
 				a.newEntry()
 			}
 		})
@@ -64,6 +78,13 @@ func (a *application) listView(c *ui.Context) {
 					}
 				}
 			})
+		} else if a.batch.active {
+			ui.Column(c).FillWidth().Grow(1).MinHeight(0).Margin(-8, 0, 0, 0).Children(func() {
+				a.batchSelectAllRow(c)
+				components.List(c, &a.batch.list, len(a.filtered), func(i int) {
+					a.batchEntryRow(c, a.filtered[i])
+				}).Grow(1).FillWidth()
+			})
 		} else {
 			components.List(c, &a.list, len(a.filtered), func(i int) {
 				e := a.filtered[i]
@@ -88,7 +109,7 @@ func (a *application) listView(c *ui.Context) {
 						if selected && !showCopy {
 							components.Icon(c, lucide.ChevronRight()).Size(14, 14).TextColor(c.Theme().TextMuted)
 						}
-						copy := iconButton(c, lucide.Copy(), a.t("复制密码 %s", e.Name), components.ButtonGhost).Key("copy-entry").Absolute().Left(0).Top(0).Size(28, 28).Disabled(a.busy)
+						copy := iconButton(c, lucide.Copy(), a.t("复制密码 %s", e.Name), components.ButtonGhost).Key("copy-entry").Absolute().Left(0).Top(0).Size(28, 28).Disabled(a.busy && !a.detailReadPending())
 						if !showCopy {
 							copy.Opacity(0)
 						}
@@ -121,7 +142,7 @@ func (a *application) detailView(c *ui.Context) {
 			components.Icon(c, lucide.ShieldCheck).Size(36, 36).TextColor(c.Theme().TextMuted)
 			components.Text(c, a.t("选择一个条目")).FontSize(scaledFontSize(c, 18)).Bold()
 			muted(c, a.t("从列表选择条目，在右侧查看详情。"))
-			if components.Button(c, a.t("新建条目"), components.ButtonGhost).Disabled(pending.Pending).Clicked() {
+			if components.Button(c, a.t("新建条目"), components.ButtonGhost).Clicked() && !pending.Pending {
 				a.newEntry()
 			}
 		})
@@ -146,14 +167,16 @@ func (a *application) detailView(c *ui.Context) {
 						if allRevealed {
 							revealIcon, revealLabel = lucide.EyeOff(), a.t("隐藏全部字段")
 						}
-						if iconButton(c, revealIcon, revealLabel, components.ButtonGhost).Disabled(pending.Pending).Tooltip(revealLabel).Clicked() {
+						// Keep this short read-only phase visually unchanged. Consume
+						// clicks here without applying them to the retained account.
+						if iconButton(c, revealIcon, revealLabel, components.ButtonGhost).Tooltip(revealLabel).Clicked() && !pending.Pending {
 							a.reveal = !allRevealed
 							a.revealedFields = nil
 						}
-						if iconButton(c, lucide.Pencil(), a.t("编辑条目"), components.ButtonGhost).Disabled(pending.Pending).Tooltip(a.t("编辑条目")).Clicked() {
+						if iconButton(c, lucide.Pencil(), a.t("编辑条目"), components.ButtonGhost).Tooltip(a.t("编辑条目")).Clicked() && !pending.Pending {
 							a.editEntry()
 						}
-						if iconButton(c, lucide.Trash(), a.t("移到回收站"), components.ButtonGhost).Disabled(pending.Pending).Tooltip(a.t("移到回收站")).Clicked() {
+						if iconButton(c, lucide.Trash(), a.t("移到回收站"), components.ButtonGhost).Tooltip(a.t("移到回收站")).Clicked() && !pending.Pending {
 							a.deleteOpen = true
 						}
 					})
@@ -273,7 +296,7 @@ func (a *application) detailField(c *ui.Context, key, label, value string, secre
 					if revealed {
 						icon = lucide.EyeOff()
 					}
-					if iconButton(c, icon, a.t("显示或隐藏%s", label), components.ButtonGhost).Disabled(pending).Clicked() {
+					if iconButton(c, icon, a.t("显示或隐藏%s", label), components.ButtonGhost).Clicked() && !pending {
 						if a.revealedFields == nil {
 							a.revealedFields = make(map[string]bool)
 						}
@@ -281,7 +304,7 @@ func (a *application) detailField(c *ui.Context, key, label, value string, secre
 					}
 				}
 				if key == "url" {
-					if iconButton(c, lucide.ArrowUpRight(), a.t("打开网站"), components.ButtonGhost).Disabled(pending).Tooltip(a.t("打开网站")).Clicked() {
+					if iconButton(c, lucide.ArrowUpRight(), a.t("打开网站"), components.ButtonGhost).Tooltip(a.t("打开网站")).Clicked() && !pending {
 						if safeWebsite(value) {
 							if err := mygo.Shell.OpenExternal(value); err != nil {
 								a.errorText = err.Error()
@@ -291,12 +314,12 @@ func (a *application) detailField(c *ui.Context, key, label, value string, secre
 						}
 					}
 				}
-				copy := components.Button(c, "", components.ButtonGhost).Label(a.t("复制%s", label)).Tooltip(a.t("复制%s", label)).Height(32).MinWidth(c.Theme().Rem(5.6)).Shrink(0).Padding(0, 9).Gap(6).AlignItems(ui.Center).Border(0, c.Theme().Border).TextColor(c.Theme().TextMuted).Disabled(pending)
+				copy := components.Button(c, "", components.ButtonGhost).Label(a.t("复制%s", label)).Tooltip(a.t("复制%s", label)).Height(32).MinWidth(c.Theme().Rem(5.6)).Shrink(0).Padding(0, 9).Gap(6).AlignItems(ui.Center).Border(0, c.Theme().Border).TextColor(c.Theme().TextMuted)
 				copy.Children(func() {
 					components.Icon(c, lucide.Copy()).Size(managerGlyphSize(c), managerGlyphSize(c))
 					components.Text(c, a.t("复制")).FontSize(scaledFontSize(c, 12)).SingleLine()
 				})
-				if copy.Clicked() {
+				if copy.Clicked() && !pending {
 					copyLabel := label
 					switch key {
 					case "password":

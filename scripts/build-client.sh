@@ -4,7 +4,18 @@ root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 IFS=$'\t' read -r channel version base_version output_dir app_name bundle_id package_name client_flags host_flags < <(node "$root_dir/scripts/build-channel.mjs" shell)
 node "$root_dir/scripts/dependencies.mjs"
 node "$root_dir/scripts/version.mjs" check
+node "$root_dir/scripts/dev-icons.mjs"
 mkdir -p "$output_dir"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  # Release builds need the pinned identity so the designated requirement
+  # stays stable across updates; local Dev builds fall back to ad-hoc.
+  signing=(--sign "${PASSPINE_MACOS_SIGNING_IDENTITY:--}" --timestamp=none)
+  [[ -z "${PASSPINE_MACOS_SIGNING_KEYCHAIN:-}" ]] || signing+=(--keychain "$PASSPINE_MACOS_SIGNING_KEYCHAIN")
+  if [[ "$channel" == "release" && -z "${PASSPINE_MACOS_SIGNING_IDENTITY:-}" ]]; then
+    echo "Release macOS builds must be signed with the pinned identity: run node scripts/macos-signing.mjs build." >&2
+    exit 1
+  fi
+fi
 cd "$root_dir/client"
 if [[ "$(uname -s)" == "Darwin" ]]; then
   xcrun swiftc -O -parse-as-library -swift-version 5 \
@@ -21,8 +32,10 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   cp "$output_dir/passpine" "$bundle/Contents/MacOS/passpine"
   cp "$output_dir/passpine-host" "$bundle/Contents/MacOS/passpine-host"
   cp "$output_dir/passpine-device-unlock" "$bundle/Contents/MacOS/passpine-device-unlock"
-  cp "$root_dir/client/assets/Passpine-monochrome.icns" "$bundle/Contents/Resources/Passpine.icns"
-  cp "$root_dir/client/assets/Passpine-monochrome.icns" "$bundle/Contents/Resources/Passpine-monochrome.icns"
+  icon="$root_dir/client/assets/Passpine-monochrome.icns"
+  [[ "$channel" != "dev" ]] || icon="$root_dir/client/assets/dev/monochrome/app-icon-dev.icns"
+  cp "$icon" "$bundle/Contents/Resources/Passpine.icns"
+  cp "$icon" "$bundle/Contents/Resources/Passpine-monochrome.icns"
   cat > "$bundle/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -41,8 +54,9 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
 <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict></plist>
 PLIST
-  codesign --force --deep --sign - "$bundle"
+  codesign --force --deep "${signing[@]}" "$bundle"
   codesign --verify --deep --strict "$bundle"
+  [[ "$channel" != "release" ]] || node "$root_dir/scripts/macos-signing.mjs" verify "$bundle"
   ditto -c -k --norsrc --noextattr --noqtn --keepParent "$bundle" "$output_dir/$package_name-$version-macos-$(uname -m).zip"
   echo "Built: $bundle"
 elif [[ "$(uname -s)" == "Linux" ]]; then

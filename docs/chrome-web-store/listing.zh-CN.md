@@ -1,6 +1,6 @@
 # Chrome Web Store 文案 · 简体中文
 
-对应版本：0.1.2。语言选择：中文（简体）/ `zh_CN`。后台字段说明不属于要粘贴的介绍正文。
+对应版本：0.1.7。语言选择：中文（简体）/ `zh_CN`。后台字段说明不属于要粘贴的介绍正文。
 
 ## 名称
 
@@ -38,9 +38,9 @@ Passpine 将本机密码库连接到 Chrome，让你在浏览器中查找账号�
 | 字段 | 建议内容 |
 | --- | --- |
 | 类别 | 工作效率 / Productivity；提交时以后台当前类别列表为准 |
-| 主页 | https://github.com/knothhe/passpine |
+| 主页 | https://passpine.knothhe.com/ |
 | 支持网址 | https://github.com/knothhe/passpine/issues |
-| 隐私政策 | 待发布；将 [PRIVACY.md](PRIVACY.md) 发布到可匿名访问的稳定 HTTPS 地址后填写 |
+| 隐私政策 | https://passpine.knothhe.com/privacy（见 [PRIVACY.md](PRIVACY.md)） |
 | 分发/价格 | 发布者按实际运营安排填写；仓库不能证明未来收费计划 |
 
-不要把 `PRIVACY.md` 的本地路径或未发布分支链接当作已上线的政策地址。支持网址来自仓库 remote；提交前确认仓库公开且 Issues 已启用。
+不要把仓库文件路径或本地预览地址当作已上线的政策地址。支持网址来自仓库 remote；提交前确认仓库公开且 Issues 已启用。

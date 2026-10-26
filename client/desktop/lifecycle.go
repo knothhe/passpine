@@ -200,7 +200,7 @@ func (a *application) lightweightSuspensionReady(now time.Time) bool {
 	return a.state.Settings.LightweightMode && !a.closing && !a.initializing && !a.lifecycle.suspended &&
 		!a.lifecycle.mainVisible && !a.quick.visible && !a.lifecycle.hiddenAt.IsZero() &&
 		now.Sub(a.lifecycle.hiddenAt) >= lightweightIdleDelay &&
-		!a.busy && !a.settingsSaving && !a.gitRemoteSaving && !a.gitActionPending &&
+		!a.busy && a.cli.operation == "" && !a.settingsSaving && !a.gitRemoteSaving && !a.gitActionPending &&
 		!a.editor.open && !a.generator.busy && a.quick.operation == ""
 }
 
@@ -241,6 +241,7 @@ func (a *application) releaseUIPresentation() {
 	a.passphrase, a.confirmPassphrase, a.backupPassphrase = "", "", ""
 	clearDataSecrets(&a.state)
 	a.state.Entries, a.filtered, a.sortedEntries, a.cachedResults = nil, nil, nil, nil
+	a.state.Folders = nil
 	a.searchPaths, a.folders = nil, nil
 	a.cacheReady = false
 	a.recovery, a.activity = nil, nil

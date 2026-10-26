@@ -7,6 +7,11 @@ on:
         description: Existing release tag to check out and package
         required: true
         type: string
+    secrets:
+      PASSPINE_MACOS_SIGNING_CERTIFICATE:
+        required: false
+      PASSPINE_MACOS_SIGNING_CERTIFICATE_PASSWORD:
+        required: false
 
 permissions:
   contents: read
@@ -78,7 +83,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libgtk-3-0 libwebkit2gtk-4.1-0 fonts-noto-cjk zip unzip 7zip nsis
+          sudo apt-get install --yes libgtk-3-0 fonts-noto-cjk zip unzip 7zip nsis xvfb xauth
 
       - name: Install Windows packaging and test tools
         if: runner.os == 'Windows'
@@ -153,8 +158,16 @@ jobs:
           pnpm --dir browser run typecheck
           pnpm --dir browser test
 
-      - name: Build macOS and Linux client packages
-        if: runner.os != 'Windows'
+      - name: Build signed macOS client package
+        if: runner.os == 'macOS'
+        env:
+          # A temporary keychain holds the stable identity only during this build.
+          PASSPINE_MACOS_SIGNING_CERTIFICATE: ${{ secrets.PASSPINE_MACOS_SIGNING_CERTIFICATE }}
+          PASSPINE_MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.PASSPINE_MACOS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: node scripts/macos-signing.mjs build
+
+      - name: Build Linux client package
+        if: runner.os == 'Linux'
         run: bash scripts/build-client.sh
 
       - name: Build Windows installer
@@ -166,6 +179,16 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/verify-windows-installer-update.ps1
+
+      - name: Verify isolated Linux Dev install and uninstall
+        if: runner.os == 'Linux'
+        run: |
+          xvfb-run --auto-servernum env PASSPINE_NATIVE_SMOKE=1 go -C client test -run '^TestNativePreviewStartup$' ./cmd/passpine
+          xvfb-run --auto-servernum node scripts/verify-dev-installation.mjs --run
+
+      - name: Verify isolated macOS and Windows Dev install and uninstall
+        if: runner.os != 'Linux'
+        run: node scripts/verify-dev-installation.mjs --run
 
       - name: Upload client build
         if: inputs.tag == ''

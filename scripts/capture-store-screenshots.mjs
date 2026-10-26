@@ -18,6 +18,7 @@ const executablePath = process.env.PASSPINE_CAPTURE_BROWSER;
 if (!executablePath) throw new Error('Set PASSPINE_CAPTURE_BROWSER to a full Chrome for Testing or Chromium executable.');
 const extension = path.join(root, 'browser/.output/chrome-mv3');
 const manifest = JSON.parse(await fs.readFile(path.join(extension, 'manifest.json'), 'utf8'));
+const { release: identity } = JSON.parse(await fs.readFile(path.join(root, 'config/browser-identities.json'), 'utf8'));
 const base = await fs.mkdtemp(path.join(os.tmpdir(), 'passpine-store-'));
 const profile = path.join(base, 'profile');
 const binary = path.join(base, 'demo-helper');
@@ -67,7 +68,7 @@ async function compose(raw, locale, scene) {
 try {
   await run('go', ['build', '-o', binary, '../scripts/store-demo/main.go'], { cwd: path.join(root, 'client') });
   await fs.mkdir(path.join(profile, 'NativeMessagingHosts'), { recursive: true });
-  const id = 'obnlebeedcbbchadakacilopfdaifgjh'; // Native Host only authorizes this checked-in identity.
+  const id = identity.chromiumID;
   const wrapper = path.join(base, 'host.sh');
   const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
   await fs.writeFile(wrapper, `#!/bin/sh\nexec ${quote(binary)} host ${quote(data)} "$@"\n`, { mode: 0o700 });

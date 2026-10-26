@@ -1,7 +1,22 @@
 // Package assets shares the application artwork with native integrations.
 package assets
 
-import _ "embed"
+import (
+	_ "embed"
+	"github.com/knothhe/passpine/client/buildinfo"
+)
+
+//go:embed dev/onevra/app-icon-dev.png
+var devIconPNG []byte
+
+//go:embed dev/monochrome/app-icon-dev.png
+var devMonochromePNG []byte
+
+//go:embed dev/onevra/app-icon-dev.icns
+var devIconICNS []byte
+
+//go:embed dev/monochrome/app-icon-dev.icns
+var devMonochromeICNS []byte
 
 // AppIconPNG contains the terracotta and warm-white squirrel artwork.
 // generate.swift exports it from the shared vector geometry at 256 pixels.
@@ -25,6 +40,12 @@ var monochromeIconICNS []byte
 
 // DockIconForStyle returns the multi-resolution macOS application artwork.
 func DockIconForStyle(style string) []byte {
+	if !buildinfo.IsRelease() {
+		if style == "onevra" {
+			return devIconICNS
+		}
+		return devMonochromeICNS
+	}
 	if style == "onevra" {
 		return appIconICNS
 	}
@@ -33,6 +54,12 @@ func DockIconForStyle(style string) []byte {
 
 // IconForStyle returns the brand artwork paired with a theme style.
 func IconForStyle(style string) []byte {
+	if !buildinfo.IsRelease() {
+		if style == "onevra" {
+			return devIconPNG
+		}
+		return devMonochromePNG
+	}
 	if style == "onevra" {
 		return AppIconPNG
 	}

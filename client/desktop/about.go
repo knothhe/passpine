@@ -1,10 +1,12 @@
 package desktop
 
 import (
+	"encoding/json"
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/about"
 	"github.com/knothhe/passpine/client/buildinfo"
 	"github.com/knothhe/passpine/client/i18n"
+	"github.com/knothhe/passpine/client/internal/secureclipboard"
 	"github.com/oneo-me/onevra/source/components"
 )
 
@@ -21,6 +23,40 @@ func (a *application) aboutView(c *ui.Context) {
 				version = a.t("版本 %s", a.buildVersion)
 			}
 			muted(c, version)
+			info := buildinfo.Current(a.buildVersion)
+			channel := a.t("开发通道")
+			if info.Channel == "release" {
+				channel = a.t("正式通道")
+			}
+			muted(c, a.t("构建通道：%s", channel))
+			if info.Commit != "" && info.Commit != "unknown" {
+				components.Text(c, a.t("源码提交：%s", info.Commit)).Wrap().FontSize(scaledFontSize(c, 11))
+			}
+			modified := a.t("无法确认")
+			if info.Modified == "true" {
+				modified = a.t("包含未提交修改")
+			} else if info.Modified == "false" {
+				modified = a.t("无未提交修改")
+			}
+			muted(c, a.t("源码状态：%s", modified))
+			executor := a.t("本机构建")
+			if info.Executor == "github-actions" {
+				executor = a.t("GitHub Actions")
+			}
+			muted(c, a.t("构建环境：%s · %s", executor, info.OS+"/"+info.Arch))
+			if components.Button(c, a.t("复制构建信息"), components.ButtonOutline).Clicked() {
+				data, _ := json.MarshalIndent(info, "", "  ")
+				// Diagnostic metadata contains no vault paths or credentials.
+				write := a.clipboardWriter
+				if write == nil {
+					write = secureclipboard.WriteText
+				}
+				if err := write(string(data), false); err != nil {
+					a.errorText = a.t(i18n.ClipboardWriteFailed)
+				} else {
+					a.notice = a.t("构建信息已复制")
+				}
+			}
 			muted(c, a.t("兼容 pass 的本地密码管理器。"))
 			ui.Link(c, a.t("项目主页"), about.ProjectURL)
 		})

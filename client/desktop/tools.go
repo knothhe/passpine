@@ -336,6 +336,7 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 		{ID: "security", Title: a.t("安全"), Icon: lucide.LockKeyhole(), Description: a.t("管理解锁方式和密码的保留时间。"), Groups: []components.SettingsGroup{{ID: "session", Items: security}}},
 		{ID: "vault", Title: a.t("密码库"), Icon: lucide.FolderKey(), Description: a.t("管理恢复备份与 Git 同步。"), Groups: []components.SettingsGroup{{ID: "backup", Items: vaultItems}, {ID: "sync", Title: a.t("Git 同步"), Items: syncItems}}},
 		{ID: "browser", Title: a.t("浏览器"), Icon: lucide.Globe(), Description: a.t("让浏览器扩展安全地访问当前密码库。"), Groups: []components.SettingsGroup{{ID: "integration", Items: browserItems}}},
+		{ID: "cli", Title: a.t("命令行"), Icon: lucide.SquareTerminal(), Description: a.t("从终端访问你的密码库。"), Groups: []components.SettingsGroup{{ID: "cli", Items: []components.SettingsItem{{ID: "cli-content", Title: a.t("CLI 安装与状态"), Description: a.t("安装兼容 pass 的命令行，并查看或卸载当前应用的命令链接。"), Build: a.cliSettingsView}}}}},
 		{ID: "updates", Title: a.t("软件更新"), Icon: lucide.Download(), Description: a.t("在后台获取更新，由你决定何时重启安装。"), Groups: []components.SettingsGroup{{ID: "updates", Items: []components.SettingsItem{
 			{ID: "updates-content", Title: a.t("当前版本与更新说明"), Description: a.t("检查更新、下载进度、重启安装与失败重试。"), Build: a.updatesView},
 			{ID: "auto-download-updates", Title: a.t("自动下载更新"), Description: a.t("默认开启。关闭后仍会自动检查更新，下载前等待你确认。"), Build: func(c *ui.Context) {

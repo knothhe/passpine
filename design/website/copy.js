@@ -31,5 +31,5 @@ window.WEBSITE_DESIGN_COPY = {
   savedVersion: "v0.1.2 · 可用正式版",
   downloadAction: "下载 ↓",
   mobile: "手机暂不支持桌面客户端，请在电脑上下载。",
-  note: "macOS 尚未公证；Windows 尚未签名。Linux 需要 GTK 3 与 WebKitGTK 4.1。",
+  note: "macOS 尚未公证；Windows 尚未签名。Linux 需要 GTK 3。",
 };

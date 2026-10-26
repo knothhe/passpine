@@ -1,6 +1,6 @@
 # 官方要求与核对记录
 
-核对日期：2026-10-22。以下页面已通过联网工具访问；这是材料准备记录，不代表开发者后台已填写或审核已通过。
+核对日期：2026-10-22；“商店介绍字段”与“隐私字段”两页于 2026-10-23 复核，介绍页的 URL 字段（Official URL、Homepage、Support）均为可选，两页都没有服务条款字段。2026-10-24 复核 manifest key 与打包准备文档，并按实际上传报错修复 ZIP 中的 `key`。以下页面已通过联网工具访问；这是材料准备记录，不代表开发者后台已填写或审核已通过。
 
 | 官方来源 | 本次核对结果 |
 | --- | --- |
@@ -11,7 +11,7 @@
 | [开发者政策](https://developer.chrome.com/docs/webstore/program-policies/policies) | 使用最小必要权限，清楚披露用途及接收方，提供准确可访问的隐私政策，并遵守 Limited Use。上架内容应反映实际功能。 |
 | [首次发布](https://developer.chrome.com/docs/webstore/publish) | ZIP 上传、填写介绍/隐私/分发信息、提供 Test instructions、提交审核是不同步骤。可选择审核通过后手动发布。 |
 | [manifest name](https://developer.chrome.com/docs/extensions/reference/manifest/name) / [description](https://developer.chrome.com/docs/extensions/reference/manifest/description) | name 最多 75 个字符，description 最多 132 个字符；本包两种语言均低于限制。 |
-| [manifest key](https://developer.chrome.com/docs/extensions/reference/manifest/key) | 官方流程从商店草稿的 Package → View public key 获取公钥以维持开发加载和商店同一 ID；应比较后台 Item ID 与实际扩展 ID。 |
+| [manifest key](https://developer.chrome.com/docs/extensions/reference/manifest/key) / [打包准备](https://developer.chrome.com/docs/webstore/prepare) | `key` 用于固定开发加载的 ID；官方流程先上传草稿，再从 Package → View public key 获取公钥供本地使用，并比较 ID。ZIP 中 manifest 应位于根目录。本次实际上传错误为 `key field is not allowed in manifest`，因此商店包省略 `key`，不把本地固定公钥当成商店身份。 |
 | [Native Messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging) | 原生 Host 单独注册，`allowed_origins` 必须明确允许扩展来源；这也是首次上架必须检查商店 ID 的原因。 |
 
 ## 官方页面差异
@@ -22,12 +22,12 @@
 
 | 事实 | 来源 |
 | --- | --- |
-| MV3、版本、权限、无站点常驻注入、CSP | `browser/.output/chrome-mv3/manifest.json`；生成源为 `browser/wxt.config.ts` |
+| MV3、版本、必需与可选权限、CSP | 本地：`browser/.output/chrome-mv3/manifest.json`，生成源 `browser/wxt.config.ts`；商店：`browser/.output/chrome-mv3-store/manifest.json`，配置 `browser/wxt.store.config.ts`；以最终 ZIP 为准 |
 | 中英文包元数据、短描述 | `browser/public/_locales/en/messages.json`、`browser/public/_locales/zh_CN/messages.json` |
 | 当前网站匹配、关联、原生请求及用户触发填充 | `browser/entrypoints/background.ts`、`browser/src/lib/model.ts`、`browser/src/lib/fill.ts` |
 | 编辑表单内生成器入口、自定义字段维护和详情展示范围 | `browser/src/components/EditorForm.tsx`、`browser/src/components/Generator.tsx`、`browser/src/components/App.tsx` |
 | `otp` 字段生成 TOTP 并交给扩展展示/填充 | `client/vault/model.go` 的 `ParseDocument` / `TOTP`、`client/app/service.go` 的 `dataDocument`、`browser/entrypoints/background.ts` |
-| 本地扩展偏好 | `browser/src/lib/appearance.ts`、`browser/src/lib/language.ts`、`browser/src/lib/popup-shortcuts.ts` |
+| 本地扩展偏好 | `browser/src/lib/appearance.ts`、`browser/src/lib/language.ts`、`browser/src/lib/popup-shortcuts.ts`、`browser/src/lib/page-shortcuts.ts` |
 | 会话失效及界面清理 | `browser/src/lib/session.ts`、`browser/src/components/App.tsx` |
 | 原生传输、本机端点、固定 Chromium ID | `client/nativehost/host.go`、`client/nativehost/registration.go` |
 | 密钥创建/加密、恢复记录与 Git 范围 | `client/vault/vault.go`、`client/vault/crypto.go`、`client/vault/recovery.go`、`client/vault/git.go` |

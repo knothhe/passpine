@@ -1,13 +1,13 @@
 {
   "name": "@passpine/browser",
   "private": true,
-  "version": "0.1.6",
+  "version": "0.1.12",
   "type": "module",
   "scripts": {
     "dev": "wxt --no-open",
     "build": "wxt build && node scripts/check-manifest.mjs chrome",
     "build:firefox": "wxt build -b firefox --mv3 && node scripts/check-manifest.mjs firefox",
-    "zip": "wxt zip && node scripts/check-manifest.mjs chrome && wxt zip -b firefox --mv3 && node scripts/check-manifest.mjs firefox",
+    "zip": "wxt zip --config wxt.store.config.ts && node scripts/check-manifest.mjs --store chrome && wxt zip -b firefox --mv3 && node scripts/check-manifest.mjs firefox",
     "typecheck": "wxt prepare && tsc --noEmit",
     "test": "vitest run",
     "preview": "vite --config vite.preview.config.ts",

@@ -15,18 +15,20 @@ pnpm install --frozen-lockfile
 pnpm run typecheck
 pnpm test
 make -C .. browser:build
-pnpm run zip
+make -C .. browser:zip
 ```
 
-本地与 CI 均使用 `.output/passpine-<版本>-chrome.zip` 和对应的 Firefox ZIP，不额外生成 sources ZIP；Edge 复用 Chrome 包。扩展不区分 Dev / 正式构建身份，本地构建不受桌面正式发布限制。正式发布仍由 GitHub Actions 在发布 tag 上完成，见[版本与发布](../docs/versioning.md)。扩展包可解包加载，Firefox 商店签名和自动上架尚未接入。
+在仓库根目录运行 `make browser:zip`，等同于 `pnpm run package:browser`，会构建并打包 Chrome 和 Firefox，不会上传商店。
+
+本地与 CI 均使用 `.output/passpine-<版本>-chrome.zip` 和对应的 Firefox ZIP，不额外生成 sources ZIP；Edge 复用 Chrome 包。Chrome ZIP 通过 `wxt.store.config.ts` 在 production 模式构建，源目录为 `.output/chrome-mv3-store`，manifest 不含商店拒绝的 `key` 字段。普通构建仍输出带固定公钥的 `.output/chrome-mv3`，供本地解包加载；不要从商店 ZIP 解包后加载来验证固定 ID。Firefox 打包沿用原配置。正式发布仍由 GitHub Actions 在发布 tag 上完成，见[版本与发布](../docs/versioning.md)。Firefox 商店签名和自动上架尚未接入。
 
 [本地安装、配置与浏览器加载说明](../docs/install-local.md)
 
-客户端设置 → 浏览器会检测已安装的浏览器，可逐项注册或修复本机 Native Messaging Host。扩展统一使用 Chrome ID `obnlebeedcbbchadakacilopfdaifgjh`、Firefox ID `passpine@knothhe.com`，输出为 `.output/chrome-mv3` 和 `.output/firefox-mv3`，名称始终为 Passpine。
+客户端设置 → 浏览器会检测已安装的浏览器，可逐项注册或修复本机 Native Messaging Host。扩展统一使用 Chrome ID `aphkddfagflppihmghlcjpnkkdgbflnp`、Firefox ID `passpine@knothhe.com`，输出为 `.output/chrome-mv3` 和 `.output/firefox-mv3`，名称始终为 Passpine。
 
 默认连接正式 Host `com.knothhe.passpine`。本地解包加载时，设置页可选择 Dev Host `com.knothhe.passpine.dev`；商店安装仅显示正式客户端说明，连接层也会忽略残留的 Dev 设置。安装来源通过无需额外权限的 `management.getSelf()` 检查，查询失败时固定正式目标。切换后旧连接及弹窗会话失效，不自动回退或重放旧操作。
 
-公开身份集中在 `config/browser-identities.json`，构建使用其中的 `release` 身份；旧 Dev 身份仅保留为历史记录与拒绝旧身份的测试。Chrome manifest 的 `key` 用于固定扩展 ID，与客户端更新签名公钥无关。旧 Dev 客户端需要更新并修复浏览器连接，重新授权统一扩展。
+公开身份集中在 `config/browser-identities.json`，构建使用其中的 `release` 身份；旧 Dev 身份仅保留为历史记录与拒绝旧身份的测试。本地 Chrome manifest 的 `key` 用于固定扩展 ID，与客户端更新签名公钥无关。商店 ID 由 Chrome Web Store 分配，首次上传成功后必须核对 Item ID；若与当前 ID 不同，从后台 Package → View public key 获取公钥，同步本地身份与客户端允许来源，再验证 Native Messaging。上传 ZIP 始终省略 `key`。旧 Dev 客户端需要更新并修复浏览器连接，重新授权统一扩展。
 
 ## 独立交互预览
 

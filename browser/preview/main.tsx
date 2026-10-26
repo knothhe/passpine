@@ -7,6 +7,7 @@ import { Options } from '../src/components/Options';
 import { Provider } from '../src/components/Provider';
 import { demoClient, setPreviewState } from './client';
 import { type AppearancePreferences } from '../src/lib/appearance';
+import { release as identity } from '../../config/browser-identities.json';
 
 const previewParameters = new URLSearchParams(location.search);
 const requestedState = previewParameters.get('state');
@@ -16,7 +17,7 @@ setPreviewState(initialState);
 function Preview() {
   const copy = useCopy();
   const [state, setState] = useState<'connected' | 'locked' | 'disconnected'>(initialState);
-  if (previewParameters.get('view') === 'options') return <Options client={demoClient} extensionId="obnlebeedcbbchadakacilopfdaifgjh"/>;
+  if (previewParameters.get('view') === 'options') return <Options client={demoClient} extensionId={identity.chromiumID}/>;
   return <main className="preview-page">
     <header className="preview-toolbar"><Text size="2" weight="medium">{copy.preview.title}</Text><Badge color="gray">{copy.preview.exampleData}</Badge><a href="/?view=options">{copy.preview.settings}</a></header>
     <Flex gap="2" justify="center" className="preview-controls">

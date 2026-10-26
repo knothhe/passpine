@@ -54,6 +54,9 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       tag: ${{ needs.verify.outputs.tag }}
+    secrets:
+      PASSPINE_MACOS_SIGNING_CERTIFICATE: ${{ secrets.PASSPINE_MACOS_SIGNING_CERTIFICATE }}
+      PASSPINE_MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.PASSPINE_MACOS_SIGNING_CERTIFICATE_PASSWORD }}
     permissions:
       contents: read
 
@@ -94,3 +97,14 @@ jobs:
           PASSPINE_UPDATE_FEED_URL: ${{ vars.PASSPINE_UPDATE_FEED_URL }}
           PASSPINE_UPDATE_PRIVATE_KEY: ${{ secrets.PASSPINE_UPDATE_PRIVATE_KEY }}
         run: node scripts/ci-release.mjs publish "$RELEASE_TAG" dist/ci-release
+
+  homebrew:
+    name: Update the Homebrew cask
+    needs: [verify, publish]
+    uses: ./.github/workflows/homebrew.yml
+    with:
+      tag: ${{ needs.verify.outputs.tag }}
+    secrets:
+      HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
+    permissions:
+      contents: write

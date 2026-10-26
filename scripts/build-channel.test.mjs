@@ -33,6 +33,12 @@ test('source builds default to a distinct development identity and never embed p
   assert.equal(config.linuxBinary, 'passpine-dev');
   assert.equal(config.linuxHost, 'passpine-dev-host');
   assert.match(config.ldflags, /buildinfo\.Channel=dev/);
+  assert.equal(config.commit,git('rev-parse','HEAD'));
+  assert.equal(config.modified,'false'); assert.equal(config.executor,'local');
+  fs.writeFileSync(path.join(root,'package.json'), JSON.stringify({version:'1.2.3',description:'uncommitted'}));
+  const modified = clientBuildConfig({},root);
+  assert.equal(modified.modified,'true');
+  assert.match(modified.hostLdflags,/buildinfo\.Modified=true/);
   assert.doesNotMatch(JSON.stringify(config), /updateFeedURL|updatePublicKey|private material/);
   assert.throws(() => buildChannel({ PASSPINE_BUILD_CHANNEL: 'production' }), /dev or release/);
 });
@@ -45,6 +51,7 @@ test('formal builds require the GitHub repository, existing matching tag, clean 
   assert.ok(config.ldflags.includes(`main.updatePublicKey=${pinned.publicKey}`));
   assert.ok(config.ldflags.includes(`main.updateFeedURL=${pinned.feedURL}`));
   assert.match(config.hostLdflags, /buildinfo\.Channel=release/);
+  assert.equal(config.executor,'github-actions'); assert.equal(config.modified,'false');
   for (const overrides of [{ GITHUB_ACTIONS: '' }, { GITHUB_ACTIONS: 'false' }, { GITHUB_REPOSITORY: 'fork/passpine' }, { PASSPINE_BUILD_CHANNEL: 'dev' }, { RELEASE_TAG: '' }]) {
     assert.throws(() => assertReleaseBuild({ ...env, ...overrides }, root));
   }

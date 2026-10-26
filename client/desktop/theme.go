@@ -34,11 +34,11 @@ func clientPalette(style string, dark bool) *ui.Theme {
 		}
 	}
 	if app.NormalizeThemeStyle(style) == app.ThemeStyleOnevra {
-		// Preserve Passpine's existing opaque navigation surfaces.
+		// Keep subtly shaded light navigation beside warm white content panes.
 		if dark {
 			t.Surface = ui.Hex("#292723")
 		} else {
-			t.Surface = ui.Hex("#f0eee9")
+			t.Background, t.Surface = ui.Hex("#f5f3ef"), t.Background
 		}
 		return t
 	}

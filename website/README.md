@@ -11,7 +11,7 @@ make website:deps        # 根据 pnpm-lock.yaml 安装依赖
 make website:dev         # 开发服务器
 make website:check       # 类型检查、测试、生产构建
 make website:build       # 仅生产构建
-make website:preview     # 构建后启动本地预览
+make website:preview     # 构建后启动本地预览（Vite，不处理 _redirects）
 make website:sync        # 从 GitHub 更新已验证的 Release 快照
 ```
 
@@ -29,9 +29,33 @@ pnpm --dir website run sync:releases
 
 根目录提供 `pnpm run dev:website`、`build:website`、`test:website`、`preview:website`、`sync:website` 和 `deploy:website` 别名。网站版本和部署独立于桌面客户端、浏览器扩展的 SemVer 发布；默认 `make` 不构建或部署官网。常规开发、检查与构建使用仓库中的 Release 快照，不依赖 GitHub 网络访问。
 
+## 页面与路由
+
+每个页面都是独立的静态 HTML 文档，不使用前端路由，也不启用单页应用回退：
+
+| 路径 | 文档 | 入口 |
+| --- | --- | --- |
+| `/` | `index.html` | `src/entries/home.tsx` |
+| `/privacy` | `privacy.html` | `src/entries/privacy.tsx` |
+| 其他不存在的路径 | `404.html`（返回 404 状态） | `src/entries/not-found.tsx` |
+
+页面清单、首页区块锚点和隐私政策章节 ID 集中在 `src/constants/routes.ts`。页眉和页脚的区块链接统一写成 `/#features` 这类绝对路径，在任意页面都能回到首页对应位置。`public/_redirects` 提供 `/privacy-policy` → `/privacy` 和 `/download` → `/#download` 两个别名。新增页面时：在 `pageDocuments` 登记、新建同名 HTML 文档和入口、在 `copy.ts` 的 `meta` 中补齐两种语言的标题与描述。
+
+`build` 在 Vite 构建后运行 `scripts/prerender.mjs`，把每个页面以默认语言（简体中文，与文档的 `lang` 一致）渲染进 HTML，使未执行 JavaScript 的爬虫、商店审核工具和访客也能读到正文。浏览器加载后按访客语言重新渲染，并重新定位 URL 中的锚点。
+
+## 隐私政策
+
+`/privacy` 是浏览器扩展、桌面客户端和官网共用的公开隐私政策，可直接填入 Chrome Web Store 后台。正文位于 `copy.ts` 的 `privacy`，最后更新日期和核对所依据的版本位于 `routes.ts` 的 `privacyPolicy`。权限、存储、联网或第三方服务发生变化时，同步修改两种语言的正文并更新日期；测试会检查两种语言的章节结构一致，以及权限表与扩展声明的权限相符。
+
 ## 语言
 
 官网支持 `system`、`en` 和 `zh-CN` 三种语言选项。默认跟随系统，不支持的系统语言回退为 English，与客户端和扩展保持一致；手动选择会保存在浏览器中。文案集中管理在 `src/constants/copy.ts`，新增用户可见内容需同步补齐中英文。
+
+## 宣传片
+
+视频区块按当前语言播放中文或英文宣传片。视频和封面不随站点打包，存放在 R2 bucket `oss`（自定义域名 `oss.knothhe.com`）的 `passpine/promo/<版本>/` 下，地址集中在 `src/constants/media.ts`；`public/_headers` 的 CSP 已为该域名放行 `img-src` 与 `media-src`。
+
+宣传片源码位于 `design/promo-video`：`pnpm --dir design/promo-video run render` 渲染中英文成片和封面，登录 Wrangler 后 `pnpm --dir design/promo-video run upload` 上传。已上传的版本不覆盖；更新视频时提高上传脚本中的 `VERSION`，并同步修改 `media.ts`。
 
 ## GitHub Releases 下载
 
@@ -43,11 +67,13 @@ pnpm --dir website run sync:releases
 
 快照存放在 `src/data/release.json`，通过与在线数据相同的校验规则读取。`make website:sync` 运行 `scripts/sync-release.mjs`，仅在获取并验证成功后更新快照。网络失败、GitHub 限流或数据无效时同步会报错，并保留原文件；部署命令会在构建前运行相同同步步骤，同步失败时终止部署。
 
+同步脚本优先使用环境变量 `GH_TOKEN`，其次使用 `GITHUB_TOKEN`；未设置 Token 时尝试通过本机已登录的 GitHub CLI（`gh api --hostname github.com`）请求，CLI 不可用或请求失败才使用匿名 API。匿名请求容易受到共享出口 IP 的限流，遇到 HTTP 403/429 时可先执行 `gh auth login --hostname github.com`，或在部署环境中配置仅有公开仓库读取权限的 Token。错误会显示 HTTP 状态码，以及 GitHub 提供的限流重置时间和重试间隔；显式配置的 Token 无效时直接报错。Token 仅用于 Node 同步进程，不写入快照或前端构建产物。
+
 安装后的平台依赖、签名限制和扩展加载步骤以[本地安装文档](../docs/install-local.md)为准。
 
 ## 部署到 Cloudflare
 
-`wrangler.jsonc` 配置静态资源目录 `./dist`，Worker 名称为 `passpine-website`，默认使用账户的 `workers.dev` 域名。这里不预设真实域名，也不启用单页应用路径回退；页面内导航使用锚点。
+`wrangler.jsonc` 配置静态资源目录 `./dist`，Worker 名称为 `passpine-website`，默认使用账户的 `workers.dev` 域名。这里不预设真实域名。`html_handling` 将 `privacy.html` 发布在 `/privacy`（`/privacy.html` 与 `/privacy/` 会重定向到该地址），`not_found_handling: "404-page"` 让不存在的路径返回 `404.html` 和 404 状态，而不是回退到首页。
 
 首次在本地部署：
 

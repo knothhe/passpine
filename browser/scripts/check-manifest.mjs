@@ -4,7 +4,10 @@ import path from 'node:path';
 
 const identities = JSON.parse(await readFile(new URL('../../config/browser-identities.json', import.meta.url), 'utf8'));
 const identity = identities.release;
-const paths = process.argv.slice(2).map(value => ['chrome', 'firefox'].includes(value) ? path.join('.output', `${value}-mv3`, 'manifest.json') : value);
+const args = process.argv.slice(2);
+const store = args[0] === '--store';
+if (store) args.shift();
+const paths = args.map(value => ['chrome', 'firefox'].includes(value) ? path.join('.output', `${value}-mv3${store ? '-store' : ''}`, 'manifest.json') : value);
 assert(paths.length > 0, 'Provide at least one built manifest path');
 
 for (const path of paths) {
@@ -13,7 +16,11 @@ for (const path of paths) {
   assert.equal(manifest.name, '__MSG_extensionName__', 'Extension name must use the unified localized name');
   assert.equal(manifest.description, '__MSG_extensionDescription__', 'Extension description must use the unified localized description');
   assert.equal(manifest.action?.default_title, '__MSG_extensionName__', 'Toolbar title must use the unified localized name');
-  assert.equal(manifest.key, identity.key, 'Manifest must use the unified extension public key');
+  if (store) assert(!Object.hasOwn(manifest, 'key'), 'Chrome Web Store manifest must omit the key field');
+  else assert.equal(manifest.key, identity.key, 'Unpacked manifest must use the unified extension public key');
+  assert.deepEqual(manifest.host_permissions ?? [], [], 'Website access must remain optional');
+  assert.deepEqual(manifest.optional_host_permissions, ['http://*/*', 'https://*/*'], 'Page shortcuts request optional website access');
+  assert(!manifest.content_scripts?.length, 'Page shortcut scripts must be registered only after permission is granted');
   if (manifest.browser_specific_settings?.gecko) assert.equal(manifest.browser_specific_settings.gecko.id, identity.firefoxID, 'Firefox identity must match the unified extension identity');
   assert.deepEqual(manifest.commands?.['_execute_action']?.suggested_key, { default: 'Ctrl+Shift+L', mac: 'Command+Shift+L' }, 'Opening Passpine must retain its default shortcuts');
   assert.deepEqual(manifest.commands?.['fill-best']?.suggested_key, { default: 'Ctrl+Shift+F', mac: 'Command+Shift+F' }, 'Filling an account must retain its default shortcuts');

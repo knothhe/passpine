@@ -97,6 +97,47 @@ func windowsParent(root, name string, create bool) (string, func(), error) {
 	return filepath.Join(current, filepath.Base(name)), closeAll, nil
 }
 
+func safeMkdirAll(root, name string) error {
+	// windowsParent creates and pins every parent. The final child is only a
+	// path argument; no placeholder file is opened or written.
+	_, closeAll, err := windowsParent(root, filepath.Join(filepath.FromSlash(name), ".passpine-folder"), true)
+	if err != nil {
+		return err
+	}
+	closeAll()
+	return nil
+}
+
+func safeRemoveEmptyFolder(root, name string) (bool, error) {
+	path, closeAll, err := windowsParent(root, name, false)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer closeAll()
+	f, err := windowsOpen(path, windows.FILE_READ_ATTRIBUTES, windows.OPEN_EXISTING, true)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	f.Close()
+	p, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return false, err
+	}
+	// Unlike os.Remove, RemoveDirectory cannot delete a regular file swapped
+	// into this path, and a concurrently added child makes removal fail.
+	err = windows.RemoveDirectory(p)
+	if errors.Is(err, windows.ERROR_DIR_NOT_EMPTY) || errors.Is(err, windows.ERROR_FILE_NOT_FOUND) || errors.Is(err, windows.ERROR_PATH_NOT_FOUND) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 func safeRead(root, name string) ([]byte, error) {
 	path, closeAll, err := windowsParent(root, name, false)
 	if err != nil {

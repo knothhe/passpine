@@ -88,14 +88,21 @@ func (a *application) restoreDetailTransitionStructure(previous detailTransition
 	a.detailTransition = previous
 }
 
-func (a *application) detailTransitionPresentation(now time.Time) detailTransitionPresentation {
+// A transient inspector read must not dim unrelated controls. Their handlers
+// still reject operations while busy, including clicks from the keyboard.
+func (a *application) detailReadPending() bool {
 	if a.state.Locked || a.setup || a.page != "entries" || a.selected == "" || a.detail.Entry != "" || !a.busy {
+		return false
+	}
+	transition := a.detailTransition
+	return transition.entry == a.selected && transition.vaultID == a.state.VaultID && transition.generation == a.generation && transition.epoch == a.metadataEpoch
+}
+
+func (a *application) detailTransitionPresentation(now time.Time) detailTransitionPresentation {
+	if !a.detailReadPending() {
 		return detailTransitionPresentation{}
 	}
 	transition := a.detailTransition
-	if transition.entry != a.selected || transition.vaultID != a.state.VaultID || transition.generation != a.generation || transition.epoch != a.metadataEpoch {
-		return detailTransitionPresentation{}
-	}
 	remaining := detailLoadingDelay - now.Sub(a.detailLoadingStarted)
 	if remaining < 0 {
 		remaining = 0

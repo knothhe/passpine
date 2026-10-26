@@ -114,6 +114,11 @@ type Data struct {
 	Directory              string                           `json:"directory,omitempty"`
 	Vaults                 []VaultInfo                      `json:"vaults"`
 	Entries                []Entry                          `json:"entries"`
+	Folders                []string                         `json:"folders,omitempty"`
+	RemovedFolders         int                              `json:"removedFolders,omitempty"`
+	RestoredFolders        int                              `json:"restoredFolders,omitempty"`
+	RemainingFolders       int                              `json:"remainingFolders,omitempty"`
+	UndoID                 string                           `json:"undoId,omitempty"`
 	Capabilities           []string                         `json:"capabilities"`
 	Settings               Settings                         `json:"settings"`
 	Entry                  string                           `json:"entry,omitempty"`

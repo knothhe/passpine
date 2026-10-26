@@ -3,10 +3,12 @@ ifeq ($(OS),Windows_NT)
 SHELL := cmd.exe
 CLIENT_BUILD = powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-client.ps1
 CLIENT_INSTALL = powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-client.ps1
+CLIENT_UNINSTALL = powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/uninstall-client.ps1
 else
 SHELL := /bin/bash
 CLIENT_BUILD = bash scripts/build-client.sh
 CLIENT_INSTALL = bash scripts/install-client.sh
+CLIENT_UNINSTALL = node scripts/client-installation.mjs uninstall
 endif
 
 # Desktop builds and installations are isolated development versions.
@@ -27,7 +29,7 @@ VERSION_BUMP ?= patch
 VERSION_VALUE ?=
 RELEASE_FLAGS ?=
 
-.PHONY: build install help release release-initial FORCE
+.PHONY: build install uninstall help release release-initial FORCE
 
 # Recursive goals keep colon names compatible with macOS GNU Make 3.81.
 build:
@@ -42,6 +44,12 @@ client\:build: FORCE
 client\:install: FORCE
 	$(MAKE) client:build
 	$(CLIENT_INSTALL) "$(CLIENT_INSTALL_DIR)"
+
+client\:uninstall: FORCE
+	$(CLIENT_UNINSTALL) "$(CLIENT_INSTALL_DIR)"
+
+uninstall:
+	$(MAKE) client:uninstall
 
 browser\:deps: browser/node_modules/.modules.yaml FORCE
 
@@ -60,6 +68,9 @@ browser\:build\:firefox: browser/node_modules/.modules.yaml FORCE
 # Edge loads the same Chromium build as Chrome.
 browser\:build\:edge: FORCE
 	$(MAKE) browser:build:chrome
+
+browser\:zip: browser/node_modules/.modules.yaml FORCE
+	pnpm --dir browser run zip
 
 browser\:install: FORCE
 	node scripts/install-local.mjs $(if $(BROWSER),--browser "$(BROWSER)") $(INSTALL_ARGS)
@@ -86,6 +97,9 @@ website\:preview: website/node_modules/.modules.yaml FORCE
 
 website\:sync: website/node_modules/.modules.yaml FORCE
 	pnpm --dir website run sync:releases
+
+homebrew\:sync: FORCE
+	node scripts/sync-homebrew.mjs
 
 website\:deploy: website/node_modules/.modules.yaml FORCE
 	pnpm --dir website run deploy

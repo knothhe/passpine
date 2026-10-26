@@ -1,6 +1,6 @@
 # Chrome Web Store copy · English
 
-Version: 0.1.2. Listing locale: English / `en`. Field notes are not part of the description to paste.
+Version: 0.1.7. Listing locale: English / `en`. Field notes are not part of the description to paste.
 
 ## Name
 
@@ -38,9 +38,9 @@ Help and issue reporting: https://github.com/knothhe/passpine/issues
 | Field | Suggested value |
 | --- | --- |
 | Category | Productivity; verify against the current dashboard options |
-| Homepage | https://github.com/knothhe/passpine |
+| Homepage | https://passpine.knothhe.com/ |
 | Support URL | https://github.com/knothhe/passpine/issues |
-| Privacy policy | Pending publication: publish [PRIVACY.md](PRIVACY.md) at a stable HTTPS URL accessible without signing in |
+| Privacy policy | https://passpine.knothhe.com/privacy (see [PRIVACY.md](PRIVACY.md)) |
 | Distribution / pricing | Publisher decision; repository code does not establish future commercial terms |
 
 Confirm that the repository and Issues page are publicly accessible before submitting. Do not use a local file path or unpublished branch URL as the live privacy-policy URL.

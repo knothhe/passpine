@@ -35,19 +35,19 @@ func detailDomain(value string) string {
 	return value
 }
 
-func (a *application) detailBreadcrumb(c *ui.Context, path string, disabled bool) {
+func (a *application) detailBreadcrumb(c *ui.Context, path string, pending bool) {
 	folder := detailFolder(path)
 	label := folder
 	if label == "" {
 		label = a.t("全部条目")
 	}
 	ui.Row(c).Key("detail-path").Grow(1).MinWidth(0).AlignItems(ui.Center).Gap(6).Label(a.t("条目路径")).Children(func() {
-		parent := ui.ButtonBase(c).Key("detail-parent").MaxWidth(180).MinWidth(0).Shrink(1).Padding(4, 0).Gap(6).AlignItems(ui.Center).Disabled(disabled).Tooltip(path)
+		parent := ui.ButtonBase(c).Key("detail-parent").MaxWidth(180).MinWidth(0).Shrink(1).Padding(4, 0).Gap(6).AlignItems(ui.Center).Tooltip(path)
 		parent.Children(func() {
 			components.Icon(c, lucide.Folder()).Size(12, 12).Shrink(0).TextColor(c.Theme().TextMuted)
 			components.Text(c, label).SingleLine().Ellipsis("…").MinWidth(0).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 		})
-		if parent.Clicked() {
+		if parent.Clicked() && !pending {
 			filter := "all"
 			if folder != "" {
 				filter = "folder:" + folder

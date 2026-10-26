@@ -21,6 +21,8 @@ case "$(uname -s)" in
     ;;
 esac
 
+node "$root_dir/scripts/client-installation.mjs" preflight "$install_dir"
+
 mkdir -p "$install_dir"
 install_dir="$(cd "$install_dir" && pwd -P)"
 case "$install_dir/" in
@@ -82,7 +84,7 @@ else
   data_dir="${XDG_DATA_HOME:-$HOME/.local/share}"
   [[ "$data_dir" == /* ]] || { echo "XDG_DATA_HOME must be an absolute path." >&2; exit 1; }
   mkdir -p "$data_dir/applications" "$data_dir/icons/hicolor/256x256/apps"
-  install -m 644 "$root_dir/client/assets/app-icon-monochrome.png" "$data_dir/icons/hicolor/256x256/apps/$bundle_id.png"
+  install -m 644 "$root_dir/client/assets/dev/monochrome/app-icon-dev.png" "$data_dir/icons/hicolor/256x256/apps/$bundle_id.png"
   # Desktop Entry values and Exec arguments have separate escaping rules.
   node --input-type=module - "$destination" "$data_dir/applications/$bundle_id.desktop" "$app_name" "$bundle_id" <<'NODE'
 import fs from 'node:fs'
@@ -97,4 +99,13 @@ NODE
 fi
 
 "$host" --register
+node "$root_dir/scripts/client-installation.mjs" record "$install_dir"
 echo "Installed client: $destination"
+
+# A fictional vault gives the development client and CLI something to test
+# against. Seeding is idempotent and never blocks the installation.
+if [[ "${PASSPINE_SKIP_TEST_VAULT:-}" != "1" ]]; then
+  client="$destination"
+  [[ -d "$destination" ]] && client="$destination/Contents/MacOS/passpine"
+  "$client" --seed-test-vault || echo "Test vault was not created; rerun: \"$client\" --seed-test-vault" >&2
+fi

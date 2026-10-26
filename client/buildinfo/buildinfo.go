@@ -13,7 +13,7 @@ import (
 var Channel = "dev"
 var userConfigDir = os.UserConfigDir
 
-const ReleaseChromiumID = "obnlebeedcbbchadakacilopfdaifgjh"
+const ReleaseChromiumID = "aphkddfagflppihmghlcjpnkkdgbflnp"
 const DevChromiumID = "dcfgpoaeamdmkgoepgkdllccakegldfc"
 
 func IsRelease() bool { return Channel == "release" }

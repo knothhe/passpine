@@ -1,5 +1,9 @@
 # 应用图标
 
+Dev 构建的两套应用图标均在右下角加 `Dev` 标记；正式资源和 macOS 单色托盘 template 保持原样。派生 PNG/ICNS 位于 `client/assets/dev/{monochrome,onevra}`，Windows 沿用现有资源工具从 Dev PNG 生成 ICO。打包资源与运行时 Dock/窗口使用相同通道选择，避免启动后被正式图标覆盖。
+
+`scripts/dev_icon.py` 基于 h2-desktop-client 的确定性生成器，将 Dev 字号放大 50% 并加粗，增大底板和留白，以便在 Dock 小尺寸下辨认。生成资源与图源、生成脚本及内容哈希清单一同提交，普通构建通过 `node scripts/dev-icons.mjs` 核验后直接使用；原图或生成脚本变化时自动重建，需要 Python 3.9+ 和 Pillow 10.1+，可通过 `PASSPINE_ICON_PYTHON` 指定已安装依赖的解释器。手动生成命令为 `node scripts/dev-icons.mjs`，它只修改独立的派生资源目录，不修改正式图源。
+
 客户端与扩展默认使用黑白（monochrome）图标和主题；保留两套配套风格，在设置页切换：
 
 - **陶土橙**：暖白渐变圆角底板与 Onevra 默认主色 `#BD481B` 松鼠剪影。

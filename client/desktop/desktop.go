@@ -19,6 +19,7 @@ import (
 	"github.com/knothhe/passpine/client/i18n"
 	sidebar "github.com/knothhe/passpine/client/internal/clientshell"
 	"github.com/knothhe/passpine/client/internal/secureclipboard"
+	"github.com/knothhe/passpine/client/nativehost"
 	"github.com/knothhe/passpine/client/update"
 	"github.com/knothhe/passpine/client/vault"
 	"github.com/oneo-me/onevra/source/components"
@@ -32,8 +33,10 @@ type Backend interface {
 const defaultSidebarWidth = 200
 
 type application struct {
+	quit                                                                 quitState
 	buildVersion                                                         string
 	updates                                                              updateUI
+	cli                                                                  cliSettingsState
 	aboutExpanded                                                        map[string]bool
 	service                                                              Backend
 	runOnMain                                                            func(func())
@@ -69,6 +72,7 @@ type application struct {
 	shortcut                                                             shortcutState
 	quick                                                                quickSearchState
 	notifications                                                        notificationState
+	notificationActionSerial                                             uint64
 	settingsState                                                        components.SettingsState
 	settingsLoaded                                                       bool
 	settingsSaved                                                        app.Settings
@@ -83,6 +87,8 @@ type application struct {
 	reveal                                                               bool
 	revealedFields                                                       map[string]bool
 	editor                                                               editorState
+	batch                                                                batchState
+	batchUndo                                                            *batchUndoState
 	deleteOpen, discardOpen, purgeOpen                                   bool
 	purgeID                                                              string
 	recovery                                                             []app.RecoveryItem
@@ -144,19 +150,7 @@ func Run(service *app.Service, version string, updateConfigs ...update.Config) e
 	}
 	mygo.App.OnSecondInstance(func([]string, string) { a.show() })
 	mygo.App.OnActivate(func(bool) { a.show() })
-	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
-		a.saveManagerLayout()
-		a.saveQuickSearchPosition()
-		a.stopLightweightTimer()
-		a.closing = true
-		if a.updates.cancel != nil {
-			a.updates.cancel()
-		}
-		a.setShortcutRecording(false)
-		close(a.stop)
-		a.clearSecrets()
-		go service.Close()
-	})
+	mygo.App.OnBeforeQuit(a.beforeQuit)
 	mygo.App.OnWindowAllClosed(func() {
 		if !a.lifecycle.suspended {
 			mygo.App.Quit()
@@ -181,20 +175,31 @@ func Run(service *app.Service, version string, updateConfigs ...update.Config) e
 	mygo.Theme.OnUpdated(a.updateNativeMenuTheme)
 	mygo.Power.OnSuspend(func() { a.lock() })
 	mygo.Power.OnLockScreen(func() { a.lock() })
+	// The service starts its watchers before the native event loop exists;
+	// their callbacks wait for readiness instead of racing GTK startup.
+	gate := newMainThreadGate(mygo.RunOnMain)
+	a.runOnMain = gate.run
 	service.SetOnOpen(func() {
-		mygo.RunOnMain(func() {
+		a.runOnMain(func() {
 			a.navigate("entries", "")
 			a.show()
 		})
 	})
-	service.SetOnChange(func() { mygo.RunOnMain(func() { a.queueMetadataRefresh(true) }) })
-	service.SetOnGitChange(func() { mygo.RunOnMain(func() { a.refreshGitState() }) })
+	service.SetOnChange(func() { a.runOnMain(func() { a.queueMetadataRefresh(true) }) })
+	service.SetOnGitChange(func() { a.runOnMain(func() { a.refreshGitState() }) })
 	service.SetOnLock(func() {
-		mygo.RunOnMain(func() {
+		a.runOnMain(func() {
 			a.handleSessionLock()
 		})
 	})
 	service.SetClipboard(a.copyToClipboard)
+	var control *nativehost.Server
+	var controlErr error
+	defer func() {
+		if control != nil {
+			control.Close()
+		}
+	}()
 	mygo.App.WhenReady(func() {
 		a.initializing = true
 		if mygo.App.WasOpenedAtLogin() {
@@ -218,13 +223,25 @@ func Run(service *app.Service, version string, updateConfigs ...update.Config) e
 			a.startUpdates(updateConfig)
 		})
 		go a.clock()
+		gate.open()
+		// Publishing the endpoint admits uninstall requests. Wait for the
+		// native event loop so an early request cannot shut down the service
+		// before the ready callback has initialized its window and work.
+		control, controlErr = nativehost.StartDevelopmentControl(service.DataDirectory(), func() { a.runOnMain(a.requestQuit) })
+		if controlErr != nil {
+			a.requestQuit()
+		}
 	})
-	return mygo.App.Run()
+	if err := mygo.App.Run(); err != nil {
+		return err
+	}
+	return controlErr
 }
 
 func newApplication(service Backend) *application {
 	a := &application{service: service, runOnMain: mygo.RunOnMain, page: "entries", filter: "all", selectedIndex: -1, generator: generatorState{length: 24, lower: true, upper: true, numbers: true, symbols: true, exclude: true}, lastInput: time.Now(), stop: make(chan struct{})}
 	a.lifecycle.resumeTarget = "main"
+	a.quit.quit = mygo.App.Quit
 	a.restoreManagerLayout()
 	a.initializeEntryList()
 	return a
@@ -369,6 +386,8 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 	if a.state.VaultID != r.Data.VaultID {
 		a.vaultSelection = r.Data.VaultID
 		a.clearDetailTransition()
+		a.batch = batchState{}
+		a.batchUndo = nil
 	}
 	if a.state.VaultID != r.Data.VaultID || len(a.state.Entries) != len(r.Data.Entries) {
 		a.cacheReady = false
@@ -393,6 +412,10 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 			a.revealedFields = nil
 		}
 	}
+	if a.handleFolderCleanupResponse(requestAction, r) {
+		a.invalidate()
+		return
+	}
 	if r.Status != "ok" {
 		if (requestAction == "fetch" || requestAction == "copy" && a.detailTransition.unlocking) && a.pendingSelection == "" {
 			a.clearDetailTransition()
@@ -400,6 +423,12 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 		a.errorText = r.Message
 		if a.errorText == "" {
 			a.errorText = r.Code
+		}
+		if requestAction == "create-folder" {
+			a.batch.folderCreation = nil
+			if r.Code == "operation_failed" {
+				a.errorText = a.t("无法创建文件夹，请检查目录权限和可用空间后重试。")
+			}
 		}
 		a.invalidate()
 		return
@@ -468,7 +497,10 @@ func (a *application) lock() {
 	a.clearSecrets()
 	a.state.Locked = true
 	a.generation++
-	a.busy = false
+	a.busy = a.stopBatchForLock()
+	// Locking cancels a running or pending batch action but keeps the chosen
+	// entries, which are only paths and can still be acted on after unlocking.
+	a.batch.pending = ""
 	go func() { a.service.Execute(app.Request{Action: "lock"}) }()
 	a.invalidate()
 }
@@ -499,13 +531,14 @@ func (a *application) handleSessionLock() {
 		return
 	}
 	a.generation++
-	a.busy = false
+	a.busy = a.stopBatchForLock()
 	a.clearSecrets()
 	a.state.Locked = true
 	a.invalidate()
 }
 
 func (a *application) clearSecrets() {
+	a.batchUndo = nil
 	a.cancelUnlockAction()
 	a.preferences.pendingRead = nil
 	a.clearQuickSearchSecrets()
@@ -519,6 +552,7 @@ func (a *application) clearSecrets() {
 	clearDataSecrets(&a.state)
 	if !a.state.Settings.BrowseWhileLocked {
 		a.state.Entries = nil
+		a.state.Folders = nil
 		a.entriesVersion++
 		a.sortedEntries = nil
 		a.searchPaths = nil
@@ -861,6 +895,9 @@ func (a *application) entries() []app.Entry {
 			a.searchPaths[i] = strings.ToLower(e.Path)
 		}
 		folders := map[string]bool{}
+		for _, folder := range a.state.Folders {
+			folders[folder] = true
+		}
 		for _, e := range a.sortedEntries {
 			if e.Folder != "" {
 				parts := strings.Split(e.Folder, "/")
@@ -901,6 +938,9 @@ func (a *application) entries() []app.Entry {
 }
 
 func (a *application) sidebarView(c *ui.Context) {
+	if a.closing {
+		return
+	}
 	ui.Column(c).Fill().Padding(sidebar.HeaderHeight(c), 0, 0, 0).Children(func() {
 		if (a.page == "settings" || a.page == "activity") && !a.setup {
 			a.settingsSidebar(c)
@@ -919,6 +959,9 @@ func (a *application) sidebarToolbar(c *ui.Context) {
 }
 
 func (a *application) header(c *ui.Context) {
+	if a.closing {
+		return
+	}
 	title := map[string]string{"entries": a.t("密码库"), "recovery": a.t("恢复中心"), "settings": a.t("设置"), "activity": a.t("操作记录")}[a.page]
 	if (a.setup || !a.state.Configured) && !(a.page == "settings" && a.settingsState.Category == "about" && !a.setup) {
 		title = a.t("打开密码库")
@@ -982,7 +1025,9 @@ func (a *application) vaultSelector(c *ui.Context) {
 	if a.mainContentWidth(c) < 540 {
 		width = 138
 	}
-	sel.Trigger.Width(width).MinWidth(100).Border(0, c.Theme().Border).Background(c.Theme().Background).Disabled(a.busy || a.editor.open).Label(a.t("切换密码库")).Gap(6).Children(func() {
+	// Keep the vault name steady during inspector reads. The menu choices
+	// and the change handler still reject switching while a request is busy.
+	sel.Trigger.Width(width).MinWidth(100).Border(0, c.Theme().Border).Background(c.Theme().Background).Disabled(a.busy && !a.detailReadPending() || a.editor.open).Label(a.t("切换密码库")).Gap(6).Children(func() {
 		components.Icon(c, lucide.FolderKey()).Size(14, 14)
 		components.Text(c, a.state.VaultName).SingleLine()
 	})
@@ -993,12 +1038,12 @@ func (a *application) vaultSelector(c *ui.Context) {
 			for _, v := range a.state.Vaults {
 				v := v
 				found = found || v.ID == a.state.VaultID
-				sel.Item(v.ID).Label(a.t("切换到密码库 %s", v.Name)).Children(func() { components.Text(c, v.Name).SingleLine() })
+				sel.Item(v.ID).Disabled(a.busy).Label(a.t("切换到密码库 %s", v.Name)).Children(func() { components.Text(c, v.Name).SingleLine() })
 			}
 			if !found {
-				sel.Item(a.state.VaultID).Label(a.t("当前密码库")).Children(func() { components.Text(c, a.state.VaultName).SingleLine() })
+				sel.Item(a.state.VaultID).Disabled(a.busy).Label(a.t("当前密码库")).Children(func() { components.Text(c, a.state.VaultName).SingleLine() })
 			}
-			sel.Item("open-vault").Label(a.t("打开或创建密码库")).Children(func() {
+			sel.Item("open-vault").Disabled(a.busy).Label(a.t("打开或创建密码库")).Children(func() {
 				components.Icon(c, lucide.FolderPlus()).Size(14, 14)
 				components.Text(c, a.t("打开或创建密码库")).SingleLine()
 			})
@@ -1007,6 +1052,9 @@ func (a *application) vaultSelector(c *ui.Context) {
 	if sel.Trigger.Changed() {
 		id := a.vaultSelection
 		a.vaultSelection = a.state.VaultID
+		if a.busy {
+			return
+		}
 		if id == "open-vault" {
 			a.openSetup()
 		} else if id != a.state.VaultID {
@@ -1016,6 +1064,10 @@ func (a *application) vaultSelector(c *ui.Context) {
 }
 
 func (a *application) contentView(c *ui.Context) {
+	if a.closing {
+		ui.Column(c).Fill().Padding(48).Children(func() { components.Text(c, a.t("正在完成退出…")) })
+		return
+	}
 	a.flushMetadataRefresh()
 	if !a.shortcut.recording {
 		c.OnShortcut(ui.Cmd, ui.KeyBracketLeft, func() { a.moveHistory(-1) })

@@ -49,16 +49,23 @@ export function clientBuildConfig(env = process.env, root = projectRoot) {
     version = `${baseVersion}-dev.${revision}`;
   }
   const development = channel === 'dev';
+  let commit = 'unknown', modified = 'unknown';
+  try {
+    commit = git(root, 'rev-parse', 'HEAD');
+    modified = String(git(root, 'status', '--porcelain') !== '');
+  } catch { /* Source archives have no verifiable VCS identity. */ }
+  const executor = env.GITHUB_ACTIONS === 'true' ? 'github-actions' : 'local';
+  const metadataFlags = ` -X ${moduleName}.Commit=${commit} -X ${moduleName}.Modified=${modified} -X ${moduleName}.Executor=${executor}`;
   return {
-    schema: 1, channel, version, baseVersion,
+    schema: 1, channel, version, baseVersion, commit, modified, executor,
     outputDirectory: path.join(root, development ? 'dist/dev' : 'dist'),
     appName: development ? 'Passpine Dev' : 'Passpine',
     bundleID: development ? 'com.knothhe.passpine.dev' : 'com.knothhe.passpine',
     packageName: development ? 'Passpine-Dev' : 'Passpine',
     linuxBinary: development ? 'passpine-dev' : 'passpine',
     linuxHost: development ? 'passpine-dev-host' : 'passpine-host',
-    ldflags: `-X main.version=${version} -X ${moduleName}.Channel=${channel}${updaterFlags}`,
-    hostLdflags: `-X main.version=${version} -X ${moduleName}.Channel=${channel}`,
+    ldflags: `-X main.version=${version} -X ${moduleName}.Channel=${channel}${metadataFlags}${updaterFlags}`,
+    hostLdflags: `-X main.version=${version} -X ${moduleName}.Channel=${channel}${metadataFlags}`,
   };
 }
 

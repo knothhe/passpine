@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -569,7 +570,21 @@ func (v *Vault) ListMetadata() ([]Entry, error) {
 }
 
 func (v *Vault) listMetadata() ([]Entry, error) {
+	entries, _, err := v.listMetadataWithFolders()
+	return entries, err
+}
+
+// ListMetadataWithFolders also includes empty directories, using the same
+// metadata-only traversal and browse-while-locked contract as ListMetadata.
+func (v *Vault) ListMetadataWithFolders() ([]Entry, []string, error) {
+	v.operations.Lock()
+	defer v.operations.Unlock()
+	return v.listMetadataWithFolders()
+}
+
+func (v *Vault) listMetadataWithFolders() ([]Entry, []string, error) {
 	entries := []Entry{}
+	folders := []string{}
 	e := filepath.WalkDir(v.config.Directory, func(filename string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -586,15 +601,19 @@ func (v *Vault) listMetadata() ([]Entry, error) {
 		if d.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
+		rel, e := filepath.Rel(v.config.Directory, filename)
+		if e != nil {
+			return e
+		}
 		if d.IsDir() {
+			folder := filepath.ToSlash(rel)
+			if ValidatePath(folder) == nil {
+				folders = append(folders, folder)
+			}
 			return nil
 		}
 		if !strings.HasSuffix(d.Name(), ".gpg") {
 			return nil
-		}
-		rel, e := filepath.Rel(v.config.Directory, filename)
-		if e != nil {
-			return e
 		}
 		name := strings.TrimSuffix(filepath.ToSlash(rel), ".gpg")
 		if ValidatePath(name) != nil {
@@ -615,10 +634,10 @@ func (v *Vault) listMetadata() ([]Entry, error) {
 		return nil
 	})
 	if e != nil {
-		return nil, e
+		return nil, nil, e
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
-	return entries, nil
+	return entries, folders, nil
 }
 
 // VerifyBackup checks that the backup can decrypt every current entry and
@@ -837,7 +856,7 @@ func (v *Vault) SaveRename(from, to, raw, expectedRevision string) (Document, er
 		}
 		if from != to {
 			if e := safeRemove(v.config.Directory, from+".gpg"); e != nil {
-				return fmt.Errorf("destination saved; source could not be removed: %w", e)
+				return fmt.Errorf("%w: %w", ErrSourceRemains, e)
 			}
 		}
 		return nil
@@ -848,16 +867,109 @@ func (v *Vault) SaveRename(from, to, raw, expectedRevision string) (Document, er
 	return ParseDocument(to, raw, revision(encrypted)), nil
 }
 
+// Revision identifies the current ciphertext of an entry without decrypting it,
+// so batch actions can act on the latest version of entries the user selected
+// from the list. Move and Trash verify it again under the store lock.
+func (v *Vault) Revision(name string) (string, error) {
+	if e := ValidatePath(name); e != nil {
+		return "", e
+	}
+	data, e := safeRead(v.config.Directory, name+".gpg")
+	if e != nil {
+		return "", e
+	}
+	return revision(data), nil
+}
+
 func (v *Vault) Move(from, to, expectedRevision string) error {
+	_, e := v.MoveWithRevision(from, to, expectedRevision)
+	return e
+}
+
+// MoveWithRevision returns the document and exact ciphertext revision produced
+// by the move. Callers can use that revision to undo without moving a later edit.
+// Under the same .gpg-id policy the ciphertext moves as is and the returned
+// document holds only its path and revision, so no unlocked session is needed.
+// A different policy requires re-encryption and therefore an unlocked session.
+func (v *Vault) MoveWithRevision(from, to, expectedRevision string) (Document, error) {
+	if doc, e := v.moveCiphertext(from, to, expectedRevision); !errors.Is(e, errReencrypt) {
+		return doc, e
+	}
 	// Read's revision is verified again by SaveRename, so intervening edits are
 	// rejected rather than overwritten by the earlier decrypted document.
 	doc, e := v.Read(from)
 	if e != nil {
-		return e
+		return Document{}, e
 	}
 	if doc.Revision != expectedRevision {
-		return ErrConflict
+		return Document{}, ErrConflict
 	}
-	_, e = v.SaveRename(from, to, doc.Raw, expectedRevision)
-	return e
+	return v.SaveRename(from, to, doc.Raw, expectedRevision)
+}
+
+var errReencrypt = errors.New("move requires re-encryption")
+
+// moveCiphertext renames an entry without decrypting it. It returns
+// errReencrypt when the destination's recipients differ from the source's.
+func (v *Vault) moveCiphertext(from, to, expectedRevision string) (Document, error) {
+	if e := ValidatePath(from); e != nil {
+		return Document{}, e
+	}
+	if e := ValidatePath(to); e != nil {
+		return Document{}, e
+	}
+	if from == to {
+		return Document{}, errReencrypt
+	}
+	if expectedRevision == "" {
+		return Document{}, errors.New("moving requires a source revision")
+	}
+	v.operations.Lock()
+	defer v.operations.Unlock()
+	unlock, e := lockStore(v.config.Directory)
+	if e != nil {
+		return Document{}, e
+	}
+	defer unlock()
+	same, e := v.sameRecipients(from, to)
+	if e != nil {
+		return Document{}, e
+	}
+	if !same {
+		return Document{}, errReencrypt
+	}
+	// The store lock keeps the checked revision and the copied bytes identical.
+	if e = v.checkRevision(from, expectedRevision); e != nil {
+		return Document{}, e
+	}
+	if e = v.checkRevision(to, ""); e != nil {
+		return Document{}, e
+	}
+	encrypted, e := safeRead(v.config.Directory, from+".gpg")
+	if e != nil {
+		return Document{}, e
+	}
+	if e = safeWrite(v.config.Directory, to+".gpg", encrypted, false); e != nil {
+		return Document{}, e
+	}
+	if e = safeRemove(v.config.Directory, from+".gpg"); e != nil {
+		return Document{}, fmt.Errorf("%w: %w", ErrSourceRemains, e)
+	}
+	return Document{Path: to, Revision: expectedRevision}, nil
+}
+
+// sameRecipients compares the effective .gpg-id policies of two entries as
+// sets, so an entry keeps exactly the recipients it would be re-encrypted to.
+func (v *Vault) sameRecipients(a, b string) (bool, error) {
+	left, e := v.recipients(a)
+	if e != nil {
+		return false, e
+	}
+	right, e := v.recipients(b)
+	if e != nil {
+		return false, e
+	}
+	slices.Sort(left)
+	slices.Sort(right)
+	return slices.Equal(slices.Compact(left), slices.Compact(right)), nil
 }

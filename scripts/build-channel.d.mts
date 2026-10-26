@@ -6,6 +6,9 @@ export interface ClientBuildConfig {
   channel: BuildChannel;
   version: string;
   baseVersion: string;
+  commit: string;
+  modified: string;
+  executor: string;
   outputDirectory: string;
   appName: string;
   bundleID: string;

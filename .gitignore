@@ -13,6 +13,7 @@ dist/
 
 .codex/
 .pnpm-store/
+.claude/
 
 # Website local state and credentials (dist/ and node_modules/ are covered above).
 website/.wrangler/

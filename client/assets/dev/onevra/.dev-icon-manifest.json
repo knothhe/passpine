@@ -1,0 +1,19 @@
+{
+  "files": {
+    "app-icon-dev-256.png": "c17f44c99f57cfda7c618bdf90357fd02daa568aed1938a6c6712b46f9bb2f09",
+    "app-icon-dev.icns": "f6e8a68192be936a46cb6a00a6dfb17a7594a7b3cdf9d27783bcb05d475d5ea3",
+    "app-icon-dev.png": "c17f44c99f57cfda7c618bdf90357fd02daa568aed1938a6c6712b46f9bb2f09"
+  },
+  "formats": [
+    "icns",
+    "png"
+  ],
+  "generator_sha256": "1354d2d5ec70bf9fe4b99db3b37de99e586692c64dc9a6f50c05d245dea311a1",
+  "png_sizes": [
+    256
+  ],
+  "schema": 1,
+  "source": "Passpine.icns",
+  "source_sha256": "6b66fedbb5138b99a2f98b5c87fbba2361973f16218ac26cd506e889677bea69",
+  "tool": "h2-desktop-client/dev-icon"
+}
