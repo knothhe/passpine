@@ -28,7 +28,7 @@ beforeEach(() => {
   extension.commands.update.mockImplementation(async ({ name, shortcut }: { name: string; shortcut: string }) => { bindings = bindings.map(value => value.name === name ? { name, shortcut } : value); });
   extension.commands.reset.mockImplementation(async (name: string) => { bindings = bindings.map(value => value.name === name ? { name, shortcut: name === OPEN_COMMAND ? 'Ctrl+Shift+L' : 'Ctrl+Shift+F' } : value); });
 });
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 async function renderSettings(firefox: boolean) { await act(async () => root.render(createElement(Theme, {}, createElement(ShortcutSettings, { firefox })))); }
 
@@ -149,6 +149,22 @@ describe('shortcut settings interactions', () => {
     expect(extension.commands.reset).toHaveBeenCalledWith(OPEN_COMMAND);
     expect(extension.commands.reset).toHaveBeenCalledWith(FILL_COMMAND);
     expect(container.textContent).toContain('快捷键已保存');
+  });
+
+  it.each(['L', 'P'])('checks the Firefox macOS reset defaults against a popup binding ending in %s', async key => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)');
+    extension.storage.local.get.mockResolvedValue({ popupShortcuts: [{ id: 'search', action: 'search', shortcut: `Command+Shift+${key}` }] });
+    extension.commands.reset.mockImplementation(async (name: string) => { bindings = bindings.map(value => value.name === name ? { name, shortcut: name === OPEN_COMMAND ? 'Command+Shift+L' : 'Command+Shift+F' } : value); });
+    await renderSettings(true);
+    await act(async () => button('恢复浏览器默认').click());
+    if (key === 'L') {
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain(chineseCopy.shortcuts.popupConflict);
+      expect(extension.commands.reset).not.toHaveBeenCalled();
+    } else {
+      expect(container.querySelector('[role="alert"]')).toBeNull();
+      expect(extension.commands.reset).toHaveBeenCalledWith(OPEN_COMMAND);
+      expect(button('修改打开 Passpine快捷键').querySelector('kbd:last-child')?.textContent).toBe('L');
+    }
   });
 
   it.each(['edit', 'reset'])('reuses a Firefox command key released by %s without a stale conflict', async operation => {

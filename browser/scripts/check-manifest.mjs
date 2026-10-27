@@ -22,7 +22,9 @@ for (const path of paths) {
   assert.deepEqual(manifest.optional_host_permissions, ['http://*/*', 'https://*/*'], 'Page shortcuts request optional website access');
   assert(!manifest.content_scripts?.length, 'Page shortcut scripts must be registered only after permission is granted');
   if (manifest.browser_specific_settings?.gecko) assert.equal(manifest.browser_specific_settings.gecko.id, identity.firefoxID, 'Firefox identity must match the unified extension identity');
-  assert.deepEqual(manifest.commands?.['_execute_action']?.suggested_key, { default: 'Ctrl+Shift+L', mac: 'Command+Shift+L' }, 'Opening Passpine must retain its default shortcuts');
+  // Both builds retain Gecko metadata; Firefox uses background scripts in MV3.
+  const firefox = Array.isArray(manifest.background?.scripts);
+  assert.deepEqual(manifest.commands?.['_execute_action']?.suggested_key, { default: 'Ctrl+Shift+L', mac: firefox ? 'Command+Shift+L' : 'Command+Shift+P' }, 'Opening Passpine must use its declared browser and platform defaults');
   assert.deepEqual(manifest.commands?.['fill-best']?.suggested_key, { default: 'Ctrl+Shift+F', mac: 'Command+Shift+F' }, 'Filling an account must retain its default shortcuts');
   assert(!JSON.stringify(manifest).includes('%COPY_'), 'Manifest contains an unresolved UI copy token');
   const policy = manifest.content_security_policy?.extension_pages;

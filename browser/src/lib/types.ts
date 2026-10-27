@@ -1,7 +1,13 @@
 // Protocol compatibility is independent of extension and desktop product versions.
 export const PROTOCOL = 1;
 
-export type NativeAction = 'configure' | 'status' | 'touch' | 'list' | 'fetch' | 'save' | 'delete' | 'lock' | 'unlock' | 'generate' | 'copy' | 'copy-generated';
+export type NativeAction = 'configure' | 'status' | 'touch' | 'list' | 'fetch' | 'save' | 'delete' | 'lock' | 'unlock' | 'generate' | 'copy' | 'copy-generated' | 'config-sync-browser';
+export interface SyncedBrowserPreferences {
+  themeStyle: 'monochrome' | 'onevra';
+  theme: 'system' | 'light' | 'dark';
+  fontScale: 80 | 90 | 100 | 110 | 120;
+  language: 'system' | 'en' | 'zh-CN';
+}
 export interface NativeRequest {
   protocol: typeof PROTOCOL;
   requestId?: string;
@@ -22,6 +28,8 @@ export interface NativeRequest {
   numbers?: boolean;
   symbols?: boolean;
   excludeAmbiguous?: boolean;
+  syncPreferences?: Partial<SyncedBrowserPreferences>;
+  syncSpaceId?: string;
 }
 export interface NativeResponse<T = unknown> { protocol: number; requestId?: string; status: 'ok' | 'error'; data?: T; code?: string; message?: string }
 export interface EntryMetadata { path: string; name: string; folder: string }

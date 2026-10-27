@@ -19,6 +19,7 @@ const environment = vi.hoisted(() => ({
 vi.mock('wxt/browser', () => ({ browser: environment.browser }));
 vi.mock('./page-shortcut-registration', () => ({ initializePageShortcuts: vi.fn() }));
 vi.mock('./appearance', () => ({ initializeToolbarAppearance: vi.fn() }));
+vi.mock('./config-sync', () => ({ initializeConfigurationSync: vi.fn(() => ({ observe: vi.fn(), invalidate: vi.fn() })) }));
 vi.mock('./native', () => ({ NativeConnection: class {
   private connected = false;
   constructor(private connect: () => unknown) {}

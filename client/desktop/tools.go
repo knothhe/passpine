@@ -336,6 +336,7 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 		{ID: "security", Title: a.t("安全"), Icon: lucide.LockKeyhole(), Description: a.t("管理解锁方式和密码的保留时间。"), Groups: []components.SettingsGroup{{ID: "session", Items: security}}},
 		{ID: "vault", Title: a.t("密码库"), Icon: lucide.FolderKey(), Description: a.t("管理恢复备份与 Git 同步。"), Groups: []components.SettingsGroup{{ID: "backup", Items: vaultItems}, {ID: "sync", Title: a.t("Git 同步"), Items: syncItems}}},
 		{ID: "browser", Title: a.t("浏览器"), Icon: lucide.Globe(), Description: a.t("让浏览器扩展安全地访问当前密码库。"), Groups: []components.SettingsGroup{{ID: "integration", Items: browserItems}}},
+		{ID: "config-sync", Title: a.t("配置同步"), Icon: lucide.Cloud(), Description: a.t("将个人偏好加密保存到你自己的对象存储，在其他设备恢复。"), Groups: []components.SettingsGroup{{ID: "config-sync", Items: []components.SettingsItem{{ID: "config-sync-content", Title: a.t("R2 与 S3 配置同步"), Description: a.t("使用 Cloudflare 授权或手动配置兼容 S3 的对象存储。"), Build: a.configSyncView}}}}},
 		{ID: "cli", Title: a.t("命令行"), Icon: lucide.SquareTerminal(), Description: a.t("从终端访问你的密码库。"), Groups: []components.SettingsGroup{{ID: "cli", Items: []components.SettingsItem{{ID: "cli-content", Title: a.t("CLI 安装与状态"), Description: a.t("安装兼容 pass 的命令行，并查看或卸载当前应用的命令链接。"), Build: a.cliSettingsView}}}}},
 		{ID: "updates", Title: a.t("软件更新"), Icon: lucide.Download(), Description: a.t("在后台获取更新，由你决定何时重启安装。"), Groups: []components.SettingsGroup{{ID: "updates", Items: []components.SettingsItem{
 			{ID: "updates-content", Title: a.t("当前版本与更新说明"), Description: a.t("检查更新、下载进度、重启安装与失败重试。"), Build: a.updatesView},
@@ -375,28 +376,66 @@ func (a *application) settingsView(c *ui.Context) {
 	}
 }
 
+// A confirmed destination waits for the credential lane. In particular, closing
+// a macOS save sheet can start a focus refresh before its path is delivered.
+type keyExport struct {
+	destination, vaultID string
+	current              func() bool
+}
+
 func (a *application) exportKey() {
+	if a.closing || a.updates.preparing || a.preferences.keyExport != nil || a.activeRequestAction == "export" {
+		return
+	}
 	if a.state.Locked {
 		a.beginUnlock("export")
 		return
 	}
 	options := mygo.SaveDialogOptions{Parent: a.dialogParent(), Title: a.t("导出受口令保护的恢复私钥"), DefaultPath: "passpine-recovery.asc", Filters: []mygo.FileFilter{{Name: a.t("OpenPGP 私钥"), Extensions: []string{"asc"}}}, CreateDirectories: true}
-	current := a.preferencesLease()
+	export := &keyExport{vaultID: a.state.VaultID, current: a.preferencesLease()}
+	a.preferences.keyExport = export
+	save := a.preferences.saveDialog
+	if save == nil {
+		save = mygo.Dialog.Save
+	}
 	go func() {
-		path, err := mygo.Dialog.Save(options)
-		mygo.RunOnMain(func() {
-			if !current() {
+		path, err := save(options)
+		a.runOnMain(func() {
+			if a.preferences.keyExport != export {
+				return
+			}
+			if !export.current() {
+				a.preferences.keyExport = nil
 				return
 			}
 			if err != nil {
+				a.preferences.keyExport = nil
 				a.errorText = err.Error()
 			} else if path != "" {
-				a.call(app.Request{Action: "export", Destination: path}, func(app.Data) { a.notice = a.t("恢复私钥已导出。请使用验证备份确认可恢复。") })
+				export.destination = path
+				a.flushPendingKeyExport()
+			} else {
+				a.preferences.keyExport = nil
 			}
 			a.invalidate()
 		})
 	}()
 }
+
+func (a *application) flushPendingKeyExport() {
+	export := a.preferences.keyExport
+	if export == nil || export.destination == "" || a.busy {
+		return
+	}
+	a.preferences.keyExport = nil
+	if !export.current() || a.state.Locked || a.updates.preparing || a.service == nil {
+		return
+	}
+	a.call(app.Request{Action: "export", Destination: export.destination, VaultID: export.vaultID}, func(app.Data) {
+		a.notice = a.t("恢复私钥已导出。请使用验证备份确认可恢复。")
+	})
+}
+
 func (a *application) verifyBackup() {
 	options := mygo.OpenDialogOptions{Parent: a.dialogParent(), Title: a.t("选择要验证的恢复私钥"), Filters: []mygo.FileFilter{{Name: a.t("OpenPGP 私钥"), Extensions: []string{"asc", "pgp", "gpg", "key"}}}}
 	current := a.preferencesLease()

@@ -1,0 +1,9 @@
+window.H2_DESIGN_CANVAS={boards:[
+{file:'disconnected.html',titleKey:'disconnectedBoard',x:0,y:60,w:960,h:720},
+{file:'manual.html',titleKey:'manualBoard',x:1010,y:60,w:960,h:820},
+{file:'waiting.html',titleKey:'waitingBoard',x:0,y:950,w:960,h:720},
+{file:'bucket.html',titleKey:'bucketBoard',x:1010,y:950,w:960,h:780},
+{file:'connected.html',titleKey:'connectedBoard',x:0,y:1800,w:960,h:720},
+{file:'error.html',titleKey:'errorBoard',x:1010,y:1800,w:960,h:920},
+{file:'conflict.html',titleKey:'conflictBoard',x:0,y:2790,w:960,h:780}
+]};

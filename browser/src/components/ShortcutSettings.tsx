@@ -31,7 +31,7 @@ export function ShortcutSettings({ firefox, demo = false }: { firefox: boolean; 
     if (mutating.current) { refreshPending.current = true; return; }
     setReading(true);
     const current = ++sequence.current;
-    const commandsPromise = demo ? Promise.resolve(defaultShortcuts(isMac())) : api!.getAll().then(assignedShortcuts);
+    const commandsPromise = demo ? Promise.resolve(defaultShortcuts(isMac(), firefox)) : api!.getAll().then(assignedShortcuts);
     const [commands, popup, page, permission] = await Promise.allSettled([
       commandsPromise, readPopupShortcuts(demo),
       editable ? commandsPromise : readPageShortcuts(demo),
@@ -78,7 +78,7 @@ export function ShortcutSettings({ firefox, demo = false }: { firefox: boolean; 
   const resetBrowser = () => {
     setRecorderVersion(value => value + 1);
     void mutate(async () => {
-      const defaults = defaultPageShortcuts(isMac());
+      const defaults = editable ? defaultShortcuts(isMac(), firefox) : defaultPageShortcuts(isMac());
       if (local.some(item => item.shortcut && Object.values(defaults).some(value => canonicalShortcut(value) === canonicalShortcut(item.shortcut)))) throw new Error(copy.shortcuts.popupConflict);
       if (!editable && Object.entries(defaults).some(([name, shortcut]) => Object.entries(browserBindings).some(([id, value]) => id !== name && value && canonicalShortcut(value) === canonicalShortcut(shortcut)))) throw new Error(copy.shortcuts.conflict);
       if (editable) {

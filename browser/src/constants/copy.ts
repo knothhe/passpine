@@ -186,7 +186,7 @@ export const chineseCopy = {
     dark: '深色',
     fontSize: '文字大小',
     fontSizeDescription: '调整弹窗和设置页面的文字大小。',
-    help: '设置自动保存，并同步到已打开的扩展页面。客户端外观可在客户端设置中选择。',
+    help: '设置自动保存，并同步到已打开的扩展页面。在客户端开启配置同步后，扩展外观和语言也会跨设备同步。客户端外观可单独设置。',
   },
   options: {
     connection: '客户端连接',

@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  if [[ "${CGO_ENABLED-1}" != "1" ]]; then
+    echo "macOS Passpine builds require CGO_ENABLED=1 for R2 Keychain storage; unset CGO_ENABLED or set it to 1, and install Xcode Command Line Tools." >&2
+    exit 1
+  fi
+  # The SDK's macOS Keychain backend is selected by darwin && cgo. Override an
+  # implicit per-user go env setting so local and release packages agree.
+  export CGO_ENABLED=1
+fi
 IFS=$'\t' read -r channel version base_version output_dir app_name bundle_id package_name client_flags host_flags < <(node "$root_dir/scripts/build-channel.mjs" shell)
 node "$root_dir/scripts/dependencies.mjs"
 node "$root_dir/scripts/version.mjs" check

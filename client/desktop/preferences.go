@@ -10,6 +10,8 @@ import (
 type preferencesState struct {
 	epoch       uint64
 	pendingRead *preferencesRead
+	saveDialog  func(mygo.SaveDialogOptions) (string, error)
+	keyExport   *keyExport
 }
 
 type preferencesRead struct {
@@ -28,6 +30,9 @@ func (a *application) preferencesPage() string { return a.page }
 func (a *application) loadPreferencesPage(page string) {
 	if page == "settings" && a.settingsState.Category == "cli" {
 		a.manageCLI("status")
+	}
+	if page == "settings" && a.settingsState.Category == "config-sync" {
+		a.refreshConfigSync()
 	}
 	if !a.settingsLoaded {
 		a.settings, a.settingsSaved, a.settingsObserved = a.state.Settings, a.state.Settings, a.state.Settings
@@ -50,8 +55,12 @@ func (a *application) loadPreferencesPage(page string) {
 }
 
 func (a *application) hidePreferences() {
+	if a.page == "settings" && a.settingsState.Category == "config-sync" && (a.configSync.operation == "config-sync-oauth-start" || a.configSync.status.OAuthStage == "bucket") {
+		a.manageConfigSync("config-sync-cancel", nil)
+	}
 	a.preferences.epoch++
 	a.preferences.pendingRead = nil
+	a.preferences.keyExport = nil
 	a.backupOpen, a.backupPassphrase = false, ""
 	a.purgeOpen, a.purgeID = false, ""
 	a.setShortcutRecording(false)

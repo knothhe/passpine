@@ -105,7 +105,7 @@ export const englishCopy = {
     monochrome: { label: 'Monochrome', description: 'Neutral grays, black and white' }, onevra: { label: 'Terracotta', description: 'Warm ivory and terracotta orange' },
     mode: 'Color mode', modeDescription: 'Follow the system or use light or dark mode.', system: 'System default', light: 'Light', dark: 'Dark',
     fontSize: 'Text size', fontSizeDescription: 'Adjust text size in the popup and settings.',
-    help: 'Settings save automatically and sync across open extension pages. Change the client’s appearance in client settings.',
+    help: 'Settings save automatically across open extension pages. Enable configuration sync in the desktop client to sync extension appearance and language across devices. Client appearance is set separately.',
   },
   options: {
     connection: 'Client connection', preferences: 'Appearance & language', interfacePreferences: 'Interface preferences', connectionStatus: 'Connection status',

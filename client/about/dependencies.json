@@ -20,6 +20,16 @@
     "source": "https://github.com/ebitengine/purego"
   },
   {
+    "id": "r2connect",
+    "name": "r2connect",
+    "module": "github.com/knothhe/r2connect",
+    "group": "desktop",
+    "version": "v0.1.1",
+    "license": "MIT",
+    "url": "https://pkg.go.dev/github.com/knothhe/r2connect",
+    "source": "https://github.com/knothhe/r2connect"
+  },
+  {
     "id": "mygo",
     "name": "MyGo",
     "module": "github.com/egoist/mygo",
@@ -34,7 +44,7 @@
     "name": "godbus",
     "module": "github.com/godbus/dbus/v5",
     "group": "desktop",
-    "version": "v5.1.0",
+    "version": "v5.2.2",
     "license": "BSD-2-Clause",
     "url": "https://pkg.go.dev/github.com/godbus/dbus/v5",
     "source": "https://github.com/godbus/dbus"

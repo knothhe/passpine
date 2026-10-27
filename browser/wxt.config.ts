@@ -20,7 +20,7 @@ export default defineConfig({
   outDir: '.output',
   zip: { name: 'passpine', zipSources: false },
   vite: () => ({ plugins: [copyHTML()] }),
-  manifest: {
+  manifest: ({ browser }) => ({
     key: identity.key,
     name: localizedName,
     description: localizedDescription,
@@ -29,9 +29,9 @@ export default defineConfig({
     optional_host_permissions: ['http://*/*', 'https://*/*'],
     icons: toolbarIcons,
     action: { default_icon: toolbarIcons, default_title: localizedName },
-    commands: extensionCommands,
+    commands: extensionCommands(browser === 'firefox'),
     browser_specific_settings: { gecko: { id: identity.firefoxID, strict_min_version: '128.0', data_collection_permissions: { required: ['none'] } } },
     // Radix uses inline custom properties for component sizing and positioning.
     content_security_policy: { extension_pages: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; connect-src 'none'" },
-  },
+  }),
 });

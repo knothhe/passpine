@@ -4,11 +4,12 @@ export const OPEN_COMMAND = '_execute_action';
 export const FILL_COMMAND = 'fill-best';
 
 // Keep the command IDs stable so browser-managed custom bindings survive updates.
-// The defaults match browserpasspine-extension's Chromium and Firefox manifests.
-export const extensionCommands = {
-  [OPEN_COMMAND]: { suggested_key: { default: 'Ctrl+Shift+L', mac: 'Command+Shift+L' }, description: '__MSG_openApp__' },
+// Share the defaults between Chromium/Firefox manifests and page shortcuts.
+export const extensionCommands = (firefox = false) => ({
+  // Firefox reserves Command+Shift+P for opening a private window.
+  [OPEN_COMMAND]: { suggested_key: { default: 'Ctrl+Shift+L', mac: firefox ? 'Command+Shift+L' : 'Command+Shift+P' }, description: '__MSG_openApp__' },
   [FILL_COMMAND]: { suggested_key: { default: 'Ctrl+Shift+F', mac: 'Command+Shift+F' }, description: '__MSG_fillMatch__' },
-};
+});
 
 export const shortcutDefinitions = [
   { name: OPEN_COMMAND, labelKey: 'openApp' },
@@ -26,8 +27,9 @@ export function assignedShortcuts(commands: ShortcutCommand[]): Record<string, s
   return Object.fromEntries(shortcutDefinitions.map(({ name }) => [name, commands.find(command => command.name === name)?.shortcut ?? '']));
 }
 
-export function defaultShortcuts(mac: boolean): Record<string, string> {
-  return Object.fromEntries(Object.entries(extensionCommands).map(([name, command]) => [name, command.suggested_key[mac ? 'mac' : 'default']]));
+export function defaultShortcuts(mac: boolean, firefox = false) {
+  const commands = extensionCommands(firefox), platform = mac ? 'mac' : 'default';
+  return { [OPEN_COMMAND]: commands[OPEN_COMMAND].suggested_key[platform], [FILL_COMMAND]: commands[FILL_COMMAND].suggested_key[platform] };
 }
 
 export function formatShortcut(shortcut: string, copy: Copy = systemCopy()): string {

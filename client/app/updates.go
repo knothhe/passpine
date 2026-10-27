@@ -6,6 +6,7 @@ import "sync"
 // explicitly confirmed restart. New requests cannot begin during verification.
 // Failed installation preparation calls resume; successful preparation quits.
 func (s *Service) PauseForUpdate() func() {
+	s.cancelConfigSync()
 	s.updateRequests.Lock()
 	s.updatePaused.Store(true)
 	s.updateRequests.Unlock()
