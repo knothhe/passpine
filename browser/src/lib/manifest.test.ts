@@ -28,3 +28,10 @@ it('retains the Firefox identity when packaging', async () => {
   expect(result?.key).toBe(identity.key);
   expect(result?.browser_specific_settings?.gecko?.id).toBe(identity.firefoxID);
 });
+
+it.each([config, storeConfig])('uses browser-specific macOS shortcuts without changing other platform defaults', async source => {
+  const chrome = await manifest(source, 'chrome', 'production');
+  const firefox = await manifest(source, 'firefox', 'production');
+  expect(chrome?.commands?.['_execute_action']?.suggested_key).toEqual({ default: 'Ctrl+Shift+L', mac: 'Command+Shift+P' });
+  expect(firefox?.commands?.['_execute_action']?.suggested_key).toEqual({ default: 'Ctrl+Shift+L', mac: 'Command+Shift+L' });
+});

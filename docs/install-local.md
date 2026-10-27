@@ -169,6 +169,8 @@ node scripts/install-local.mjs --help
 
 Chrome / Edge 扩展 ID 统一为 `aphkddfagflppihmghlcjpnkkdgbflnp`，Firefox ID 为 `passpine@knothhe.com`。正式 Host 为 `com.knothhe.passpine`，Dev Host 为 `com.knothhe.passpine.dev`，各自继续使用独立数据目录。更新后的 Dev 客户端授权同一扩展 ID；旧 Dev 客户端需先更新，再在客户端设置中修复浏览器连接。产品版本号不要求一致，只要通信协议兼容即可。
 
+macOS 打开扩展的默认快捷键为 Chrome / Edge 的 `Command+Shift+P`、Firefox 的 `Command+Shift+L`。Firefox 保留原组合，避开浏览器自带的“新建隐私窗口”快捷键；Windows / Linux 继续使用 `Ctrl+Shift+L`。更新会保留浏览器已保存的快捷键，Chrome / Edge 可在扩展快捷键管理页修改，Firefox 可在扩展设置中修改或恢复默认。
+
 ## Agent 收尾安装
 
 使用 `h2-browser-extension` skill 完成执行型扩展任务后，若仓库根目录存在真实 `.install-local.json`，会按配置执行 `make browser:install` 并报告结果；示例文件、纯讨论或用户明确要求跳过时不触发。覆盖确认仍由用户选择。

@@ -4,9 +4,11 @@ import { assignedShortcuts, captureShortcut, defaultShortcuts, FILL_COMMAND, OPE
 const keyEvent = (values: Partial<Parameters<typeof captureShortcut>[0]> = {}): Parameters<typeof captureShortcut>[0] => ({ key: 'K', code: 'KeyK', ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, isComposing: false, ...values });
 
 describe('extension shortcuts', () => {
-  it('retains legacy default combinations without inventing bindings when a command is unassigned', () => {
+  it('uses platform defaults without inventing bindings when a command is unassigned', () => {
     expect(defaultShortcuts(false)).toEqual({ [OPEN_COMMAND]: 'Ctrl+Shift+L', [FILL_COMMAND]: 'Ctrl+Shift+F' });
-    expect(defaultShortcuts(true)).toEqual({ [OPEN_COMMAND]: 'Command+Shift+L', [FILL_COMMAND]: 'Command+Shift+F' });
+    expect(defaultShortcuts(true)).toEqual({ [OPEN_COMMAND]: 'Command+Shift+P', [FILL_COMMAND]: 'Command+Shift+F' });
+    expect(defaultShortcuts(true, true)).toEqual({ [OPEN_COMMAND]: 'Command+Shift+L', [FILL_COMMAND]: 'Command+Shift+F' });
+    expect(defaultShortcuts(false, true)).toEqual({ [OPEN_COMMAND]: 'Ctrl+Shift+L', [FILL_COMMAND]: 'Ctrl+Shift+F' });
     expect(assignedShortcuts([{ name: OPEN_COMMAND, shortcut: 'Alt+K' }, { name: FILL_COMMAND, shortcut: '' }])).toEqual({ [OPEN_COMMAND]: 'Alt+K', [FILL_COMMAND]: '' });
     expect(assignedShortcuts([])[OPEN_COMMAND]).toBe('');
   });
