@@ -375,6 +375,7 @@ func (s *Service) executeConfigSync(r Request, source string) Response {
 	if e != nil {
 		s.configSync.next = time.Now().Add(time.Minute)
 	}
+	s.logConfigSync(r.Action, source, e)
 	out := s.syncResponseLocked(r, e)
 	notify := s.onSettingsChange
 	s.mu.Unlock()
@@ -519,7 +520,7 @@ func (s *Service) saveSyncConnection(ctx context.Context, r *SyncConnectionReque
 	if e = s.reuseSyncBaseline(p, &v); e != nil {
 		return e
 	}
-	if e = s.configSync.engine.Test(ctx, p.Config, v.Secrets); e != nil {
+	if e = s.testPreparedSyncConnection(ctx, provider, p, v); e != nil {
 		return e
 	}
 	// Record local secret ownership before writing it. A crash or a failed

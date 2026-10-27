@@ -26,6 +26,8 @@ http://127.0.0.1:47839/oauth/callback
 
 同意页如果将 **Account API Tokens Write** 放在 Sensitive scopes，需要在 Edit Permissions 中开启。账号需要具备创建专用 Account API Token 的权限。应用只派生所选桶的对象权限，不创建桶，不申请整个账号的 R2 管理权限。
 
+Cloudflare 的 [R2 IAM 权限最多需要一分钟才能全球生效](https://developers.cloudflare.com/r2/reference/consistency/#operations-and-consistency)。新候选连接的只读探测遇到 401/403 时，会复用同一令牌退避重试，累计等待最多一分钟；可以取消，持续拒绝仍报错并保留候选连接。手动 S3 和已保存连接不使用此重试。
+
 先用 private visibility 和发行者测试账号验证；对其他账号开放前，按 Cloudflare 要求配置应用名称、Logo、Client URL、scopes 和域名验证，再决定是否改为 public visibility。仓库开发不会自动注册 OAuth client 或更改其可见性。
 
 参考：[OAuth 注册](https://developers.cloudflare.com/fundamentals/oauth/create-an-oauth-client/)、[OAuth 集成](https://developers.cloudflare.com/fundamentals/oauth/integrate-with-cloudflare/)、[R2 凭据派生](https://developers.cloudflare.com/r2/api/tokens/)。
@@ -51,6 +53,8 @@ SDK 元数据读取失败单独显示，保留已保存目标和编辑输入，�
 首次连接优先采用远端已有字段；之后按字段进行三方合并。不同字段的修改可合并，同字段出现不同修改会暂停同步并显示冲突，用户选择保留本机或使用远端后重试。提交使用 ETag 条件写入，避免并发上传静默覆盖。错误口令、损坏文档和未来版本不会被当作空文档覆盖。
 
 同步按周期检查，保存本地偏好后安排合并；失败退避重试，冲突等待用户处理。暂停保留连接和远端对象；断开清理本机连接，并撤销应用创建的 R2 桶 Token 和 OAuth 授权，保留用户桶内数据。手动填写的密钥由用户管理，不自动撤销。
+
+开启操作记录时，同步操作也写入应用数据目录的 `activity.json`，失败记录包含受控的 `errorCode` 和可用的 `httpStatus`，遵循现有保留设置。状态轮询不记录，记录中不包含端点、桶、凭据、加密口令或服务端响应正文。
 
 ## 验证范围
 

@@ -4,6 +4,13 @@ func init() {
 	for source, translated := range map[string]string{
 		"Passpine 同步凭据": "Passpine sync credentials",
 		"重新读取配置":        "Reload configuration",
+		"保存同步连接":        "Save sync connection",
+		"测试同步连接":        "Test sync connection",
+		"同步配置":          "Sync preferences",
+		"解决配置同步冲突":      "Resolve configuration sync conflict",
+		"授权 Cloudflare": "Authorize Cloudflare",
+		"取消配置同步操作":      "Cancel configuration sync operation",
+		"断开同步连接":        "Disconnect sync connection",
 		"本机保存的同步凭据缺失或不完整，请重新连接。":                                                  "Saved sync credentials are missing or incomplete. Reconnect.",
 		"已保存的 R2 桶凭据无效，请重新连接存储桶。":                                                 "Saved R2 bucket credentials are invalid. Reconnect the bucket.",
 		"Cloudflare 拒绝了请求的权限。请联系发行者检查应用权限和 Refresh Token grant 配置。":               "Cloudflare rejected the requested permissions. Ask the publisher to check the app permissions and Refresh Token grant configuration.",

@@ -77,10 +77,12 @@ type RecoveryItem struct {
 	CreatedAt string `json:"createdAt"`
 }
 type Activity struct {
-	Time    string `json:"time"`
-	Action  string `json:"action"`
-	Source  string `json:"source"`
-	Outcome string `json:"outcome"`
+	Time       string `json:"time"`
+	Action     string `json:"action"`
+	Source     string `json:"source"`
+	Outcome    string `json:"outcome"`
+	ErrorCode  string `json:"errorCode,omitempty"`
+	HTTPStatus int    `json:"httpStatus,omitempty"`
 }
 type Settings struct {
 	CloseToTray           bool   `json:"closeToTray"`

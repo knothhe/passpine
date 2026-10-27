@@ -1135,11 +1135,16 @@ func encodeBrowserResponse(out Response, lease func(func()) error) json.RawMessa
 
 func encode(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
 func (s *Service) log(action, source, outcome string) {
+	s.recordActivity(Activity{Action: action, Source: source, Outcome: outcome})
+}
+
+// The service mutex must be held once the service has started.
+func (s *Service) recordActivity(item Activity) {
 	if !s.prefs.Settings.RecordActivity {
 		_ = s.pruneActivity(time.Now())
 		return
 	}
-	item := Activity{Time: time.Now().UTC().Format(time.RFC3339), Action: action, Source: source, Outcome: outcome}
+	item.Time = time.Now().UTC().Format(time.RFC3339)
 	s.activity = append([]Activity{item}, s.activity...)
 	count := len(s.activity)
 	if err := s.pruneActivity(time.Now()); err == nil && len(s.activity) == count {
