@@ -381,6 +381,7 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 		if a.pendingChanged {
 			a.dropDetail()
 		}
+		a.flushPendingKeyExport()
 		a.flushPendingNewEntry()
 		a.flushPreferencesRead()
 		a.flushMetadataRefresh()
@@ -549,6 +550,7 @@ func (a *application) clearSecrets() {
 	a.batchUndo = nil
 	a.cancelUnlockAction()
 	a.preferences.pendingRead = nil
+	a.preferences.keyExport = nil
 	a.clearQuickSearchSecrets()
 	a.clearNotifications()
 	a.setShortcutRecording(false)

@@ -10,6 +10,8 @@ import (
 type preferencesState struct {
 	epoch       uint64
 	pendingRead *preferencesRead
+	saveDialog  func(mygo.SaveDialogOptions) (string, error)
+	keyExport   *keyExport
 }
 
 type preferencesRead struct {
@@ -58,6 +60,7 @@ func (a *application) hidePreferences() {
 	}
 	a.preferences.epoch++
 	a.preferences.pendingRead = nil
+	a.preferences.keyExport = nil
 	a.backupOpen, a.backupPassphrase = false, ""
 	a.purgeOpen, a.purgeID = false, ""
 	a.setShortcutRecording(false)

@@ -376,28 +376,66 @@ func (a *application) settingsView(c *ui.Context) {
 	}
 }
 
+// A confirmed destination waits for the credential lane. In particular, closing
+// a macOS save sheet can start a focus refresh before its path is delivered.
+type keyExport struct {
+	destination, vaultID string
+	current              func() bool
+}
+
 func (a *application) exportKey() {
+	if a.closing || a.updates.preparing || a.preferences.keyExport != nil || a.activeRequestAction == "export" {
+		return
+	}
 	if a.state.Locked {
 		a.beginUnlock("export")
 		return
 	}
 	options := mygo.SaveDialogOptions{Parent: a.dialogParent(), Title: a.t("导出受口令保护的恢复私钥"), DefaultPath: "passpine-recovery.asc", Filters: []mygo.FileFilter{{Name: a.t("OpenPGP 私钥"), Extensions: []string{"asc"}}}, CreateDirectories: true}
-	current := a.preferencesLease()
+	export := &keyExport{vaultID: a.state.VaultID, current: a.preferencesLease()}
+	a.preferences.keyExport = export
+	save := a.preferences.saveDialog
+	if save == nil {
+		save = mygo.Dialog.Save
+	}
 	go func() {
-		path, err := mygo.Dialog.Save(options)
-		mygo.RunOnMain(func() {
-			if !current() {
+		path, err := save(options)
+		a.runOnMain(func() {
+			if a.preferences.keyExport != export {
+				return
+			}
+			if !export.current() {
+				a.preferences.keyExport = nil
 				return
 			}
 			if err != nil {
+				a.preferences.keyExport = nil
 				a.errorText = err.Error()
 			} else if path != "" {
-				a.call(app.Request{Action: "export", Destination: path}, func(app.Data) { a.notice = a.t("恢复私钥已导出。请使用验证备份确认可恢复。") })
+				export.destination = path
+				a.flushPendingKeyExport()
+			} else {
+				a.preferences.keyExport = nil
 			}
 			a.invalidate()
 		})
 	}()
 }
+
+func (a *application) flushPendingKeyExport() {
+	export := a.preferences.keyExport
+	if export == nil || export.destination == "" || a.busy {
+		return
+	}
+	a.preferences.keyExport = nil
+	if !export.current() || a.state.Locked || a.updates.preparing || a.service == nil {
+		return
+	}
+	a.call(app.Request{Action: "export", Destination: export.destination, VaultID: export.vaultID}, func(app.Data) {
+		a.notice = a.t("恢复私钥已导出。请使用验证备份确认可恢复。")
+	})
+}
+
 func (a *application) verifyBackup() {
 	options := mygo.OpenDialogOptions{Parent: a.dialogParent(), Title: a.t("选择要验证的恢复私钥"), Filters: []mygo.FileFilter{{Name: a.t("OpenPGP 私钥"), Extensions: []string{"asc", "pgp", "gpg", "key"}}}}
 	current := a.preferencesLease()
