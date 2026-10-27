@@ -1,4 +1,10 @@
 .DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*~
 node_modules/
 browser/.wxt/
 browser/.output/
@@ -10,6 +16,17 @@ dist/
 # Release signing private keys must never enter source control.
 *.pkcs8.pem
 /update-signing/
+*.p12
+*.pfx
+identity-password
+
+# Local env files and Go build leftovers (Windows resources are copied in during builds).
+/.env
+/.env.*
+client/cmd/passpine/rsrc_windows_*.syso
+*.test
+*.prof
+coverage.out
 
 .codex/
 .pnpm-store/
