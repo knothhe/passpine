@@ -22,6 +22,28 @@ brew uninstall --cask knothhe/tap/passpine
 
 旧的 `knothhe/passpine` tap 继续接收相同的配方更新，已有安装可以沿用旧命令。新安装使用 `knothhe/tap`。
 
+## Linux 正式版
+
+x86_64 Linux 可运行以下命令安装正式客户端：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/knothhe/passpine/main/scripts/install-linux.sh | sh
+```
+
+脚本识别 Arch、Debian/Ubuntu、Fedora/RHEL、openSUSE 及其衍生版，用系统包管理器补装缺少的 GTK 3、Git 和 OpenSSL，仅此步骤使用 `sudo` 或 `doas`。随后用固定公钥验证 Release 的签名更新 Feed，核对安装包及程序的 SHA-256，再运行包内 `install.sh`，默认安装到 `~/.local/bin`，创建桌面入口并注册浏览器连接。后续升级使用应用内更新。
+
+需要指定选项时，将末尾的 `sh` 改为 `sh -s -- <选项>`，例如：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/knothhe/passpine/main/scripts/install-linux.sh | sh -s -- --uninstall
+```
+
+- `--version X.Y.Z`：安装指定版本。
+- `--skip-deps`：跳过系统依赖安装；无法识别的发行版需先自行安装 GTK 3、Git 和 OpenSSL。
+- `--uninstall`：注销浏览器连接并移除程序、桌面入口和图标，保留密码库、私钥与设置。
+
+环境变量 `PASSPINE_BIN_DIR` 可指定安装目录；卸载时需使用相同目录。脚本只替换或移除正式版 Passpine，不覆盖其他程序、符号链接或指向其他目录的桌面入口。
+
 ## 从源码构建与安装 Dev 版
 
 本地命令构建和安装 **Dev 客户端及统一浏览器扩展**。正式客户端由 GitHub Actions 在发布 tag 上构建，从 GitHub Release 下载安装；客户端本地安装脚本拒绝正式通道。Dev 与正式客户端使用不同的应用、数据目录及 Native Host，可同时安装。Dev 不检查正式更新，也不自动发现 `~/.password-store`；开发时请使用测试密码库。扩展只有一组名称和 ID，默认连接正式客户端；本地解包加载时可在设置中切换 Dev 客户端，商店安装只连接正式客户端。
