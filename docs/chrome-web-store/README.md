@@ -46,7 +46,7 @@
 
 ## 上传包与填写顺序
 
-[Chrome 0.1.7 扩展 ZIP](package/passpine-0.1.7-chrome.zip)（历史 SHA-256 见 [SHA256SUMS](package/SHA256SUMS)）仅保留为旧构建记录，不能用于商店上传。旧 Release 附件不会随本次修复改变。生成当前源码的上传包时，在仓库根目录运行：
+Chrome 0.1.7 扩展 ZIP 不再纳入版本控制，仅在 [SHA256SUMS](package/SHA256SUMS) 保留其历史 SHA-256，不能用于商店上传。旧 Release 附件不会随本次修复改变。生成当前源码的上传包时，在仓库根目录运行：
 
 ```sh
 pnpm run package:browser

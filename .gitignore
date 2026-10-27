@@ -27,3 +27,6 @@ website/.dev.vars.*
 !website/.dev.vars.example
 !website/.dev.vars.*.example
 website/src/data/release.json.*.tmp
+
+# Chrome Web Store build archives; only SHA256SUMS is tracked.
+docs/chrome-web-store/package/*.zip
