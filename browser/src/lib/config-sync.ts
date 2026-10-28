@@ -6,6 +6,7 @@ const appearanceKey = 'appearancePreferences';
 const languageKey = 'languagePreference';
 export const configurationSyncStorageKey = 'configurationSyncStateV1';
 const fields = ['themeStyle', 'theme', 'fontScale', 'language'] as const;
+type Field = typeof fields[number];
 type Patch = Partial<SyncedBrowserPreferences>;
 type Stored = Record<string, unknown>;
 export interface ConfigurationSyncSession {
@@ -16,7 +17,7 @@ export interface ConfigurationSyncSession {
 }
 interface SyncData {
   capabilities?: string[];
-  configSync?: { enabled?: boolean; ready?: boolean; spaceId?: string };
+  configSync?: { enabled?: boolean; ready?: boolean; spaceId?: string; fields?: unknown };
   syncedBrowserPreferences?: unknown;
 }
 export interface ConfigurationSyncIO {
@@ -25,7 +26,7 @@ export interface ConfigurationSyncIO {
   target?(): Promise<ClientTarget>;
 }
 interface TargetState {
-  baseline?: SyncedBrowserPreferences;
+  baseline?: Patch;
   pending: Patch;
 }
 interface SyncState {
@@ -35,7 +36,7 @@ interface SyncState {
   scopes: Record<string, TargetState>;
 }
 
-function preferences(value: unknown, complete = false): Patch | undefined {
+function preferences(value: unknown): Patch | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const v = value as Record<string, unknown>, result: Patch = {};
   if (v.themeStyle !== undefined) {
@@ -54,13 +55,23 @@ function preferences(value: unknown, complete = false): Patch | undefined {
     if (v.language !== 'system' && v.language !== 'en' && v.language !== 'zh-CN') return undefined;
     result.language = v.language;
   }
-  return complete && fields.some(field => result[field] === undefined) ? undefined : result;
+  return result;
 }
-function fromStorage(value: Stored): Patch | undefined {
+function selectedFields(value: unknown): Field[] | undefined {
+  if (value === undefined) return [...fields];
+  if (!Array.isArray(value) || value.some(field => typeof field !== 'string' || !fields.includes(field as Field))) return undefined;
+  return fields.filter(field => value.includes(field));
+}
+function selectPreferences(value: Patch, selected: readonly Field[]): Patch {
+  return Object.fromEntries(selected.filter(field => value[field] !== undefined).map(field => [field, value[field]])) as Patch;
+}
+function fromStorage(value: Stored, selected: readonly Field[] = fields): Patch | undefined {
   const appearance = value[appearanceKey];
-  if (appearance !== undefined && (!appearance || typeof appearance !== 'object' || Array.isArray(appearance))) return undefined;
-  const v = appearance as Record<string, unknown> | undefined;
-  return preferences({ themeStyle: v?.style, theme: v?.appearance, fontScale: v?.fontScale, language: value[languageKey] });
+  const appearanceSelected = selected.some(field => field !== 'language');
+  if (appearanceSelected && appearance !== undefined && (!appearance || typeof appearance !== 'object' || Array.isArray(appearance))) return undefined;
+  const v = appearanceSelected ? appearance as Record<string, unknown> | undefined : undefined;
+  const raw = { themeStyle: v?.style, theme: v?.appearance, fontScale: v?.fontScale, language: value[languageKey] };
+  return preferences(Object.fromEntries(selected.map(field => [field, raw[field]])));
 }
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const targetName = (value: unknown): value is ClientTarget => value === 'release' || value === 'dev';
@@ -90,9 +101,9 @@ function syncState(value: unknown): SyncState | undefined {
     if (Object.keys(record).some(key => !['baseline', 'pending'].includes(key))) return undefined;
     const pending = preferences(record.pending);
     if (!pending || Object.keys(record.pending as object).some(key => !fields.includes(key as typeof fields[number]))) return undefined;
-    const baseline = record.baseline === undefined ? undefined : preferences(record.baseline, true);
+    const baseline = record.baseline === undefined ? undefined : preferences(record.baseline);
     if (record.baseline !== undefined && !baseline) return undefined;
-    result.scopes[scope] = { pending, ...(baseline ? { baseline: baseline as SyncedBrowserPreferences } : {}) };
+    result.scopes[scope] = { pending, ...(baseline ? { baseline } : {}) };
   }
   return result;
 }
@@ -107,7 +118,9 @@ export class ConfigurationSync {
   private initialized = false;
   private ready = false;
   private running?: Promise<void>;
-  private remote?: SyncedBrowserPreferences;
+  private remote?: Patch;
+  private selectedFields: readonly Field[] = fields;
+  private generation = 0;
   private expected = new Map<string, unknown[]>();
   private state?: SyncState;
   private loading?: Promise<void>;
@@ -116,6 +129,7 @@ export class ConfigurationSync {
   constructor(private io: ConfigurationSyncIO) {}
 
   invalidate(): void {
+    this.generation++;
     this.active = undefined;
     this.selectedTarget = undefined;
     this.selectedSpace = undefined;
@@ -123,6 +137,7 @@ export class ConfigurationSync {
     this.initialized = false;
     this.ready = false;
     this.remote = undefined;
+    this.selectedFields = fields;
     // The durable target ledger survives MV3 suspension and target switches.
     // In-flight work retains generation guards and cannot issue a new request.
   }
@@ -140,19 +155,27 @@ export class ConfigurationSync {
       return;
     }
     if (!spaceName(space)) return;
+    const selected = selectedFields(data.configSync.fields);
+    if (!selected) {
+      this.invalidate();
+      this.selectedTarget = session.target;
+      this.selectedSpace = space;
+      return;
+    }
     if ((!Array.isArray(data.capabilities) || !data.capabilities.includes('config-sync')) && !this.active) return;
-    if (this.active?.id !== session.id || this.active?.target !== session.target || this.spaceId !== space) {
+    if (this.active?.id !== session.id || this.active?.target !== session.target || this.spaceId !== space || !same(this.selectedFields, selected)) {
       this.invalidate();
       this.active = session;
       this.spaceId = space;
+      this.selectedFields = selected;
     }
     this.selectedTarget = session.target;
     this.selectedSpace = space;
-    this.ready = data.configSync.ready === true;
+    this.ready = data.configSync.ready === true && selected.length > 0;
     if (data.syncedBrowserPreferences !== undefined) {
-      const remote = preferences(data.syncedBrowserPreferences, true);
+      const remote = preferences(data.syncedBrowserPreferences);
       if (!remote) { this.ready = false; return; }
-      this.remote = remote as SyncedBrowserPreferences;
+      this.remote = selectPreferences(remote, selected);
     }
     this.schedule();
   }
@@ -176,9 +199,12 @@ export class ConfigurationSync {
       const expected = this.expected.get(key);
       const match = expected?.findIndex(value => same(value, change.newValue)) ?? -1;
       if (expected && match >= 0) { expected.splice(match, 1); if (!expected.length) this.expected.delete(key); continue; }
-      const old = fromStorage({ [key]: change.oldValue }), next = fromStorage({ [key]: change.newValue });
-      if (!next) continue;
-      for (const field of fields) if (next[field] !== undefined && old?.[field] !== next[field]) Object.assign(patch, { [field]: next[field] });
+      // One unsupported disabled value must not hide another field's edit.
+      // Keep supported disabled edits too, so enabling them can replay intent.
+      for (const field of fields) {
+        const old = fromStorage({ [key]: change.oldValue }, [field]), next = fromStorage({ [key]: change.newValue }, [field]);
+        if (next?.[field] !== undefined && old?.[field] !== next[field]) Object.assign(patch, { [field]: next[field] });
+      }
     }
     if (!Object.keys(patch).length) return;
     // Capture ownership before any await: later switching to another native
@@ -226,108 +252,125 @@ export class ConfigurationSync {
     this.work = result.then(() => {}, () => {});
     return result;
   }
-  private current(session: ConfigurationSyncSession, space: string): void {
+  private current(session: ConfigurationSyncSession, space: string, generation: number): void {
     session.assertCurrent();
-    if (this.active !== session || this.spaceId !== space || !this.ready) throw new Error('stale_config_sync_session');
+    if (this.active !== session || this.spaceId !== space || this.generation !== generation || !this.ready) throw new Error('stale_config_sync_session');
+  }
+  private accepts(session: ConfigurationSyncSession, space: string, generation: number, response: SyncData): boolean {
+    this.current(session, space, generation);
+    const selected = selectedFields(response.configSync?.fields);
+    if (response.configSync?.enabled !== true || response.configSync.ready !== true || response.configSync.spaceId !== space || !selected || !same(this.selectedFields, selected)) {
+      this.observe(session, response);
+      return false;
+    }
+    return true;
   }
   private schedule(): void {
     if (!this.active || !this.ready || !this.spaceId || this.running) return;
-    const session = this.active, space = this.spaceId;
-    const operation = this.drain(session, space).catch(() => {});
+    const session = this.active, space = this.spaceId, generation = this.generation;
+    const operation = this.drain(session, space, generation).catch(() => {});
     this.running = operation;
     void operation.then(() => {
       if (this.running === operation) this.running = undefined;
-      if (this.active && (this.active !== session || this.spaceId !== space) && this.ready) this.schedule();
+      if (this.active && (this.active !== session || this.spaceId !== space || this.generation !== generation) && this.ready) this.schedule();
     });
   }
 
-  private async drain(session: ConfigurationSyncSession, space: string): Promise<void> {
+  private async drain(session: ConfigurationSyncSession, space: string, generation: number): Promise<void> {
     const scope = scopeKey(session.target, space);
     if (!this.initialized) {
-      this.current(session, space);
+      this.current(session, space, generation);
       // Complete the native/cloud read before deciding whether to seed local
       // preferences. A fresh device must first import the remote configuration.
       const response = await session.request<SyncData>({ protocol: PROTOCOL, action: 'config-sync-browser' });
-      this.current(session, space);
-      if (response.configSync?.enabled !== true || response.configSync.ready !== true || response.configSync.spaceId !== space) { this.observe(session, response); return; }
-      const remote = response.syncedBrowserPreferences === undefined ? undefined : preferences(response.syncedBrowserPreferences, true);
+      if (!this.accepts(session, space, generation, response)) return;
+      const remote = response.syncedBrowserPreferences === undefined ? undefined : preferences(response.syncedBrowserPreferences);
       if (response.syncedBrowserPreferences !== undefined && !remote) return;
       await this.enqueue(async () => {
-        this.current(session, space);
+        this.current(session, space, generation);
         const stored = await this.io.read();
-        this.current(session, space);
-        const local = fromStorage(stored);
+        this.current(session, space, generation);
+        const local = fromStorage(stored, this.selectedFields);
         if (!local) throw new Error('invalid_local_preferences');
         const next = cloneState(this.state!);
         const entry = next.scopes[scope] ?? { pending: {} };
         const unbound = scopeKey(session.target);
         const pending = { ...next.scopes[unbound]?.pending, ...entry.pending };
         delete next.scopes[unbound];
-        for (const field of fields) {
+        for (const field of this.selectedFields) {
           if (local[field] === undefined) continue;
-          if (entry.baseline && next.owners[field] === scope && local[field] !== entry.baseline[field]) Object.assign(pending, { [field]: local[field] });
-          else if (!remote && (next.owners[field] === undefined || next.owners[field] === scope) && pending[field] === undefined) Object.assign(pending, { [field]: local[field] });
+          if (entry.baseline?.[field] !== undefined && next.owners[field] === scope && local[field] !== entry.baseline[field]) Object.assign(pending, { [field]: local[field] });
+          else if (remote?.[field] === undefined && (next.owners[field] === undefined || next.owners[field] === scope) && pending[field] === undefined) Object.assign(pending, { [field]: local[field] });
         }
         next.scopes[scope] = { ...entry, pending };
         this.state = next;
         await this.io.write({ [configurationSyncStorageKey]: next });
-        this.current(session, space);
-        if (remote) this.remote = remote as SyncedBrowserPreferences;
+        this.current(session, space, generation);
+        if (remote) this.remote = selectPreferences(remote, this.selectedFields);
         this.initialized = true;
       });
     }
     while (true) {
-      this.current(session, space);
+      this.current(session, space, generation);
       if (this.remote) {
         const remote = this.remote;
         this.remote = undefined;
-        await this.apply(session, space, remote);
+        await this.apply(session, space, generation, remote);
       }
-      this.current(session, space);
+      this.current(session, space, generation);
       const patch = await this.enqueue(async () => {
-        this.current(session, space);
-        return { ...this.state!.scopes[scope]?.pending };
+        this.current(session, space, generation);
+        return selectPreferences(this.state!.scopes[scope]?.pending ?? {}, this.selectedFields);
       });
-      this.current(session, space);
+      this.current(session, space, generation);
       if (!Object.keys(patch).length) { if (this.remote) continue; return; }
       const response = await session.request<SyncData>({ protocol: PROTOCOL, action: 'config-sync-browser', syncSpaceId: space, syncPreferences: patch });
-      this.current(session, space);
-      if (response.configSync?.spaceId !== space || response.configSync.enabled !== true || response.configSync.ready !== true) { this.observe(session, response); return; }
-      const remote = response.syncedBrowserPreferences === undefined ? undefined : preferences(response.syncedBrowserPreferences, true);
+      if (!this.accepts(session, space, generation, response)) return;
+      const remote = response.syncedBrowserPreferences === undefined ? undefined : preferences(response.syncedBrowserPreferences);
       if (response.syncedBrowserPreferences !== undefined && !remote) return;
       await this.enqueue(async () => {
-        this.current(session, space);
+        this.current(session, space, generation);
         const next = cloneState(this.state!);
         const entry = next.scopes[scope] ?? { pending: {} };
-        for (const field of fields) if (entry.pending[field] === patch[field]) delete entry.pending[field];
+        for (const field of this.selectedFields) if (patch[field] !== undefined && entry.pending[field] === patch[field]) delete entry.pending[field];
         next.scopes[scope] = entry;
         this.state = next;
         await this.io.write({ [configurationSyncStorageKey]: next });
       });
-      this.current(session, space);
-      if (remote) this.remote = remote as SyncedBrowserPreferences;
+      this.current(session, space, generation);
+      if (remote) this.remote = selectPreferences(remote, this.selectedFields);
     }
   }
 
-  private async apply(session: ConfigurationSyncSession, space: string, remote: SyncedBrowserPreferences): Promise<void> {
+  private async apply(session: ConfigurationSyncSession, space: string, generation: number, remote: Patch): Promise<void> {
     const scope = scopeKey(session.target, space);
     try {
       await this.enqueue(async () => {
         const stored = await this.io.read();
-        this.current(session, space);
-        if (!fromStorage(stored)) return;
+        this.current(session, space, generation);
+        if (!fromStorage(stored, this.selectedFields)) return;
         const next = cloneState(this.state!);
         const entry = next.scopes[scope] ?? { pending: {} };
-        const merged = { ...remote, ...entry.pending };
-        const existing = stored[appearanceKey] as Record<string, unknown> | undefined;
-        const appearance = { ...existing, style: merged.themeStyle, appearance: merged.theme, fontScale: merged.fontScale };
+        const merged = selectPreferences({ ...remote, ...entry.pending }, this.selectedFields);
         const writes: Stored = {};
-        if (!same(existing, appearance)) writes[appearanceKey] = appearance;
-        if (stored[languageKey] !== merged.language) writes[languageKey] = merged.language;
-        next.scopes[scope] = { baseline: remote, pending: entry.pending };
-        for (const field of fields) next.owners[field] = scope;
+        if (merged.themeStyle !== undefined || merged.theme !== undefined || merged.fontScale !== undefined) {
+          const existing = stored[appearanceKey] as Record<string, unknown> | undefined;
+          const appearance = { ...existing };
+          if (merged.themeStyle !== undefined) appearance.style = merged.themeStyle;
+          if (merged.theme !== undefined) appearance.appearance = merged.theme;
+          if (merged.fontScale !== undefined) appearance.fontScale = merged.fontScale;
+          if (!same(existing, appearance)) writes[appearanceKey] = appearance;
+        }
+        if (merged.language !== undefined && stored[languageKey] !== merged.language) writes[languageKey] = merged.language;
+        const baseline = { ...entry.baseline };
+        for (const field of this.selectedFields) {
+          if (remote[field] === undefined) delete baseline[field];
+          else Object.assign(baseline, { [field]: remote[field] });
+          if (merged[field] !== undefined) next.owners[field] = scope;
+        }
+        next.scopes[scope] = { baseline, pending: entry.pending };
         writes[configurationSyncStorageKey] = next;
-        this.current(session, space);
+        this.current(session, space, generation);
         for (const [key, value] of Object.entries(writes)) if (key !== configurationSyncStorageKey) this.expected.set(key, [...(this.expected.get(key) ?? []), value]);
         try { await this.io.write(writes); }
         catch (error) {
@@ -338,10 +381,10 @@ export class ConfigurationSync {
           throw error;
         }
         this.state = next;
-        this.current(session, space);
+        this.current(session, space, generation);
       });
     } catch (error) {
-      if (this.active === session && this.spaceId === space) this.remote = remote;
+      if (this.active === session && this.spaceId === space && this.generation === generation) this.remote = remote;
       throw error;
     }
   }

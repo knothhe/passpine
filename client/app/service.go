@@ -662,9 +662,9 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 		if s.active != nil {
 			s.active.SetTimeouts(time.Duration(settings.IdleMinutes)*time.Minute, time.Duration(settings.MaxSessionMinutes)*time.Minute)
 		}
-		s.configSync.dirty = true
-		if s.configSync.status.Ready {
-			s.configSync.next = time.Now().Add(2 * time.Second)
+		options := s.configSyncOptions()
+		if configSyncKeyEnabled(options, "desktop.theme") && (previous.Theme != settings.Theme || previous.ThemeStyle != settings.ThemeStyle) || configSyncKeyEnabled(options, "desktop.fontScale") && previous.FontScale != settings.FontScale || configSyncKeyEnabled(options, "desktop.language") && previous.Language != settings.Language {
+			s.markConfigSyncDirty()
 		}
 		return Data{}, s.pruneActivity(time.Now())
 	case "browser-install":
@@ -1068,7 +1068,7 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 	default:
 		return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "unsupported_action"})
 	}
-	if r.Kind != "" || r.Directory != "" || r.KeyFile != "" || r.PublicKeyFile != "" || r.Passphrase != "" || r.Settings != nil || r.ID != "" || r.SyncConnection != nil || (r.SyncPreferences != nil || r.SyncSpaceID != "") && r.Action != "config-sync-browser" {
+	if r.Kind != "" || r.Directory != "" || r.KeyFile != "" || r.PublicKeyFile != "" || r.Passphrase != "" || r.Settings != nil || r.ID != "" || r.SyncConnection != nil || r.SyncOptions != nil || (r.SyncPreferences != nil || r.SyncSpaceID != "") && r.Action != "config-sync-browser" {
 		return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})
 	}
 	if r.Interactive && r.Action != "fetch" && r.Action != "copy" && r.Action != "unlock" {
@@ -1084,7 +1084,11 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 	out.Data.Folders = nil
 	out.Data.BrowserRegistrations = nil
 	if out.Data.ConfigSync != nil {
-		out.Data.ConfigSync = &ConfigSyncStatus{Enabled: out.Data.ConfigSync.Enabled, Ready: out.Data.ConfigSync.Ready, SpaceID: out.Data.ConfigSync.SpaceID}
+		options := out.Data.ConfigSync.Options
+		fields := selectedBrowserSyncFields(options)
+		browserEnabled := len(fields) != 0
+		out.Data.ConfigSync = &ConfigSyncStatus{Enabled: out.Data.ConfigSync.Enabled && browserEnabled, Ready: out.Data.ConfigSync.Ready && browserEnabled, SpaceID: out.Data.ConfigSync.SpaceID, Fields: fields}
+		out.Data.SyncedBrowserPreferences = selectBrowserSyncPreferences(out.Data.SyncedBrowserPreferences, options)
 	}
 	// Git remotes and filesystem errors can contain local checkout paths.
 	// The extension does not need the desktop's repository diagnostics.

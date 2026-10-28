@@ -21,13 +21,24 @@ function fixture(initial: Record<string, unknown> = {}) {
     stored = structuredClone({ ...stored, ...values });
     sync.storageChanged(changes, 'local');
   });
-  let nativePreferences: SyncedBrowserPreferences | undefined = structuredClone(remote);
+  let nativePreferences: Partial<SyncedBrowserPreferences> | undefined = structuredClone(remote);
+  let nativeFields: Array<keyof SyncedBrowserPreferences> | undefined;
+  const status = () => {
+    const selected = nativeFields;
+    return {
+      ...enabled,
+      configSync: { ...enabled.configSync, spaceId: selectedSpace, ...(selected ? { fields: selected, enabled: selected.length > 0, ready: selected.length > 0 } : {}) },
+      syncedBrowserPreferences: nativePreferences === undefined || selected === undefined ? nativePreferences : Object.fromEntries(Object.entries(nativePreferences).filter(([field]) => selected.includes(field as keyof SyncedBrowserPreferences))),
+    };
+  };
   const request = vi.fn(async (value: NativeRequest) => {
     if (value.syncPreferences) {
       if (value.syncSpaceId !== selectedSpace) throw new Error('not_ready');
+      const selected = nativeFields;
+      if (selected && Object.keys(value.syncPreferences).some(field => !selected.includes(field as keyof SyncedBrowserPreferences))) throw new Error('not_ready');
       nativePreferences = { ...(nativePreferences ?? remote), ...value.syncPreferences };
     }
-    return { ...enabled, configSync: { ...enabled.configSync, spaceId: selectedSpace }, syncedBrowserPreferences: nativePreferences };
+    return status();
   });
   const session: ConfigurationSyncSession = { id: 1, target: 'release', assertCurrent: () => { if (!current) throw new Error('stale'); }, request: request as ConfigurationSyncSession['request'] };
   const create = () => new ConfigurationSync({ read, write, target: async () => selectedTarget });
@@ -39,9 +50,10 @@ function fixture(initial: Record<string, unknown> = {}) {
     await sync.settled();
   };
   return {
-    get sync() { return sync; }, session, request, read, write, user, stored: () => stored,
-    setRemote: (value: SyncedBrowserPreferences | undefined) => { nativePreferences = value; },
-    setSpace: (space: string, value: SyncedBrowserPreferences | undefined) => { selectedSpace = space; nativePreferences = value; },
+    get sync() { return sync; }, session, request, read, write, user, status, stored: () => stored,
+    setRemote: (value: Partial<SyncedBrowserPreferences> | undefined) => { nativePreferences = value; },
+    setFields: (value: Array<keyof SyncedBrowserPreferences> | undefined) => { nativeFields = value; },
+    setSpace: (space: string, value: Partial<SyncedBrowserPreferences> | undefined) => { selectedSpace = space; nativePreferences = value; },
     setTarget: (target: ClientTarget) => { selectedTarget = target; },
     restart: () => { sync.invalidate(); sync = create(); },
     expire: () => { current = false; sync.invalidate(); },
@@ -324,5 +336,204 @@ describe('configuration synchronization bridge', () => {
     f.sync.observe(next, { ...enabled, configSync: { ...enabled.configSync, spaceId: space } });
     await f.sync.settled();
     expect(f.request).toHaveBeenLastCalledWith({ protocol: 1, action: 'config-sync-browser', syncSpaceId: space, syncPreferences: { language: 'zh-CN' } });
+  });
+
+  it.each([
+    { fields: ['themeStyle', 'theme'] as const, appearance: { style: 'onevra', appearance: 'dark', fontScale: 100 }, language: 'zh-CN' },
+    { fields: ['fontScale'] as const, appearance: { style: 'monochrome', appearance: 'light', fontScale: 110 }, language: 'zh-CN' },
+    { fields: ['language'] as const, appearance: { style: 'monochrome', appearance: 'light', fontScale: 100 }, language: 'en' },
+  ])('applies only selected $fields preferences and keeps all other local data', async ({ fields, appearance, language }) => {
+    const f = fixture({ appearancePreferences: { style: 'monochrome', appearance: 'light', fontScale: 100, future: 'local' }, languagePreference: 'zh-CN', associations: { account: '用户数据' } });
+    f.setFields([...fields]);
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    expect(f.request).toHaveBeenCalledExactlyOnceWith({ protocol: 1, action: 'config-sync-browser' });
+    expect(f.stored()).toMatchObject({ appearancePreferences: { ...appearance, future: 'local' }, languagePreference: language, associations: { account: '用户数据' } });
+    const entry = (f.stored()[configurationSyncStorageKey] as any).scopes[`release:${spaceId}`];
+    expect(Object.keys(entry.baseline).sort()).toEqual([...fields].sort());
+    expect(entry.pending).toEqual({});
+  });
+
+  it('seeds only selected missing fields after a partial native pull', async () => {
+    const f = fixture({ appearancePreferences: { style: 'monochrome', appearance: 'light', fontScale: 120 }, languagePreference: 'zh-CN' });
+    f.setFields(['language', 'fontScale']);
+    f.setRemote({ language: 'en' });
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    expect(f.request.mock.calls.map(([request]) => request.syncPreferences)).toEqual([undefined, { fontScale: 120 }]);
+    expect(f.stored()).toMatchObject({ appearancePreferences: { style: 'monochrome', appearance: 'light', fontScale: 120 }, languagePreference: 'en' });
+  });
+
+  it.each(['future-appearance-record', { style: 'future-style', appearance: 'future-theme', fontScale: 999 }])('syncs selected language while preserving an unsupported disabled appearance record %j', async appearance => {
+    const f = fixture({ appearancePreferences: appearance, languagePreference: 'zh-CN' });
+    f.setFields(['language']);
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    expect(f.request).toHaveBeenCalledExactlyOnceWith({ protocol: 1, action: 'config-sync-browser' });
+    expect(f.stored()).toMatchObject({ appearancePreferences: appearance, languagePreference: 'en' });
+    expect(f.write.mock.calls.every(([value]) => !('appearancePreferences' in value))).toBe(true);
+  });
+
+  it.each([
+    {
+      fields: ['fontScale'],
+      appearance: { style: 'future-style', appearance: 'light', fontScale: 100 },
+      edited: { style: 'future-style', appearance: 'system', fontScale: 120 },
+      patch: { fontScale: 120 },
+      pending: { theme: 'system' },
+    },
+    {
+      fields: ['themeStyle', 'theme'],
+      appearance: { style: 'monochrome', appearance: 'light', fontScale: 999 },
+      edited: { style: 'monochrome', appearance: 'light', fontScale: 999 },
+      patch: { themeStyle: 'monochrome', theme: 'light' },
+      pending: {},
+    },
+  ])('tracks supported appearance edits independently of unsupported disabled values with $fields selected', async ({ fields, appearance, edited, patch, pending }) => {
+    const f = fixture({ appearancePreferences: appearance });
+    f.setFields(fields as Array<keyof SyncedBrowserPreferences>);
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    await f.user({ appearancePreferences: edited });
+    expect(f.request).toHaveBeenLastCalledWith({ protocol: 1, action: 'config-sync-browser', syncSpaceId: spaceId, syncPreferences: patch });
+    expect((f.stored()[configurationSyncStorageKey] as any).scopes[`release:${spaceId}`].pending).toEqual(pending);
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    expect(f.stored()).toMatchObject({ appearancePreferences: edited });
+  });
+
+  it('retains disabled field edits through worker restarts and sends them only after reenabling', async () => {
+    const f = fixture();
+    f.sync.observe(f.session, enabled);
+    await f.sync.settled();
+    f.setFields(['language']);
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    await f.user({ appearancePreferences: { style: 'monochrome', appearance: 'light', fontScale: 120 }, languagePreference: 'zh-CN' });
+    expect(f.request).toHaveBeenLastCalledWith({ protocol: 1, action: 'config-sync-browser', syncSpaceId: spaceId, syncPreferences: { language: 'zh-CN' } });
+    expect(f.stored()[configurationSyncStorageKey]).toMatchObject({ scopes: { [`release:${spaceId}`]: { baseline: { ...remote, language: 'zh-CN' }, pending: { themeStyle: 'monochrome', theme: 'light', fontScale: 120 } } } });
+    f.restart();
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    expect(f.request).toHaveBeenLastCalledWith({ protocol: 1, action: 'config-sync-browser' });
+    f.setFields(['themeStyle', 'theme', 'fontScale', 'language']);
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    expect(f.request).toHaveBeenLastCalledWith({ protocol: 1, action: 'config-sync-browser', syncSpaceId: spaceId, syncPreferences: { themeStyle: 'monochrome', theme: 'light', fontScale: 120 } });
+    expect(f.stored()[configurationSyncStorageKey]).toMatchObject({ scopes: { [`release:${spaceId}`]: { pending: {} } } });
+    expect(f.stored()).toMatchObject({ appearancePreferences: { style: 'monochrome', appearance: 'light', fontScale: 120 }, languagePreference: 'zh-CN' });
+  });
+
+  it('preserves disabled baselines to recover a local edit whose ledger write failed before restart', async () => {
+    const f = fixture();
+    f.sync.observe(f.session, enabled);
+    await f.sync.settled();
+    f.setFields(['language']);
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    f.write.mockRejectedValueOnce(new Error('storage temporarily unavailable'));
+    await f.user({ appearancePreferences: { style: 'onevra', appearance: 'light', fontScale: 110 } });
+    f.restart();
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    expect(f.stored()[configurationSyncStorageKey]).toMatchObject({ scopes: { [`release:${spaceId}`]: { baseline: { theme: 'dark' } } } });
+    f.setFields(['themeStyle', 'theme', 'fontScale', 'language']);
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    expect(f.request).toHaveBeenLastCalledWith({ protocol: 1, action: 'config-sync-browser', syncSpaceId: spaceId, syncPreferences: { theme: 'light' } });
+  });
+
+  it('imports newly enabled fields after a partial baseline instead of publishing untouched defaults', async () => {
+    const f = fixture({ appearancePreferences: { style: 'monochrome', appearance: 'light', fontScale: 100 }, languagePreference: 'zh-CN' });
+    f.setFields(['language']);
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    f.restart();
+    f.setFields(['themeStyle', 'theme', 'fontScale', 'language']);
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    expect(f.request.mock.calls.every(([request]) => request.syncPreferences === undefined)).toBe(true);
+    expect(f.stored()).toMatchObject({ appearancePreferences: { style: 'onevra', appearance: 'dark', fontScale: 110 }, languagePreference: 'en' });
+  });
+
+  it('ignores a full initial response after the selected fields change during its request', async () => {
+    const f = fixture({ appearancePreferences: { style: 'monochrome', appearance: 'light', fontScale: 100 } });
+    const pending = deferred<Record<string, unknown>>();
+    f.request.mockImplementationOnce(() => pending.promise as any);
+    f.sync.observe(f.session, enabled);
+    await vi.waitFor(() => expect(f.request).toHaveBeenCalledTimes(1));
+    f.setFields(['language']);
+    f.sync.observe(f.session, f.status());
+    pending.resolve({ ...enabled, syncedBrowserPreferences: remote });
+    await f.sync.settled();
+    expect(f.request).toHaveBeenCalledTimes(2);
+    expect(f.stored()).toMatchObject({ appearancePreferences: { style: 'monochrome', appearance: 'light', fontScale: 100 }, languagePreference: 'en' });
+  });
+
+  it('keeps an in-flight disabled-field patch pending when its old response arrives', async () => {
+    const f = fixture();
+    f.sync.observe(f.session, enabled);
+    await f.sync.settled();
+    const pending = deferred<Record<string, unknown>>();
+    f.request.mockImplementationOnce(() => pending.promise as any);
+    const editing = f.user({ appearancePreferences: { style: 'onevra', appearance: 'light', fontScale: 110 } });
+    await vi.waitFor(() => expect(f.request).toHaveBeenCalledTimes(2));
+    f.setFields(['language']);
+    f.sync.observe(f.session, f.status());
+    pending.resolve({ ...enabled, syncedBrowserPreferences: { ...remote, theme: 'light' } });
+    await editing;
+    expect(f.stored()[configurationSyncStorageKey]).toMatchObject({ scopes: { [`release:${spaceId}`]: { pending: { theme: 'light' } } } });
+    expect(f.stored()).toMatchObject({ appearancePreferences: { appearance: 'light' } });
+    f.setFields(['themeStyle', 'theme', 'fontScale', 'language']);
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    expect(f.request).toHaveBeenLastCalledWith({ protocol: 1, action: 'config-sync-browser', syncSpaceId: spaceId, syncPreferences: { theme: 'light' } });
+  });
+
+  it('uses a changed field policy from the authoritative initial native response', async () => {
+    const f = fixture({ appearancePreferences: { style: 'monochrome', appearance: 'light', fontScale: 100 } });
+    f.setFields(['language']);
+    f.sync.observe(f.session, enabled);
+    await f.sync.settled();
+    expect(f.request).toHaveBeenCalledTimes(2);
+    expect(f.stored()).toMatchObject({ appearancePreferences: { style: 'monochrome', appearance: 'light', fontScale: 100 }, languagePreference: 'en' });
+  });
+
+  it.each([
+    { target: 'dev' as const, space: spaceId },
+    { target: 'release' as const, space: otherSpaceId },
+  ])('keeps disabled-field edits with their original owner when switching to $target/$space', async ({ target, space }) => {
+    const f = fixture();
+    f.sync.observe(f.session, enabled);
+    await f.sync.settled();
+    f.setFields(['language']);
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    await f.user({ appearancePreferences: { style: 'onevra', appearance: 'light', fontScale: 110 } });
+    const beforeSwitch = f.request.mock.calls.length;
+    f.setTarget(target);
+    f.setSpace(space, { ...remote, theme: 'system' });
+    f.setFields(['theme', 'themeStyle']);
+    const next: ConfigurationSyncSession = { ...f.session, id: target === 'dev' ? 2 : 1, target };
+    f.sync.observe(next, f.status());
+    await f.sync.settled();
+    expect(f.request.mock.calls.slice(beforeSwitch).every(([request]) => request.syncPreferences === undefined)).toBe(true);
+    expect(f.stored()).toMatchObject({ appearancePreferences: { appearance: 'system' } });
+    expect(f.stored()[configurationSyncStorageKey]).toMatchObject({ scopes: { [`release:${spaceId}`]: { pending: { theme: 'light' } } } });
+    f.setTarget('release');
+    f.setSpace(spaceId, remote);
+    f.sync.observe(f.session, f.status());
+    await f.sync.settled();
+    expect(f.request).toHaveBeenLastCalledWith({ protocol: 1, action: 'config-sync-browser', syncSpaceId: spaceId, syncPreferences: { theme: 'light' } });
+    expect(f.stored()).toMatchObject({ appearancePreferences: { appearance: 'light' } });
+  });
+
+  it.each([[], ['futureField'], ['language', null], 'language', null])('does not apply or publish preferences for an empty or invalid field policy %j', async selected => {
+    const f = fixture({ languagePreference: 'zh-CN' });
+    f.sync.observe(f.session, { ...enabled, configSync: { ...enabled.configSync, fields: selected }, syncedBrowserPreferences: remote });
+    await f.sync.settled();
+    expect(f.request).not.toHaveBeenCalled();
+    expect(f.stored()).toMatchObject({ languagePreference: 'zh-CN' });
+    expect(f.write.mock.calls.filter(([value]) => 'appearancePreferences' in value || 'languagePreference' in value)).toHaveLength(0);
   });
 });

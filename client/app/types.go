@@ -38,6 +38,7 @@ type Request struct {
 	Settings         *Settings               `json:"settings,omitempty"`
 	SyncConnection   *SyncConnectionRequest  `json:"syncConnection,omitempty"`
 	SyncPreferences  *BrowserSyncPreferences `json:"syncPreferences,omitempty"`
+	SyncOptions      *ConfigSyncOptions      `json:"syncOptions,omitempty"`
 	SyncSpaceID      string                  `json:"syncSpaceId,omitempty"`
 }
 

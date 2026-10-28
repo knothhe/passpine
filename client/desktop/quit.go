@@ -32,6 +32,7 @@ func (a *application) requestQuit() {
 		return
 	}
 	a.quit.requested, a.quit.started = true, time.Now()
+	a.cancelConfigSyncTransfer()
 	if a.configSync.operation != "" {
 		a.manageConfigSync("config-sync-cancel", nil)
 	}
@@ -83,7 +84,7 @@ func (a *application) continueQuit() {
 		a.invalidate()
 		return
 	}
-	if a.busy || a.cli.operation != "" || a.configSync.operation != "" || a.settingsSaving || a.settingsDirty || a.gitRemoteSaving || !a.gitRemoteSaveAt.IsZero() || a.gitActionPending || a.generator.busy || a.quick.operation != "" {
+	if a.busy || a.cli.operation != "" || a.configSync.operation != "" || a.configSync.transferWriting() || a.settingsSaving || a.settingsDirty || a.gitRemoteSaving || !a.gitRemoteSaveAt.IsZero() || a.gitActionPending || a.generator.busy || a.quick.operation != "" {
 		a.quit.timer = time.AfterFunc(50*time.Millisecond, func() { a.runOnMain(a.continueQuit) })
 		return
 	}

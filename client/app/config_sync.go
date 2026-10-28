@@ -42,12 +42,16 @@ type SyncConnectionRequest struct {
 }
 
 type ConfigSyncStatus struct {
+	Options            ConfigSyncOptions   `json:"options,omitzero"`
+	Fields             []string            `json:"fields,omitzero"`
+	AttemptSequence    uint64              `json:"attemptSequence,omitempty"`
+	AttemptErrorCode   string              `json:"attemptErrorCode,omitempty"`
 	Enabled            bool                `json:"enabled"`
 	Ready              bool                `json:"ready"`
 	Busy               bool                `json:"busy,omitempty"`
 	Provider           string              `json:"provider,omitempty"`
 	SpaceID            string              `json:"spaceId,omitempty"`
-	Config             cloudsync.Config    `json:"config,omitempty"`
+	Config             cloudsync.Config    `json:"config,omitzero"`
 	LastSyncedAt       string              `json:"lastSyncedAt,omitempty"`
 	ErrorCode          string              `json:"errorCode,omitempty"`
 	ConflictKeys       []string            `json:"conflictKeys,omitempty"`
@@ -75,6 +79,7 @@ type syncProfile struct {
 	ClientID     string                `json:"clientId,omitempty"`
 }
 type syncMetadata struct {
+	Options        *ConfigSyncOptions     `json:"options,omitempty"`
 	Version        int                    `json:"version"`
 	Active         string                 `json:"active,omitempty"`
 	Enabled        bool                   `json:"enabled"`
@@ -84,9 +89,12 @@ type syncMetadata struct {
 	PendingCleanup []syncProfile          `json:"pendingCleanup,omitempty"`
 }
 type syncSecret struct {
-	ConnectionID string            `json:"connectionId,omitempty"`
-	Secrets      cloudsync.Secrets `json:"secrets"`
-	Baseline     cloudsync.Values  `json:"baseline,omitempty"`
+	ConnectionID   string            `json:"connectionId,omitempty"`
+	Secrets        cloudsync.Secrets `json:"secrets"`
+	Baseline       cloudsync.Values  `json:"baseline,omitempty"`
+	PendingDesktop bool              `json:"pendingDesktop,omitempty"`
+	PendingBrowser bool              `json:"pendingBrowser,omitempty"`
+	PendingKeys    []string          `json:"pendingKeys,omitempty"`
 }
 type syncSecrets interface {
 	Load(string) ([]byte, error)
@@ -118,7 +126,7 @@ func (s *Service) initConfigSync() {
 	locale := i18n.Resolve(s.prefs.Settings.Language, i18n.SystemLocale())
 	s.configSync.store, _ = secretstore.New(buildinfo.ChannelName(), s.directory, i18n.Text(locale, "Passpine 同步凭据"))
 	if b, e := readPrivate(filepath.Join(s.directory, "config-sync.json"), 1<<20); e == nil {
-		if json.Unmarshal(b, &s.configSync.meta) != nil || s.configSync.meta.Version != 1 || s.configSync.meta.Profiles == nil {
+		if json.Unmarshal(b, &s.configSync.meta) != nil || s.configSync.meta.Version != 1 || s.configSync.meta.Profiles == nil || s.configSync.meta.Options != nil && !validConfigSyncOptions(*s.configSync.meta.Options) {
 			s.configSync.invalid = true
 			s.configSync.status.ErrorCode = "invalid_document"
 		}
@@ -126,8 +134,16 @@ func (s *Service) initConfigSync() {
 		s.configSync.invalid = true
 		s.configSync.status.ErrorCode = "local_storage"
 	}
-	if validBrowserPreferences(s.prefs.BrowserPreferences, true) {
+	if validBrowserPreferences(s.prefs.BrowserPreferences, false) {
 		s.configSync.browser = s.prefs.BrowserPreferences
+	}
+	if _, exists := s.configSync.meta.Profiles[s.configSync.meta.Active]; exists && !s.configSync.invalid {
+		// The local bridge remains available after restart, including manual
+		// mode, without loading credentials or contacting object storage.
+		s.configSync.status.Ready = s.configSync.meta.LastSyncedAt != ""
+	}
+	if !s.configSyncOptions().SyncOnStart {
+		s.configSync.next = time.Now().Add(time.Duration(s.configSyncOptions().IntervalMinutes) * time.Minute)
 	}
 	if !s.preview && !s.configSync.invalid {
 		_ = s.initSyncSDK()
@@ -138,6 +154,7 @@ func (s *Service) SetOnSettingsChange(f func()) { s.mu.Lock(); s.onSettingsChang
 
 func (s *Service) configSyncSnapshot(d *Data) {
 	state := s.configSync.status
+	state.Options = s.configSyncOptions()
 	state.Enabled = s.configSync.meta.Enabled && !s.configSync.invalid
 	state.Provider = s.configSync.meta.Active
 	state.LastSyncedAt = s.configSync.meta.LastSyncedAt
@@ -249,7 +266,7 @@ func (s *Service) scheduleConfigSync() {
 	allowed := s.syncSecretAccessAllowed()
 	s.mu.Lock()
 	c := &s.configSync
-	if !allowed || s.preview || s.closed || c.invalid || !c.meta.Enabled || c.meta.Active == "" || c.queued || c.status.Busy || time.Now().Before(c.next) || c.status.ErrorCode == "conflict" || c.status.ErrorCode == "credentials_denied" {
+	if !allowed || s.preview || s.closed || c.invalid || s.configSyncOptions().Mode != "automatic" || !c.meta.Enabled || c.meta.Active == "" || c.queued || c.status.Busy || time.Now().Before(c.next) || c.status.ErrorCode == "conflict" || c.status.ErrorCode == "credentials_denied" {
 		s.mu.Unlock()
 		return
 	}
@@ -264,6 +281,9 @@ func (s *Service) scheduleConfigSync() {
 }
 
 func (s *Service) executeConfigSync(r Request, source string) Response {
+	if r.Action == "config-sync-options" {
+		return s.saveConfigSyncOptions(r, source)
+	}
 	if r.Action == "config-sync-cancel" {
 		s.cancelConfigSync()
 	}
@@ -276,7 +296,7 @@ func (s *Service) executeConfigSync(r Request, source string) Response {
 		if r.Action == "config-sync-browser" && r.SyncPreferences != nil {
 			if s.closed || s.updatePaused.Load() {
 				e = &cloudsync.Error{Code: "cancelled"}
-			} else if !s.configSync.meta.Enabled || !s.configSync.status.Ready {
+			} else if !s.configSync.meta.Enabled || !s.configSync.status.Ready || !browserSyncPatchSelected(r.SyncPreferences, s.configSyncOptions()) {
 				e = &cloudsync.Error{Code: "not_ready"}
 			} else if source == "browser" && r.SyncSpaceID != syncSpaceID(s.configSync.meta.Profiles[s.configSync.meta.Active].Config) {
 				e = &cloudsync.Error{Code: "not_ready"}
@@ -300,6 +320,13 @@ func (s *Service) executeConfigSync(r Request, source string) Response {
 	}
 	if s.preview || s.configSync.invalid {
 		out := s.syncResponseLocked(r, &cloudsync.Error{Code: "unavailable"})
+		s.mu.Unlock()
+		return out
+	}
+	// A queued worker may acquire the lane after an options save changed
+	// mode or its deadline. Re-check before starting any automatic work.
+	if source == "automatic" && (s.configSyncOptions().Mode != "automatic" || !s.configSync.meta.Enabled || time.Now().Before(s.configSync.next) || s.configSync.status.ErrorCode == "conflict" || s.configSync.status.ErrorCode == "credentials_denied") {
+		out := s.syncResponseLocked(r, nil)
 		s.mu.Unlock()
 		return out
 	}
@@ -368,12 +395,17 @@ func (s *Service) executeConfigSync(r Request, source string) Response {
 	if errors.As(e, &typed) && typed.Code == "conflict" {
 		s.configSync.status.ConflictKeys = append([]string(nil), typed.Keys...)
 	}
-	s.configSync.next = time.Now().Add(5 * time.Minute)
-	if e == nil && s.configSync.dirty {
+	s.configSync.next = time.Now().Add(time.Duration(s.configSyncOptions().IntervalMinutes) * time.Minute)
+	if e == nil && s.configSync.dirty && s.configSyncOptions().Mode == "automatic" && s.configSyncOptions().SyncOnChange {
 		s.configSync.next = time.Now().Add(2 * time.Second)
 	}
 	if e != nil {
 		s.configSync.next = time.Now().Add(time.Minute)
+	}
+	switch r.Action {
+	case "config-sync-save", "config-sync-now", "config-sync-resolve":
+		s.configSync.status.AttemptSequence++
+		s.configSync.status.AttemptErrorCode = syncErrorCode(e)
 	}
 	s.logConfigSync(r.Action, source, e)
 	out := s.syncResponseLocked(r, e)
@@ -478,6 +510,8 @@ func (s *Service) manualConnection(r *SyncConnectionRequest) (syncProfile, syncS
 		}
 		if v.Secrets.Passphrase == old.Secrets.Passphrase {
 			v.Baseline = old.Baseline
+			v.PendingDesktop, v.PendingBrowser = old.PendingDesktop, old.PendingBrowser
+			v.PendingKeys = append([]string(nil), old.PendingKeys...)
 		}
 	}
 	if e = cloudsync.ValidateSecrets(v.Secrets); e != nil {
@@ -557,14 +591,15 @@ func (s *Service) saveSyncConnection(ctx context.Context, r *SyncConnectionReque
 	}
 	local := s.localSyncValues(v.Baseline)
 	started := s.localSyncValues(nil)
+	options := s.configSyncOptions()
 	s.mu.Unlock()
 	// Validate and synchronize the candidate before replacing a working profile.
 	// A wrong phrase or rejected write must leave its saved credentials intact.
-	result, e := s.configSync.engine.SyncValidated(ctx, p.Config, v.Secrets, local, v.Baseline, validateSyncedValues)
+	result, e := s.configSync.engine.SyncValidatedWithPolicy(ctx, p.Config, v.Secrets, local, v.Baseline, validateSyncedValues, configSyncPolicy(v, options))
 	if e != nil {
 		return e
 	}
-	v.Baseline = result.Values
+	v = advanceConfigSyncBaseline(v, result.Values, options)
 	if e = s.storeSyncSecret(p.SecretRef, v); e != nil {
 		return e
 	}
@@ -676,6 +711,8 @@ func (s *Service) reuseSyncBaseline(p syncProfile, v *syncSecret) error {
 			}
 			if previous.Secrets.Passphrase == v.Secrets.Passphrase {
 				v.Baseline = copySyncValues(previous.Baseline)
+				v.PendingDesktop, v.PendingBrowser = previous.PendingDesktop, previous.PendingBrowser
+				v.PendingKeys = append([]string(nil), previous.PendingKeys...)
 				if previous.Baseline == nil {
 					v.Baseline = nil
 				}
@@ -696,18 +733,32 @@ func copySyncValues(in cloudsync.Values) cloudsync.Values {
 func jsonValue(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
 func (s *Service) localSyncValues(base cloudsync.Values) cloudsync.Values {
 	v := copySyncValues(base)
-	v["desktop.theme"] = jsonValue(s.prefs.Settings.Theme)
-	v["desktop.themeStyle"] = jsonValue(s.prefs.Settings.ThemeStyle)
-	if string(base["desktop.themeStyle"]) == `"omarchy"` && NormalizeThemeStyle(ThemeStyleOmarchy) != ThemeStyleOmarchy && s.prefs.Settings.ThemeStyle == NormalizeThemeStyle(ThemeStyleOmarchy) {
-		v["desktop.themeStyle"] = jsonValue(ThemeStyleOmarchy)
+	options := s.configSyncOptions()
+	local := cloudsync.Values{
+		"desktop.theme": jsonValue(s.prefs.Settings.Theme), "desktop.themeStyle": jsonValue(s.prefs.Settings.ThemeStyle),
+		"desktop.fontScale": jsonValue(s.prefs.Settings.FontScale), "desktop.language": jsonValue(s.prefs.Settings.Language),
 	}
-	v["desktop.fontScale"] = jsonValue(s.prefs.Settings.FontScale)
-	v["desktop.language"] = jsonValue(s.prefs.Settings.Language)
+	if string(base["desktop.themeStyle"]) == `"omarchy"` && NormalizeThemeStyle(ThemeStyleOmarchy) != ThemeStyleOmarchy && s.prefs.Settings.ThemeStyle == NormalizeThemeStyle(ThemeStyleOmarchy) {
+		local["desktop.themeStyle"] = jsonValue(ThemeStyleOmarchy)
+	}
 	if p := s.configSync.browser; p != nil {
-		v["browser.theme"] = jsonValue(p.Theme)
-		v["browser.themeStyle"] = jsonValue(p.ThemeStyle)
-		v["browser.fontScale"] = jsonValue(p.FontScale)
-		v["browser.language"] = jsonValue(p.Language)
+		if p.Theme != nil {
+			local["browser.theme"] = jsonValue(*p.Theme)
+		}
+		if p.ThemeStyle != nil {
+			local["browser.themeStyle"] = jsonValue(*p.ThemeStyle)
+		}
+		if p.FontScale != nil {
+			local["browser.fontScale"] = jsonValue(*p.FontScale)
+		}
+		if p.Language != nil {
+			local["browser.language"] = jsonValue(*p.Language)
+		}
+	}
+	for key, value := range local {
+		if configSyncKeyEnabled(options, key) {
+			v[key] = value
+		}
 	}
 	return v
 }
@@ -741,6 +792,7 @@ func (s *Service) syncConfiguration(ctx context.Context, resolution string) erro
 	s.mu.Lock()
 	local := s.localSyncValues(v.Baseline)
 	started := s.localSyncValues(nil)
+	options := s.configSyncOptions()
 	s.mu.Unlock()
 	baseline := v.Baseline
 	if resolution == "local" || resolution == "remote" {
@@ -772,7 +824,7 @@ func (s *Service) syncConfiguration(ctx context.Context, resolution string) erro
 			}
 		}
 	}
-	result, e := s.configSync.engine.SyncValidated(ctx, p.Config, v.Secrets, local, baseline, validateSyncedValues)
+	result, e := s.configSync.engine.SyncValidatedWithPolicy(ctx, p.Config, v.Secrets, local, baseline, validateSyncedValues, configSyncPolicy(v, options))
 	if e != nil {
 		return e
 	}
@@ -786,7 +838,7 @@ func (s *Service) syncConfiguration(ctx context.Context, resolution string) erro
 	if e != nil {
 		return e
 	}
-	v.Baseline = result.Values
+	v = advanceConfigSyncBaseline(v, result.Values, options)
 	if e = s.storeSyncSecret(p.SecretRef, v); e != nil {
 		return e
 	}
@@ -810,6 +862,7 @@ func (s *Service) applySyncValues(values, started cloudsync.Values) error {
 		return err
 	}
 	settings := s.prefs.Settings
+	options := s.configSyncOptions()
 	decode := func(k string, dst any) error {
 		if b, ok := values[k]; ok {
 			return json.Unmarshal(b, dst)
@@ -822,7 +875,7 @@ func (s *Service) applySyncValues(values, started cloudsync.Values) error {
 		k   string
 		dst any
 	}{{"desktop.theme", &settings.Theme}, {"desktop.themeStyle", &settings.ThemeStyle}, {"desktop.fontScale", &settings.FontScale}, {"desktop.language", &settings.Language}} {
-		if string(current[item.k]) == string(started[item.k]) {
+		if configSyncKeyEnabled(options, item.k) && string(current[item.k]) == string(started[item.k]) {
 			if decode(item.k, item.dst) != nil {
 				return &cloudsync.Error{Code: "invalid_document"}
 			}
@@ -833,24 +886,33 @@ func (s *Service) applySyncValues(values, started cloudsync.Values) error {
 		return &cloudsync.Error{Code: "invalid_document"}
 	}
 	var browser *BrowserSyncPreferences
-	if _, ok := values["browser.theme"]; ok {
-		theme, style, lang := "system", "monochrome", "system"
-		scale := 100
+	if len(selectedBrowserSyncFields(options)) != 0 {
+		candidate := cloneBrowserSync(s.configSync.browser)
+		if candidate == nil {
+			candidate = &BrowserSyncPreferences{}
+		}
+		applied := false
 		for _, item := range []struct {
 			k   string
 			dst any
-		}{{"browser.theme", &theme}, {"browser.themeStyle", &style}, {"browser.fontScale", &scale}, {"browser.language", &lang}} {
-			b := values[item.k]
+		}{{"browser.theme", &candidate.Theme}, {"browser.themeStyle", &candidate.ThemeStyle}, {"browser.fontScale", &candidate.FontScale}, {"browser.language", &candidate.Language}} {
+			b, present := values[item.k]
+			if !present || !configSyncKeyEnabled(options, item.k) {
+				continue
+			}
 			if old, ok := current[item.k]; ok && string(old) != string(started[item.k]) {
 				b = old
 			}
 			if len(b) == 0 || json.Unmarshal(b, item.dst) != nil {
 				return &cloudsync.Error{Code: "invalid_document"}
 			}
+			applied = true
 		}
-		browser = &BrowserSyncPreferences{Theme: &theme, ThemeStyle: &style, Language: &lang, FontScale: &scale}
-		if !validBrowserPreferences(browser, true) {
-			return &cloudsync.Error{Code: "invalid_document"}
+		if applied {
+			browser = candidate
+			if !validBrowserPreferences(browser, false) {
+				return &cloudsync.Error{Code: "invalid_document"}
+			}
 		}
 	}
 	previous := s.prefs.Settings
@@ -895,9 +957,7 @@ func (s *Service) mergeBrowserPreferences(p *BrowserSyncPreferences) error {
 	if !validBrowserPreferences(p, false) {
 		return &cloudsync.Error{Code: "invalid_config"}
 	}
-	theme, style, language := "system", "monochrome", "system"
-	scale := 100
-	next := BrowserSyncPreferences{Theme: &theme, ThemeStyle: &style, Language: &language, FontScale: &scale}
+	next := BrowserSyncPreferences{}
 	if s.configSync.browser != nil {
 		next = *s.configSync.browser
 	}
@@ -913,6 +973,9 @@ func (s *Service) mergeBrowserPreferences(p *BrowserSyncPreferences) error {
 	if p.FontScale != nil {
 		next.FontScale = p.FontScale
 	}
+	if string(jsonValue(s.configSync.browser)) == string(jsonValue(&next)) {
+		return nil
+	}
 	old := s.prefs.BrowserPreferences
 	s.prefs.BrowserPreferences = &next
 	if e := s.savePreferences(); e != nil {
@@ -921,8 +984,7 @@ func (s *Service) mergeBrowserPreferences(p *BrowserSyncPreferences) error {
 	}
 	s.configSync.browser = cloneBrowserSync(&next)
 	s.prefs.BrowserPreferences = s.configSync.browser
-	s.configSync.dirty = true
-	s.configSync.next = time.Time{}
+	s.markConfigSyncDirty()
 	return nil
 }
 
@@ -979,15 +1041,6 @@ func validateSyncedValues(values cloudsync.Values) error {
 				return &cloudsync.Error{Code: "invalid_document"}
 			}
 		}
-	}
-	count := 0
-	for _, key := range []string{"browser.theme", "browser.themeStyle", "browser.language", "browser.fontScale"} {
-		if _, ok := values[key]; ok {
-			count++
-		}
-	}
-	if count != 0 && count != 4 {
-		return &cloudsync.Error{Code: "invalid_document"}
 	}
 	return nil
 }

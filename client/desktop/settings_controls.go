@@ -73,6 +73,16 @@ func (a *application) settingsContent(c *ui.Context, categories []components.Set
 			if a.settingsSaving || a.gitRemoteSaving {
 				muted(c, a.t("正在保存…"))
 			}
+			if !searching && categories[selected].ID == "config-sync" {
+				ui.Column(c).Shrink(0).Gap(5).AlignItems(ui.End).Children(func() {
+					a.configSyncSaveButton(c)
+					if a.configSync.options != a.configSync.optionsSaved {
+						muted(c, a.t("未保存更改"))
+					} else if a.configSync.optionsLoaded {
+						muted(c, a.t("已保存"))
+					}
+				})
+			}
 		})
 		components.ScrollView(c, components.ScrollViewOptions{}).Fill().Children(func() {
 			ui.Column(c).Key(a.settingsState.Category).FillWidth().MinWidth(0).Padding(0, 28, 28, 28).Gap(24).Children(func() {

@@ -200,7 +200,7 @@ func (a *application) lightweightSuspensionReady(now time.Time) bool {
 	return a.state.Settings.LightweightMode && !a.closing && !a.initializing && !a.lifecycle.suspended &&
 		!a.lifecycle.mainVisible && !a.quick.visible && !a.lifecycle.hiddenAt.IsZero() &&
 		now.Sub(a.lifecycle.hiddenAt) >= lightweightIdleDelay &&
-		!a.busy && a.cli.operation == "" && a.configSync.operation == "" && !a.settingsSaving && !a.gitRemoteSaving && !a.gitActionPending &&
+		!a.busy && a.cli.operation == "" && a.configSync.operation == "" && !a.configSync.transferWriting() && !a.settingsSaving && !a.gitRemoteSaving && !a.gitActionPending &&
 		!a.editor.open && !a.generator.busy && a.quick.operation == ""
 }
 

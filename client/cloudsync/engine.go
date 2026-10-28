@@ -41,6 +41,21 @@ func (e *Engine) Sync(ctx context.Context, config Config, secrets Secrets, local
 // they can be uploaded or applied locally. Unknown fields remain transportable.
 // The callback runs after each merge, including a conditional-write retry.
 func (e *Engine) SyncValidated(ctx context.Context, config Config, secrets Secrets, local, baseline Values, validate func(Values) error) (Result, error) {
+	return e.SyncValidatedWithPolicy(ctx, config, secrets, local, baseline, validate, MergePolicy{})
+}
+
+// MergePolicy controls which owned fields participate in a synchronization.
+// Ignored keys retain the remote value, including its absence. Initial keys use
+// the initial-setup rule: import a remote value if present, otherwise upload the
+// local value. An ignored key takes precedence over an initial key.
+type MergePolicy struct {
+	IgnoredKeys []string
+	InitialKeys []string
+}
+
+// SyncValidatedWithPolicy applies a field policy against each remote revision,
+// including revisions read after a concurrent write. Input maps are not changed.
+func (e *Engine) SyncValidatedWithPolicy(ctx context.Context, config Config, secrets Secrets, local, baseline Values, validate func(Values) error, policy MergePolicy) (Result, error) {
 	config, err := NormalizeConfig(config)
 	if err != nil {
 		return Result{}, err
@@ -73,7 +88,28 @@ func (e *Engine) SyncValidated(ctx context.Context, config Config, secrets Secre
 		if !exists {
 			mergeBase = nil
 		}
-		merged, err := Merge(local, mergeBase, remote)
+		mergeLocal := local
+		if len(policy.IgnoredKeys) != 0 || len(policy.InitialKeys) != 0 {
+			mergeLocal = cloneValues(local)
+			if mergeBase != nil {
+				mergeBase = cloneValues(mergeBase)
+			}
+			for _, key := range policy.InitialKeys {
+				if value, ok := remote[key]; ok {
+					mergeLocal[key] = value
+					if mergeBase != nil {
+						mergeBase[key] = value
+					}
+				} else {
+					delete(mergeBase, key)
+				}
+			}
+			for _, key := range policy.IgnoredKeys {
+				delete(mergeLocal, key)
+				delete(mergeBase, key)
+			}
+		}
+		merged, err := Merge(mergeLocal, mergeBase, remote)
 		if err != nil {
 			return Result{}, err
 		}

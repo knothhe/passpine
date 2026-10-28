@@ -363,8 +363,8 @@ func TestConfigSyncBrowserReadinessValidationAndPause(t *testing.T) {
 	}
 	saveSyncFixture(t, s, c, secrets)
 	d := must(t, s, Request{Action: "config-sync-browser", SyncPreferences: &BrowserSyncPreferences{Theme: &theme}})
-	if d.SyncedBrowserPreferences == nil || *d.SyncedBrowserPreferences.Theme != "dark" || d.SyncedBrowserPreferences.Language == nil {
-		t.Fatal("partial browser patch did not preserve complete namespace")
+	if d.SyncedBrowserPreferences == nil || *d.SyncedBrowserPreferences.Theme != "dark" || d.SyncedBrowserPreferences.Language != nil {
+		t.Fatal("partial browser patch invented values for unknown preferences")
 	}
 	invalid := "invalid-theme"
 	out = s.Execute(Request{Action: "config-sync-browser", SyncPreferences: &BrowserSyncPreferences{Theme: &invalid}})
@@ -551,7 +551,8 @@ func TestConfigSyncBrowserPatchesAndSnapshotsDoNotAliasState(t *testing.T) {
 	s, _, _, c, secrets, _ := newSyncAppSpace(t)
 	saveSyncFixture(t, s, c, secrets)
 	theme := "dark"
-	data := must(t, s, Request{Action: "config-sync-browser", SyncPreferences: &BrowserSyncPreferences{Theme: &theme}})
+	language := "system"
+	data := must(t, s, Request{Action: "config-sync-browser", SyncPreferences: &BrowserSyncPreferences{Theme: &theme, Language: &language}})
 	theme = "light"
 	*data.SyncedBrowserPreferences.Language = "en"
 	next := must(t, s, Request{Action: "config-sync-status"})

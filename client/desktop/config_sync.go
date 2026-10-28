@@ -5,11 +5,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
 	"github.com/knothhe/passpine/client/cloudsync"
 	"github.com/knothhe/r2connect"
 	"github.com/oneo-me/onevra/source/components"
+	"github.com/oneo-me/onevra/source/icons/lucide"
 )
 
 type configurationSyncDraft struct {
@@ -20,17 +22,28 @@ type configurationSyncDraft struct {
 
 type configurationSyncUI struct {
 	status                                                       app.ConfigSyncStatus
+	options, optionsSaved                                        app.ConfigSyncOptions
+	optionsLoaded                                                bool
+	optionsErrorCode                                             string
 	manual, r2                                                   configurationSyncDraft
 	mode                                                         int
 	loaded, editing, advanced, disconnectConfirm, refreshPending bool
 	operation, errorCode, message                                string
 	started                                                      time.Time
 	serial                                                       uint64
+	notificationSequence, notificationSerial                     uint64
+	notificationCode, notificationSpace                          string
+	nativeNotification                                           *mygo.Notification
+	notifyIssue                                                  func(title, body string, onClick func()) bool
+	transfer                                                     *configurationSyncTransfer
+	readTransfer                                                 func(string) (app.ConfigSyncOptions, *cloudsync.Config, error)
+	writeTransfer                                                func(string, []byte) error
 }
 
 func newConfigurationSyncUI() configurationSyncUI {
 	defaults := cloudsync.Config{Region: "auto", Prefix: "passpine", PathStyle: true}
-	return configurationSyncUI{editing: true, manual: configurationSyncDraft{config: defaults}, r2: configurationSyncDraft{config: defaults, jurisdiction: "default"}}
+	options := app.DefaultConfigSyncOptions()
+	return configurationSyncUI{editing: true, options: options, optionsSaved: options, manual: configurationSyncDraft{config: defaults}, r2: configurationSyncDraft{config: defaults, jurisdiction: "default"}}
 }
 
 // These are presentation labels; the SDK remains the authority on which
@@ -48,6 +61,11 @@ func supportedSyncJurisdictions() []string {
 // Configuration work has its own lane: a slow authorization or object request
 // cannot block vault reads, editors, ordinary preferences or language changes.
 func (a *application) manageConfigSync(action string, connection *app.SyncConnectionRequest) {
+	a.manageConfigSyncRequest(app.Request{Action: action, SyncConnection: connection})
+}
+
+func (a *application) manageConfigSyncRequest(request app.Request) {
+	action, connection := request.Action, request.SyncConnection
 	if a.service == nil || a.closing || (a.quit.requested || a.updates.preparing) && action != "config-sync-cancel" {
 		return
 	}
@@ -70,8 +88,13 @@ func (a *application) manageConfigSync(action string, connection *app.SyncConnec
 		copy := *connection
 		captured = &copy
 	}
+	request.SyncConnection = captured
+	if request.SyncOptions != nil {
+		options := *request.SyncOptions
+		request.SyncOptions = &options
+	}
 	go func() {
-		result := a.service.Execute(app.Request{Action: action, SyncConnection: captured})
+		result := a.service.Execute(request)
 		a.runOnMain(func() {
 			if serial != a.configSync.serial {
 				return
@@ -91,9 +114,21 @@ func (a *application) manageConfigSync(action string, connection *app.SyncConnec
 				result.Data.Settings = app.Settings{}
 				a.configSync.refreshPending = true
 			}
+			options := a.configSync.options
+			keepOptionsDraft := action == "config-sync-options" && request.SyncOptions != nil && options != *request.SyncOptions
 			a.acceptConfigSyncState(result.Data)
-			a.configSync.errorCode = result.Code
-			if result.Status == "ok" {
+			if keepOptionsDraft {
+				a.configSync.options = options
+			}
+			if action == "config-sync-options" {
+				a.configSync.optionsErrorCode = result.Code
+				if result.Status != "ok" && result.Code == "" {
+					a.configSync.optionsErrorCode = "local_storage"
+				}
+			} else {
+				a.configSync.errorCode = result.Code
+			}
+			if result.Status == "ok" && action != "config-sync-options" {
 				a.configSync.errorCode = a.configSync.status.ErrorCode
 				if action == "config-sync-test" {
 					a.configSync.message = "连接测试通过。"
@@ -144,6 +179,14 @@ func (a *application) settingsAvailableWithoutVault() bool {
 func (a *application) acceptConfigSyncState(data app.Data) {
 	if data.ConfigSync != nil {
 		status := *data.ConfigSync
+		defer func() { a.acceptConfigSyncNotification(status) }()
+		if status.Options.IntervalMinutes > 0 {
+			if !a.configSync.optionsLoaded || a.configSync.options == a.configSync.optionsSaved {
+				a.configSync.options = status.Options
+			}
+			a.configSync.optionsSaved = status.Options
+			a.configSync.optionsLoaded = true
+		}
 		first := !a.configSync.loaded
 		a.configSync.status = status
 		a.configSync.loaded = true
@@ -255,6 +298,8 @@ func (a *application) configSyncError(code string) string {
 		return a.t("此设备与云端修改了相同配置。请选择要保留的配置后重试。")
 	case "invalid_config", "invalid_credentials":
 		return a.t("请检查服务端点、存储桶、区域和访问密钥。")
+	case "invalid_sync_options":
+		return a.t("请选择有效的同步间隔后重试。")
 	case "invalid_passphrase":
 		return a.t("同步加密口令至少需要 12 个字符。")
 	case "decrypt_failed", "invalid_ciphertext", "authentication_failed":
@@ -311,15 +356,21 @@ func (a *application) configSyncError(code string) string {
 }
 
 func (a *application) configSyncView(c *ui.Context) {
-	ui.Column(c).Key("config-sync-settings").FillWidth().MaxWidth(664).MinWidth(0).Gap(16).Children(func() {
+	ui.Column(c).Key("config-sync-settings").FillWidth().MaxWidth(720).MinWidth(0).Gap(16).Children(func() {
 		ui.Column(c).Key("config-sync-connection").FillWidth().MinWidth(0).Padding(20).Gap(14).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(10).Children(func() {
+			a.configSyncSectionTitle(c, a.t("同步连接"), lucide.Cloud)
 			if a.state.Preview {
 				muted(c, a.t("预览模式不会连接对象存储或读取系统凭据。"))
 				return
 			}
-			if a.configSync.status.Provider != "" && !a.configSync.editing {
+			if a.configSync.status.Provider != "" {
 				a.configSyncConnected(c)
-			} else {
+			}
+			if a.configSync.status.Provider == "" || a.configSync.editing {
+				if a.configSync.status.Provider != "" {
+					ui.Box(c).FillWidth().Height(1).Background(c.Theme().Border)
+					components.Text(c, a.t("编辑同步连接")).Bold()
+				}
 				a.configSyncEditor(c)
 			}
 			a.configSyncOAuthDiagnostics(c)
@@ -336,8 +387,8 @@ func (a *application) configSyncView(c *ui.Context) {
 			if a.configSync.message != "" {
 				components.Text(c, a.t(a.configSync.message)).TextColor(c.Theme().Success).Wrap()
 			}
-			ui.Box(c).Key("sync-progress").FillWidth().Height(22).Children(func() {
-				if a.configSync.operation != "" {
+			if a.configSync.operation != "" {
+				ui.Box(c).Key("sync-progress").FillWidth().Height(22).Children(func() {
 					if remaining := 180*time.Millisecond - c.Now().Sub(a.configSync.started); remaining > 0 {
 						c.After(remaining)
 					} else {
@@ -346,14 +397,143 @@ func (a *application) configSyncView(c *ui.Context) {
 							muted(c, a.t("正在处理配置同步…"))
 						})
 					}
+				})
+			}
+		})
+		a.configSyncTransferView(c)
+		a.configSyncOptions(c)
+	})
+}
+
+func (a *application) configSyncOptions(c *ui.Context) {
+	ui.Column(c).Key("sync-options").FillWidth().MinWidth(0).Gap(16).Children(func() {
+		ui.Column(c).Key("sync-content-options").FillWidth().MinWidth(0).Padding(20).Gap(16).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(10).Children(func() {
+			a.configSyncSectionTitle(c, a.t("同步内容"), lucide.ListChecks)
+			muted(c, a.t("选择在设备间同步的偏好，两端可分别设置。"))
+			a.configSyncFieldOptions(c, "sync-desktop", a.t("客户端偏好"), &a.configSync.options.Desktop, &a.configSync.options.DesktopFields)
+			ui.Box(c).FillWidth().Height(1).Background(c.Theme().Border)
+			a.configSyncFieldOptions(c, "sync-browser", a.t("扩展偏好"), &a.configSync.options.Browser, &a.configSync.options.BrowserFields)
+			muted(c, a.t("未选中的内容保留在本机，云端已有配置也会保留。密码库继续使用 Git 同步。"))
+		})
+		ui.Column(c).Key("sync-behavior-options").FillWidth().MinWidth(0).Padding(20).Gap(16).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(10).Children(func() {
+			a.configSyncSectionTitle(c, a.t("同步行为"), lucide.Clock)
+			ui.Column(c).FillWidth().MinWidth(0).Gap(8).Children(func() {
+				components.Text(c, a.t("同步模式")).Wrap()
+				choiceSettingSegments(c, &a.configSync.options.Mode, a.t("同步模式"), []string{"automatic", "manual"}, []string{a.t("自动同步"), a.t("仅手动同步")}).FillWidth()
+				if a.configSync.options.Mode == "manual" {
+					muted(c, a.t("仅在点击“立即同步”时同步云端配置，自动设置会保留。"))
 				}
 			})
+			ui.Column(c).Key("sync-automatic-options").FillWidth().MinWidth(0).Gap(16).Disabled(a.configSync.options.Mode == "manual").Children(func() {
+				ui.Column(c).Key("sync-interval").FillWidth().MinWidth(0).Gap(6).Children(func() {
+					components.Text(c, a.t("同步时间间隔")).Wrap()
+					value := a.configSync.options.IntervalMinutes
+					values := []int{1, 5, 15, 30, 60}
+					choices := []string{"1", "5", "15", "30", "60"}
+					labels := []string{a.t("1 分钟"), a.t("%d 分钟", 5), a.t("%d 分钟", 15), a.t("%d 分钟", 30), a.t("1 小时")}
+					selected := "5"
+					for i, minutes := range values {
+						if minutes == value {
+							selected = choices[i]
+						}
+					}
+					if a.syncChoice(c, "sync-interval-choice", &selected, a.t("同步时间间隔"), choices, labels).Changed() {
+						for i, choice := range choices {
+							if selected == choice {
+								a.configSync.options.IntervalMinutes = values[i]
+							}
+						}
+					}
+				})
+				a.configSyncOption(c, "sync-on-start", a.t("启动时同步"), a.t("启动应用后自动检查一次云端配置。"), &a.configSync.options.SyncOnStart)
+				a.configSyncOption(c, "sync-on-change", a.t("修改后自动同步"), a.t("本地偏好修改后约 2 秒安排同步。"), &a.configSync.options.SyncOnChange)
+			})
+			ui.Box(c).FillWidth().Height(1).Background(c.Theme().Border)
+			a.configSyncOption(c, "sync-notify-errors", a.t("同步异常提醒"), a.t("同步失败或出现冲突时提醒；窗口隐藏时使用系统通知。"), &a.configSync.options.NotifyErrors)
 		})
-		ui.Column(c).Key("sync-scope").FillWidth().Padding(16).Gap(8).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(8).Children(func() {
-			components.Text(c, a.t("同步内容")).Bold()
-			muted(c, a.t("客户端与扩展分别同步主题、语言和字号。密码库仍使用原有 Git 同步。"))
+		ui.Column(c).Key("sync-options-footer").FillWidth().MinWidth(0).Gap(10).Children(func() {
+			if a.page != "settings" || a.settingsState.Category != "config-sync" || strings.TrimSpace(a.settingsState.Query) != "" {
+				a.configSyncSaveControls(c)
+			} else {
+				a.configSyncRevertButton(c)
+			}
+			if a.configSync.optionsErrorCode != "" {
+				components.Text(c, a.configSyncError(a.configSync.optionsErrorCode)).Key("sync-options-error").TextColor(c.Theme().Danger).Wrap()
+			}
+			muted(c, a.t("这些选项仅在此设备生效，保存后用于下一次同步。"))
 			muted(c, a.t("本机路径、私钥、系统解锁、开机自启和浏览器权限保留在本机。"))
 		})
+	})
+}
+
+func (a *application) configSyncSaveDisabled() bool {
+	return a.state.Preview || !a.configSync.optionsLoaded || a.configSync.operation != "" || a.configSync.status.Busy || a.configSync.transfer != nil || a.quit.requested || a.closing || a.updates.preparing
+}
+
+func (a *application) configSyncSaveButton(c *ui.Context) {
+	dirty := a.configSync.options != a.configSync.optionsSaved
+	if components.Button(c, a.t("保存同步选项"), components.ButtonPrimary).Disabled(a.configSyncSaveDisabled() || !dirty).Clicked() {
+		a.manageConfigSyncRequest(app.Request{Action: "config-sync-options", SyncOptions: &a.configSync.options})
+	}
+}
+
+func (a *application) configSyncRevertButton(c *ui.Context) {
+	dirty := a.configSync.options != a.configSync.optionsSaved
+	if components.Button(c, a.t("还原更改"), components.ButtonGhost).Disabled(a.configSyncSaveDisabled() || !dirty).AlignSelf(ui.Start).Clicked() {
+		a.configSync.options = a.configSync.optionsSaved
+		a.configSync.optionsErrorCode = ""
+	}
+}
+
+func (a *application) configSyncSaveControls(c *ui.Context) {
+	ui.Row(c).FillWidth().Wrap().Gap(8).AlignItems(ui.Center).Children(func() {
+		dirty := a.configSync.options != a.configSync.optionsSaved
+		a.configSyncSaveButton(c)
+		a.configSyncRevertButton(c)
+		if dirty {
+			muted(c, a.t("有未保存的同步选项。"))
+		} else if a.configSync.optionsLoaded {
+			muted(c, a.t("已保存"))
+		}
+	})
+}
+
+func (a *application) configSyncSectionTitle(c *ui.Context, title string, icon func() *ui.SVG) {
+	ui.Row(c).FillWidth().MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
+		components.Icon(c, icon).Size(17, 17).TextColor(c.Theme().TextMuted)
+		components.Text(c, title).Bold().Wrap()
+	})
+}
+
+func (a *application) configSyncFieldOptions(c *ui.Context, key, title string, enabled *bool, fields *app.SyncFieldSelection) {
+	ui.Column(c).Key(key).FillWidth().MinWidth(0).Gap(10).Children(func() {
+		a.configSyncOption(c, key+"-master", title, "", enabled)
+		ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(16).Disabled(!*enabled).Children(func() {
+			for _, field := range []struct {
+				title string
+				value *bool
+			}{{a.t("主题与外观"), &fields.Appearance}, {a.t("字号"), &fields.FontScale}, {a.t("语言"), &fields.Language}} {
+				components.Checkbox(c, field.value, field.title).Label(a.t("%s：%s", title, field.title))
+			}
+		})
+	})
+}
+
+func (a *application) configSyncOption(c *ui.Context, key, title, description string, value *bool) {
+	var row ui.Element
+	if a.mainContentWidth(c) < 540 {
+		row = ui.Column(c)
+	} else {
+		row = ui.Row(c)
+	}
+	row.Key(key).FillWidth().MinWidth(0).Gap(12).Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+			components.Text(c, title).Wrap()
+			if description != "" {
+				muted(c, description)
+			}
+		})
+		a.booleanSettingSegments(c, value, a.t("%s：开启或关闭", title))
 	})
 }
 
@@ -586,7 +766,7 @@ func (a *application) configSyncConnected(c *ui.Context) {
 		if components.Button(c, pauseLabel, components.ButtonOutline).Disabled(blocked && !s.Enabled).Clicked() {
 			a.manageConfigSync(pauseAction, nil)
 		}
-		if components.Button(c, a.t("编辑连接"), components.ButtonGhost).Clicked() {
+		if components.Button(c, a.t("编辑连接"), components.ButtonGhost).Disabled(a.configSync.editing).Clicked() {
 			a.configSync.editing = true
 			a.configSync.disconnectConfirm = false
 		}

@@ -55,7 +55,7 @@ var activityLabels = map[string]map[string]string{
 		"fetch":                "读取条目", "copy": "复制字段", "copy-generated": "复制生成的密码", "save": "保存条目", "delete": "移到回收站", "move": "移动条目", "trash": "移到回收站", "draft": "保存草稿",
 		"recovery": "查看恢复副本", "restore": "恢复条目", "purge": "删除恢复副本", "export": "导出恢复私钥", "verify-backup": "验证恢复备份",
 		"git-status": "检查 Git 状态", "git-init": "初始化 Git", "git-remote": "设置 Git 远端", "git-sync": "同步密码库", "git-commit": "提交加密条目", "clone": "下载密码库",
-		"config-sync-save": "保存同步连接", "config-sync-test": "测试同步连接", "config-sync-now": "同步配置", "config-sync-resolve": "解决配置同步冲突",
+		"config-sync-save": "保存同步连接", "config-sync-test": "测试同步连接", "config-sync-now": "同步配置", "config-sync-resolve": "解决配置同步冲突", "config-sync-options": "保存同步选项",
 		"config-sync-pause": "暂停同步", "config-sync-resume": "恢复同步", "config-sync-oauth-start": "授权 Cloudflare",
 		"config-sync-oauth-buckets": "获取存储桶", "config-sync-oauth-accounts": "刷新账号", "config-sync-oauth-reload": "重新读取配置",
 		"config-sync-cancel": "取消配置同步操作", "config-sync-disconnect": "断开同步连接",

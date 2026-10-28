@@ -11,6 +11,7 @@ type preferencesState struct {
 	epoch       uint64
 	pendingRead *preferencesRead
 	saveDialog  func(mygo.SaveDialogOptions) (string, error)
+	openDialog  func(mygo.OpenDialogOptions) ([]string, error)
 	keyExport   *keyExport
 }
 
@@ -55,6 +56,7 @@ func (a *application) loadPreferencesPage(page string) {
 }
 
 func (a *application) hidePreferences() {
+	a.cancelConfigSyncTransfer()
 	if a.page == "settings" && a.settingsState.Category == "config-sync" && (a.configSync.operation == "config-sync-oauth-start" || a.configSync.status.OAuthStage == "bucket") {
 		a.manageConfigSync("config-sync-cancel", nil)
 	}

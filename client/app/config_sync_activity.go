@@ -12,7 +12,7 @@ import (
 // The service mutex must be held once the service has started.
 func (s *Service) logConfigSync(action, source string, err error) {
 	switch action {
-	case "config-sync-save", "config-sync-test", "config-sync-now", "config-sync-resolve",
+	case "config-sync-save", "config-sync-test", "config-sync-now", "config-sync-resolve", "config-sync-options",
 		"config-sync-pause", "config-sync-resume", "config-sync-oauth-start",
 		"config-sync-oauth-buckets", "config-sync-oauth-accounts", "config-sync-oauth-reload",
 		"config-sync-cancel", "config-sync-disconnect":
