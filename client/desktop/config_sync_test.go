@@ -114,7 +114,7 @@ func TestConfigurationSyncCanOpenBeforeVaultSetup(t *testing.T) {
 	a.state.Configured = false
 	a.page, a.settingsState.Category = "settings", "config-sync"
 	view := ui.NewTester(testView(a), 1120, 760)
-	if !a.settingsAvailableWithoutVault() || !view.HasText(a.t("将个人偏好加密保存到你自己的对象存储，在其他设备恢复。")) || !view.HasText(a.t("服务端点")) {
+	if !a.settingsAvailableWithoutVault() || !view.HasText(a.t("同步连接")) || !view.HasText(a.t("服务端点")) {
 		t.Fatal("configuration sync is blocked behind vault setup")
 	}
 }
@@ -202,7 +202,7 @@ func TestConfigurationSyncHasIndependentCategoryAndRefreshLane(t *testing.T) {
 		t.Fatal("category did not use its independent read lane")
 	}
 	view := ui.NewTester(testView(a), 1120, 760)
-	if !view.HasText(a.t("将个人偏好加密保存到你自己的对象存储，在其他设备恢复。")) || !view.HasText(a.t("手动配置 S3")) {
+	if !view.HasText(a.t("同步连接")) || !view.HasText(a.t("手动配置 S3")) {
 		t.Fatal("sync settings are missing")
 	}
 	view.Frame()

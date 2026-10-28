@@ -74,13 +74,14 @@ func (a *application) settingsContent(c *ui.Context, categories []components.Set
 				muted(c, a.t("正在保存…"))
 			}
 			if !searching && categories[selected].ID == "config-sync" {
-				ui.Column(c).Shrink(0).Gap(5).AlignItems(ui.End).Children(func() {
-					a.configSyncSaveButton(c)
+				ui.Row(c).Shrink(0).Gap(8).AlignItems(ui.Center).Children(func() {
 					if a.configSync.options != a.configSync.optionsSaved {
 						muted(c, a.t("未保存更改"))
+						a.configSyncRevertButton(c)
 					} else if a.configSync.optionsLoaded {
 						muted(c, a.t("已保存"))
 					}
+					a.configSyncSaveButton(c)
 				})
 			}
 		})

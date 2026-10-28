@@ -358,8 +358,7 @@ func (a *application) configSyncError(code string) string {
 
 func (a *application) configSyncView(c *ui.Context) {
 	ui.Column(c).Key("config-sync-settings").FillWidth().MaxWidth(720).MinWidth(0).Gap(16).Children(func() {
-		ui.Column(c).Key("config-sync-connection").FillWidth().MinWidth(0).Padding(20).Gap(14).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(10).Children(func() {
-			a.configSyncSectionTitle(c, a.t("同步连接"), lucide.Cloud)
+		a.configSyncCard(c, "config-sync-connection", a.t("同步连接"), lucide.Cloud, a.configSyncConnectionBadges, func() {
 			if a.state.Preview {
 				muted(c, a.t("预览模式不会连接对象存储或读取系统凭据。"))
 				return
@@ -401,34 +400,59 @@ func (a *application) configSyncView(c *ui.Context) {
 				})
 			}
 		})
-		a.configSyncTransferView(c)
 		a.configSyncOptions(c)
+		a.configSyncTransferView(c)
+	})
+}
+
+// configSyncCard is the shared section frame: an icon title with optional
+// trailing status or actions, followed by the section body.
+func (a *application) configSyncCard(c *ui.Context, key, title string, icon func() *ui.SVG, trailing func(*ui.Context), body func()) {
+	ui.Column(c).Key(key).FillWidth().MinWidth(0).Padding(20).Gap(16).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(10).Children(func() {
+		ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(8).AlignItems(ui.Center).Children(func() {
+			components.Icon(c, icon).Size(17, 17).TextColor(c.Theme().TextMuted)
+			components.Text(c, title).Bold().Grow(1)
+			if trailing != nil {
+				trailing(c)
+			}
+		})
+		if body != nil {
+			body()
+		}
+	})
+}
+
+func (a *application) configSyncConnectionBadges(c *ui.Context) {
+	s := a.configSync.status
+	if a.state.Preview || s.Provider == "" {
+		return
+	}
+	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+		components.Badge(c, map[string]string{"r2": "Cloudflare R2", "s3": "S3"}[s.Provider])
+		label, tone := a.t("已连接"), components.BadgeSuccess
+		if !s.Enabled {
+			label, tone = a.t("已暂停"), components.BadgeWarning
+		}
+		if s.Provider == "r2" && s.OAuthLoadErrorCode != "" {
+			label, tone = a.t("连接状态读取失败"), components.BadgeDanger
+		}
+		components.Badge(c, label, components.BadgeOptions{Tone: tone})
 	})
 }
 
 func (a *application) configSyncOptions(c *ui.Context) {
 	ui.Column(c).Key("sync-options").FillWidth().MinWidth(0).Gap(16).Children(func() {
-		ui.Column(c).Key("sync-content-options").FillWidth().MinWidth(0).Padding(20).Gap(16).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(10).Children(func() {
-			a.configSyncSectionTitle(c, a.t("同步内容"), lucide.ListChecks)
-			muted(c, a.t("选择在设备间同步的偏好，两端可分别设置。"))
-			a.configSyncFieldOptions(c, "sync-desktop", a.t("客户端偏好"), &a.configSync.options.Desktop, &a.configSync.options.DesktopFields)
+		a.configSyncCard(c, "sync-content-options", a.t("同步内容"), lucide.ListChecks, nil, func() {
+			a.configSyncFieldOptions(c, "sync-desktop", a.t("客户端偏好"), "", &a.configSync.options.Desktop, &a.configSync.options.DesktopFields)
 			ui.Box(c).FillWidth().Height(1).Background(c.Theme().Border)
-			a.configSyncFieldOptions(c, "sync-browser", a.t("扩展偏好"), &a.configSync.options.Browser, &a.configSync.options.BrowserFields)
-			muted(c, a.t("扩展偏好开启时，也会同步扩展保存的网站关联与取消关联。"))
-			muted(c, a.t("未选中的内容保留在本机，云端已有配置也会保留。密码库继续使用 Git 同步。"))
+			a.configSyncFieldOptions(c, "sync-browser", a.t("扩展偏好"), a.t("含网站关联"), &a.configSync.options.Browser, &a.configSync.options.BrowserFields)
 		})
-		ui.Column(c).Key("sync-behavior-options").FillWidth().MinWidth(0).Padding(20).Gap(16).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(10).Children(func() {
-			a.configSyncSectionTitle(c, a.t("同步行为"), lucide.Clock)
-			ui.Column(c).FillWidth().MinWidth(0).Gap(8).Children(func() {
-				components.Text(c, a.t("同步模式")).Wrap()
-				choiceSettingSegments(c, &a.configSync.options.Mode, a.t("同步模式"), []string{"automatic", "manual"}, []string{a.t("自动同步"), a.t("仅手动同步")}).FillWidth()
-				if a.configSync.options.Mode == "manual" {
-					muted(c, a.t("仅在点击“立即同步”时同步云端配置，自动设置会保留。"))
-				}
+		a.configSyncCard(c, "sync-behavior-options", a.t("同步行为"), lucide.Clock, nil, func() {
+			a.configSyncRow(c, "sync-mode", a.t("同步模式"), func() {
+				choiceSettingSegments(c, &a.configSync.options.Mode, a.t("同步模式"), []string{"automatic", "manual"}, []string{a.t("自动同步"), a.t("仅手动同步")})
 			})
 			ui.Column(c).Key("sync-automatic-options").FillWidth().MinWidth(0).Gap(16).Disabled(a.configSync.options.Mode == "manual").Children(func() {
-				ui.Column(c).Key("sync-interval").FillWidth().MinWidth(0).Gap(6).Children(func() {
-					components.Text(c, a.t("同步时间间隔")).Wrap()
+				a.configSyncRow(c, "sync-interval", a.t("同步时间间隔"), func() {
 					value := a.configSync.options.IntervalMinutes
 					values := []int{1, 5, 15, 30, 60}
 					choices := []string{"1", "5", "15", "30", "60"}
@@ -439,32 +463,39 @@ func (a *application) configSyncOptions(c *ui.Context) {
 							selected = choices[i]
 						}
 					}
-					if a.syncChoice(c, "sync-interval-choice", &selected, a.t("同步时间间隔"), choices, labels).Changed() {
-						for i, choice := range choices {
-							if selected == choice {
-								a.configSync.options.IntervalMinutes = values[i]
+					box := ui.Box(c).MinWidth(0)
+					if a.mainContentWidth(c) < 540 {
+						box.FillWidth()
+					} else {
+						box.Width(180).Shrink(0)
+					}
+					box.Children(func() {
+						if a.syncChoice(c, "sync-interval-choice", &selected, a.t("同步时间间隔"), choices, labels).Changed() {
+							for i, choice := range choices {
+								if selected == choice {
+									a.configSync.options.IntervalMinutes = values[i]
+								}
 							}
 						}
-					}
+					})
 				})
-				a.configSyncOption(c, "sync-on-start", a.t("启动时同步"), a.t("启动应用后自动检查一次云端配置。"), &a.configSync.options.SyncOnStart)
-				a.configSyncOption(c, "sync-on-change", a.t("修改后自动同步"), a.t("本地偏好修改后约 2 秒安排同步。"), &a.configSync.options.SyncOnChange)
+				a.configSyncOption(c, "sync-on-start", a.t("启动时同步"), &a.configSync.options.SyncOnStart)
+				a.configSyncOption(c, "sync-on-change", a.t("修改后自动同步"), &a.configSync.options.SyncOnChange)
 			})
 			ui.Box(c).FillWidth().Height(1).Background(c.Theme().Border)
-			a.configSyncOption(c, "sync-notify-errors", a.t("同步异常提醒"), a.t("同步失败或出现冲突时提醒；窗口隐藏时使用系统通知。"), &a.configSync.options.NotifyErrors)
+			a.configSyncOption(c, "sync-notify-errors", a.t("同步异常提醒"), &a.configSync.options.NotifyErrors)
 		})
-		ui.Column(c).Key("sync-options-footer").FillWidth().MinWidth(0).Gap(10).Children(func() {
-			if a.page != "settings" || a.settingsState.Category != "config-sync" || strings.TrimSpace(a.settingsState.Query) != "" {
-				a.configSyncSaveControls(c)
-			} else {
-				a.configSyncRevertButton(c)
-			}
-			if a.configSync.optionsErrorCode != "" {
-				components.Text(c, a.configSyncError(a.configSync.optionsErrorCode)).Key("sync-options-error").TextColor(c.Theme().Danger).Wrap()
-			}
-			muted(c, a.t("这些选项仅在此设备生效，保存后用于下一次同步。"))
-			muted(c, a.t("本机路径、私钥、系统解锁、开机自启和浏览器权限保留在本机。"))
-		})
+		onPage := a.page == "settings" && a.settingsState.Category == "config-sync" && strings.TrimSpace(a.settingsState.Query) == ""
+		if !onPage || a.configSync.optionsErrorCode != "" {
+			ui.Column(c).Key("sync-options-footer").FillWidth().MinWidth(0).Gap(10).Children(func() {
+				if !onPage {
+					a.configSyncSaveControls(c)
+				}
+				if a.configSync.optionsErrorCode != "" {
+					components.Text(c, a.configSyncError(a.configSync.optionsErrorCode)).Key("sync-options-error").TextColor(c.Theme().Danger).Wrap()
+				}
+			})
+		}
 	})
 }
 
@@ -481,7 +512,7 @@ func (a *application) configSyncSaveButton(c *ui.Context) {
 
 func (a *application) configSyncRevertButton(c *ui.Context) {
 	dirty := a.configSync.options != a.configSync.optionsSaved
-	if components.Button(c, a.t("还原更改"), components.ButtonGhost).Disabled(a.configSyncSaveDisabled() || !dirty).AlignSelf(ui.Start).Clicked() {
+	if components.Button(c, a.t("还原更改"), components.ButtonGhost).Disabled(a.configSyncSaveDisabled() || !dirty).Clicked() {
 		a.configSync.options = a.configSync.optionsSaved
 		a.configSync.optionsErrorCode = ""
 	}
@@ -500,17 +531,39 @@ func (a *application) configSyncSaveControls(c *ui.Context) {
 	})
 }
 
-func (a *application) configSyncSectionTitle(c *ui.Context, title string, icon func() *ui.SVG) {
-	ui.Row(c).FillWidth().MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
-		components.Icon(c, icon).Size(17, 17).TextColor(c.Theme().TextMuted)
-		components.Text(c, title).Bold().Wrap()
+// configSyncRow places a label beside its control, stacking them when the
+// content column is too narrow for both.
+func (a *application) configSyncRow(c *ui.Context, key, title string, control func()) {
+	var row ui.Element
+	if a.mainContentWidth(c) < 540 {
+		row = ui.Column(c).Gap(8)
+	} else {
+		row = ui.Row(c).Gap(12).AlignItems(ui.Center)
+	}
+	row.Key(key).FillWidth().MinWidth(0).Children(func() {
+		components.Text(c, title).Wrap().Grow(1).MinWidth(0)
+		control()
 	})
 }
 
-func (a *application) configSyncFieldOptions(c *ui.Context, key, title string, enabled *bool, fields *app.SyncFieldSelection) {
-	ui.Column(c).Key(key).FillWidth().MinWidth(0).Gap(10).Children(func() {
-		a.configSyncOption(c, key+"-master", title, "", enabled)
-		ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(16).Disabled(!*enabled).Children(func() {
+func (a *application) configSyncFieldOptions(c *ui.Context, key, title, badge string, enabled *bool, fields *app.SyncFieldSelection) {
+	ui.Column(c).Key(key).FillWidth().MinWidth(0).Gap(12).Children(func() {
+		var row ui.Element
+		if a.mainContentWidth(c) < 540 {
+			row = ui.Column(c).Gap(8)
+		} else {
+			row = ui.Row(c).Gap(12).AlignItems(ui.Center)
+		}
+		row.Key(key + "-master").FillWidth().MinWidth(0).Children(func() {
+			ui.Row(c).Grow(1).MinWidth(0).Wrap().Gap(8).AlignItems(ui.Center).Children(func() {
+				components.Text(c, title).Bold()
+				if badge != "" {
+					components.Badge(c, badge)
+				}
+			})
+			a.booleanSettingSegments(c, enabled, a.t("%s：开启或关闭", title))
+		})
+		ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(20).Disabled(!*enabled).Children(func() {
 			for _, field := range []struct {
 				title string
 				value *bool
@@ -521,20 +574,8 @@ func (a *application) configSyncFieldOptions(c *ui.Context, key, title string, e
 	})
 }
 
-func (a *application) configSyncOption(c *ui.Context, key, title, description string, value *bool) {
-	var row ui.Element
-	if a.mainContentWidth(c) < 540 {
-		row = ui.Column(c)
-	} else {
-		row = ui.Row(c)
-	}
-	row.Key(key).FillWidth().MinWidth(0).Gap(12).Children(func() {
-		ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-			components.Text(c, title).Wrap()
-			if description != "" {
-				muted(c, description)
-			}
-		})
+func (a *application) configSyncOption(c *ui.Context, key, title string, value *bool) {
+	a.configSyncRow(c, key, title, func() {
 		a.booleanSettingSegments(c, value, a.t("%s：开启或关闭", title))
 	})
 }
@@ -551,9 +592,12 @@ func (a *application) configSyncEditor(c *ui.Context) {
 		return
 	}
 	if a.configSync.operation == "config-sync-oauth-start" {
-		components.Text(c, a.t("等待浏览器授权")).Bold()
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			components.ProgressRing(c, -1).Size(15, 15).Label(a.t("等待浏览器授权"))
+			components.Text(c, a.t("等待浏览器授权")).Bold()
+		})
 		muted(c, a.t("请在 Cloudflare 同意页检查权限。若 Account API Tokens Write 未启用，请点击 Edit Permissions 开启。"))
-		if components.Button(c, a.t("取消授权"), components.ButtonOutline).Clicked() {
+		if components.Button(c, a.t("取消授权"), components.ButtonOutline).AlignSelf(ui.Start).Clicked() {
 			a.manageConfigSync("config-sync-cancel", nil)
 		}
 		return
@@ -563,9 +607,7 @@ func (a *application) configSyncEditor(c *ui.Context) {
 		return
 	}
 	if a.configSync.status.OAuthStage != "bucket" {
-		muted(c, a.t("在系统浏览器中授权，然后选择你自己的 R2 存储桶。"))
-		muted(c, a.t("请在 Cloudflare 同意页检查权限。若 Account API Tokens Write 未启用，请点击 Edit Permissions 开启。"))
-		if components.Button(c, a.t("连接 Cloudflare"), components.ButtonPrimary).Clicked() {
+		if components.Button(c, a.t("连接 Cloudflare"), components.ButtonPrimary).AlignSelf(ui.Start).Clicked() {
 			a.beginConfigSyncOAuth(c.Services())
 		}
 		if a.configSync.status.R2Config != nil {
@@ -578,12 +620,16 @@ func (a *application) configSyncEditor(c *ui.Context) {
 
 func (a *application) syncTextField(c *ui.Context, key string, value *string, label, placeholder string, password bool) {
 	ui.Column(c).Key(key).FillWidth().MinWidth(0).Gap(5).Children(func() {
-		components.Text(c, label).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
+		syncFieldLabel(c, label)
 		input := textBox(c, value, components.TextBoxOptions{}).Label(label).Placeholder(placeholder).FillWidth().MinWidth(0)
 		if password {
 			input.Password()
 		}
 	})
+}
+
+func syncFieldLabel(c *ui.Context, label string) {
+	components.Text(c, label).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
 }
 
 func (a *application) syncFields(c *ui.Context, left, right func(*ui.Context)) {
@@ -601,7 +647,6 @@ func (a *application) syncFields(c *ui.Context, left, right func(*ui.Context)) {
 
 func (a *application) configSyncManual(c *ui.Context) {
 	d := &a.configSync.manual
-	muted(c, a.t("支持 Cloudflare R2 和其他兼容 S3 的对象存储。"))
 	a.syncTextField(c, "sync-endpoint", &d.config.Endpoint, a.t("服务端点"), "https://storage.example.com", false)
 	a.syncFields(c, func(c *ui.Context) {
 		a.syncTextField(c, "sync-bucket", &d.config.Bucket, a.t("存储桶"), "passpine-config", false)
@@ -628,8 +673,10 @@ func (a *application) configSyncManual(c *ui.Context) {
 }
 
 func (a *application) configSyncPhrase(c *ui.Context, value *string, placeholder string) {
+	if placeholder == "" {
+		placeholder = a.t("至少 12 个字符")
+	}
 	a.syncTextField(c, "sync-phrase", value, a.t("同步加密口令"), placeholder, true)
-	muted(c, a.t("至少 12 个字符。其他设备需使用相同的存储桶、前缀和口令；凭据与口令仅保存在本机系统凭据存储。"))
 }
 
 func (a *application) configSyncEditorActions(c *ui.Context, manual bool) {
@@ -678,13 +725,6 @@ func (a *application) configSyncBucket(c *ui.Context) {
 		accounts = append(accounts, v.ID)
 		names = append(names, v.Name)
 	}
-	components.Text(c, a.t("账号")).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
-	account := a.syncChoice(c, "sync-account", &d.account, a.t("选择 Cloudflare 账号"), accounts, names)
-	if account.Changed() {
-		d.bucket = ""
-		a.configSync.status.Buckets = nil
-	}
-	components.Text(c, a.t("辖区")).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
 	jurisdictions := supportedSyncJurisdictions()
 	jurisdictionNames := make([]string, len(jurisdictions))
 	for i, value := range jurisdictions {
@@ -703,25 +743,41 @@ func (a *application) configSyncBucket(c *ui.Context) {
 			jurisdictionNames[i] = value
 		}
 	}
-	jurisdiction := a.syncChoice(c, "sync-jurisdiction", &d.jurisdiction, a.t("选择 R2 辖区"), jurisdictions, jurisdictionNames)
-	if jurisdiction.Changed() {
-		d.bucket = ""
-		a.configSync.status.Buckets = nil
-	}
-	ui.Row(c).Wrap().Gap(8).Children(func() {
-		if components.Button(c, a.t("获取存储桶"), components.ButtonOutline).Clicked() {
-			a.manageConfigSync("config-sync-oauth-buckets", a.syncConnectionRequest())
-		}
-		if len(accounts) == 0 && components.Button(c, a.t("刷新账号"), components.ButtonGhost).Clicked() {
-			a.manageConfigSync("config-sync-oauth-accounts", a.syncConnectionRequest())
-		}
+	a.syncFields(c, func(c *ui.Context) {
+		ui.Column(c).FillWidth().MinWidth(0).Gap(5).Children(func() {
+			syncFieldLabel(c, a.t("账号"))
+			if a.syncChoice(c, "sync-account", &d.account, a.t("选择 Cloudflare 账号"), accounts, names).Changed() {
+				d.bucket = ""
+				a.configSync.status.Buckets = nil
+			}
+		})
+	}, func(c *ui.Context) {
+		ui.Column(c).FillWidth().MinWidth(0).Gap(5).Children(func() {
+			syncFieldLabel(c, a.t("辖区"))
+			if a.syncChoice(c, "sync-jurisdiction", &d.jurisdiction, a.t("选择 R2 辖区"), jurisdictions, jurisdictionNames).Changed() {
+				d.bucket = ""
+				a.configSync.status.Buckets = nil
+			}
+		})
 	})
 	buckets := []string{}
 	for _, v := range a.configSync.status.Buckets {
 		buckets = append(buckets, v.Name)
 	}
-	components.Text(c, a.t("存储桶")).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
-	a.syncChoice(c, "sync-r2-bucket", &d.bucket, a.t("选择 R2 存储桶"), buckets, buckets)
+	ui.Column(c).FillWidth().MinWidth(0).Gap(5).Children(func() {
+		syncFieldLabel(c, a.t("存储桶"))
+		ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Grow(1).MinWidth(160).Children(func() {
+				a.syncChoice(c, "sync-r2-bucket", &d.bucket, a.t("选择 R2 存储桶"), buckets, buckets)
+			})
+			if components.Button(c, a.t("获取存储桶"), components.ButtonOutline).Clicked() {
+				a.manageConfigSync("config-sync-oauth-buckets", a.syncConnectionRequest())
+			}
+			if len(accounts) == 0 && components.Button(c, a.t("刷新账号"), components.ButtonGhost).Clicked() {
+				a.manageConfigSync("config-sync-oauth-accounts", a.syncConnectionRequest())
+			}
+		})
+	})
 	a.syncTextField(c, "sync-r2-prefix", &d.config.Prefix, a.t("目录前缀"), "passpine", false)
 	a.configSyncPhrase(c, &d.secrets.Passphrase, "")
 	a.configSyncEditorActions(c, false)
@@ -729,7 +785,6 @@ func (a *application) configSyncBucket(c *ui.Context) {
 
 func (a *application) configSyncR2Saved(c *ui.Context) {
 	d := &a.configSync.r2
-	muted(c, a.t("已有已保存的 R2 连接。可保持原存储桶并更新前缀或加密口令，也可重新授权选择其他存储桶。"))
 	a.syncTextField(c, "sync-r2-saved-prefix", &d.config.Prefix, a.t("目录前缀"), "passpine", false)
 	a.configSyncPhrase(c, &d.secrets.Passphrase, a.t("已保存；留空保持不变"))
 	a.configSyncEditorActions(c, false)
@@ -737,27 +792,33 @@ func (a *application) configSyncR2Saved(c *ui.Context) {
 
 func (a *application) configSyncConnected(c *ui.Context) {
 	s := a.configSync.status
-	label := a.t("已连接")
-	if !s.Enabled {
-		label = a.t("已暂停")
-	}
 	blocked := s.Provider == "r2" && s.OAuthLoadErrorCode != ""
-	if blocked {
-		label = a.t("连接状态读取失败")
-	}
-	ui.Row(c).FillWidth().MinWidth(0).Gap(12).AlignItems(ui.Center).Children(func() {
-		components.Text(c, label).Bold().Grow(1)
-		components.Text(c, map[string]string{"r2": "Cloudflare R2", "s3": "S3"}[s.Provider]).TextColor(c.Theme().TextMuted)
+	ui.Column(c).Key("sync-connected").FillWidth().MinWidth(0).Gap(6).Children(func() {
+		components.Text(c, s.Config.Bucket).Bold().FontSize(scaledFontSize(c, 15)).Wrap()
+		ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(14).Children(func() {
+			if s.Config.Endpoint != "" {
+				muted(c, s.Config.Endpoint)
+			}
+			muted(c, a.t("目录前缀：%s", s.Config.Prefix))
+			if stamp := gitTime(s.LastSyncedAt); stamp != "" {
+				muted(c, a.t("上次同步：%s", stamp))
+			} else {
+				muted(c, a.t("尚未完成首次同步"))
+			}
+		})
 	})
-	components.Text(c, s.Config.Bucket).Wrap()
-	muted(c, s.Config.Endpoint)
-	muted(c, a.t("目录前缀：%s", s.Config.Prefix))
-	if stamp := gitTime(s.LastSyncedAt); stamp != "" {
-		muted(c, a.t("上次同步：%s", stamp))
-	} else {
-		muted(c, a.t("尚未完成首次同步"))
+	if a.configSync.disconnectConfirm {
+		ui.Row(c).Key("sync-disconnect-confirm").FillWidth().MinWidth(0).Wrap().Gap(8).Children(func() {
+			if components.Button(c, a.t("确认断开"), components.ButtonOutline).TextColor(c.Theme().Danger).Clicked() {
+				a.manageConfigSync("config-sync-disconnect", nil)
+			}
+			if components.Button(c, a.t("取消"), components.ButtonGhost).Clicked() {
+				a.configSync.disconnectConfirm = false
+			}
+		})
+		return
 	}
-	ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(8).Children(func() {
+	ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(8).AlignItems(ui.Center).Children(func() {
 		if components.Button(c, a.t("立即同步"), components.ButtonPrimary).Disabled(!s.Enabled || blocked).Clicked() {
 			a.manageConfigSync("config-sync-now", nil)
 		}
@@ -768,6 +829,7 @@ func (a *application) configSyncConnected(c *ui.Context) {
 		if components.Button(c, pauseLabel, components.ButtonOutline).Disabled(blocked && !s.Enabled).Clicked() {
 			a.manageConfigSync(pauseAction, nil)
 		}
+		ui.Box(c).Grow(1)
 		if components.Button(c, a.t("编辑连接"), components.ButtonGhost).Disabled(a.configSync.editing).Clicked() {
 			a.configSync.editing = true
 			a.configSync.disconnectConfirm = false
@@ -776,17 +838,6 @@ func (a *application) configSyncConnected(c *ui.Context) {
 			a.configSync.disconnectConfirm = true
 		}
 	})
-	if a.configSync.disconnectConfirm {
-		muted(c, a.t("断开会撤销应用创建的 R2 凭据，并保留存储桶中的数据与手动 S3 配置。"))
-		ui.Row(c).Gap(8).Children(func() {
-			if components.Button(c, a.t("确认断开"), components.ButtonOutline).Clicked() {
-				a.manageConfigSync("config-sync-disconnect", nil)
-			}
-			if components.Button(c, a.t("取消"), components.ButtonGhost).Clicked() {
-				a.configSync.disconnectConfirm = false
-			}
-		})
-	}
 }
 
 func (a *application) configSyncOAuthDiagnostics(c *ui.Context) {

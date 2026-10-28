@@ -22,21 +22,19 @@ type configurationSyncTransfer struct {
 }
 
 func (a *application) configSyncTransferView(c *ui.Context) {
-	ui.Column(c).Key("sync-config-transfer").FillWidth().MinWidth(0).Padding(20).Gap(10).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(10).Children(func() {
-		a.configSyncSectionTitle(c, a.t("导入与导出"), lucide.File)
-		muted(c, a.t("通过 JSON 文件迁移同步选项和连接参数，不包含访问密钥、授权或加密口令。"))
-		ui.Row(c).FillWidth().Wrap().Gap(8).Children(func() {
+	a.configSyncCard(c, "sync-config-transfer", a.t("导入与导出"), lucide.File, func(c *ui.Context) {
+		ui.Row(c).Wrap().Gap(8).AlignItems(ui.Center).Children(func() {
+			if a.configSync.transferWriting() {
+				muted(c, a.t("正在导出同步配置…"))
+			}
 			if components.Button(c, a.t("导入配置…"), components.ButtonOutline).Disabled(a.configSyncSaveDisabled()).Clicked() {
 				a.importConfigSync()
 			}
 			if components.Button(c, a.t("导出配置…"), components.ButtonOutline).Disabled(a.configSyncSaveDisabled()).Clicked() {
 				a.exportConfigSync()
 			}
-			if a.configSync.transferWriting() {
-				muted(c, a.t("正在导出同步配置…"))
-			}
 		})
-	})
+	}, nil)
 }
 
 func (state *configurationSyncUI) transferWriting() bool {
