@@ -28,7 +28,12 @@ if (windows) {
   run('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'scripts/build-client.ps1']);
   powershell('install-client.ps1');
 } else {
-  run('bash', ['scripts/build-client.sh']);
+  // macOS signing must keep the HOME used when the CI identity was imported.
+  // --keychain narrows identity selection but still uses the user's keychain
+  // context. Only compilation/signing keeps it; installation and the native
+  // lifecycle continue to use the isolated HOME and application data above.
+  const buildEnv = process.platform === 'darwin' ? { ...env, HOME: process.env.HOME } : env;
+  run('bash', ['scripts/build-client.sh'], { env: buildEnv });
   run('bash', ['scripts/install-client.sh', directory]);
 }
 const layout = windows ? { executable: path.join(directory, 'passpine.exe'), target: directory } : installationLayout(directory, { home, env });

@@ -30,7 +30,7 @@
     "version:minor": "node scripts/version.mjs minor",
     "version:major": "node scripts/version.mjs major",
     "version:set": "node scripts/version.mjs set",
-    "test:tooling": "node --test scripts/version.test.mjs scripts/release.test.mjs scripts/release-artifacts.test.mjs scripts/ci-release.test.mjs scripts/package-client-linux.test.mjs scripts/install-linux.test.mjs scripts/dependencies.test.mjs scripts/update-artifacts.test.mjs scripts/build-channel.test.mjs scripts/install-local.test.mjs scripts/client-installation.test.mjs scripts/sync-homebrew.test.mjs scripts/macos-signing.test.mjs scripts/macos-dev-signing.test.mjs scripts/macos-dev-build.test.mjs",
+    "test:tooling": "node --test scripts/version.test.mjs scripts/release.test.mjs scripts/release-artifacts.test.mjs scripts/ci-release.test.mjs scripts/package-client-linux.test.mjs scripts/install-linux.test.mjs scripts/dependencies.test.mjs scripts/update-artifacts.test.mjs scripts/build-channel.test.mjs scripts/install-local.test.mjs scripts/client-installation.test.mjs scripts/sync-homebrew.test.mjs scripts/macos-signing.test.mjs scripts/macos-dev-signing.test.mjs scripts/macos-dev-build.test.mjs scripts/verify-dev-installation.test.mjs",
     "about:generate": "node scripts/dependencies.mjs"
   },
   "engines": {

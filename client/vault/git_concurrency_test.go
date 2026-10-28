@@ -148,26 +148,37 @@ func TestGitSyncUsesQualifiedUpstreamRef(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			v := newFixture(t)
 			t.Cleanup(v.Close)
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
+			// This verifies ref selection, not whole-fixture latency. Each sync
+			// starts many native Git processes; a shared short deadline also
+			// charged repository setup and encryption against later commands on
+			// busy Windows race runners. Bound each operation independently and
+			// report its phase so a real stalled command remains diagnosable.
+			operation := func(name string, run func(context.Context) error) {
+				t.Helper()
+				ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+				defer cancel()
+				started := time.Now()
+				if err := run(ctx); err != nil {
+					t.Fatalf("%s after %s: %v", name, time.Since(started).Round(time.Millisecond), err)
+				}
+				t.Logf("%s completed in %s", name, time.Since(started).Round(time.Millisecond))
+			}
 			command := func(directory string, args ...string) {
 				t.Helper()
-				if _, err := gitCommand(ctx, directory, args...); err != nil {
-					t.Fatalf("git %s: %v", args[0], err)
-				}
+				operation("git "+strings.Join(args, " "), func(ctx context.Context) error {
+					_, err := gitCommand(ctx, directory, args...)
+					return err
+				})
 			}
 			remote := filepath.Join(t.TempDir(), "remote.git")
 			command(v.config.Directory, "init", "--bare", "--initial-branch=main", remote)
-			if err := v.GitInitialize(ctx); err != nil {
-				t.Fatal(err)
-			}
+			operation("initialize local store", v.GitInitialize)
 			mustSave(t, v, "entry", "original", "")
-			if err := v.GitSetRemote(ctx, remote); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := v.GitSync(ctx); err != nil {
-				t.Fatal(err)
-			}
+			operation("set local remote", func(ctx context.Context) error { return v.GitSetRemote(ctx, remote) })
+			operation("initial sync", func(ctx context.Context) error {
+				_, err := v.GitSync(ctx)
+				return err
+			})
 			if scenario == "leading-dash-remote" {
 				command(v.config.Directory, "remote", "add", "--", "-peer", remote)
 				command(v.config.Directory, "fetch", "--", "-peer")
@@ -185,9 +196,14 @@ func TestGitSyncUsesQualifiedUpstreamRef(t *testing.T) {
 			command(peer, "add", "remote-entry.gpg")
 			command(peer, "-c", "user.name=Peer", "-c", "user.email=peer@localhost", "commit", "-m", "Add remote entry")
 			command(peer, "push")
-			result, err := v.GitSync(ctx)
-			if err != nil || !result.Changed {
-				t.Fatal("sync did not integrate the tracked remote branch", result, err)
+			var result GitResult
+			operation("sync tracked remote branch", func(ctx context.Context) error {
+				var err error
+				result, err = v.GitSync(ctx)
+				return err
+			})
+			if !result.Changed {
+				t.Fatal("sync did not integrate the tracked remote branch", result)
 			}
 			if got, err := os.ReadFile(filepath.Join(v.config.Directory, "remote-entry.gpg")); err != nil || string(got) != string(ciphertext) {
 				t.Fatal("tracked remote entry was not integrated", err)
