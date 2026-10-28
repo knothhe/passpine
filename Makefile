@@ -41,6 +41,9 @@ install:
 client\:build: FORCE
 	$(CLIENT_BUILD)
 
+client\:signing: FORCE
+	node scripts/macos-dev-signing.mjs setup
+
 client\:install: FORCE
 	$(MAKE) client:build
 	$(CLIENT_INSTALL) "$(CLIENT_INSTALL_DIR)"

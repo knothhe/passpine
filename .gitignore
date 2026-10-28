@@ -12,6 +12,7 @@ browser/.output-dev/
 dist/
 *.log
 /.install-local.json
+/.macos-dev-signing.json
 
 # Release signing private keys must never enter source control.
 *.pkcs8.pem

@@ -45,8 +45,11 @@ func TestConfigurationSyncSDKFailuresHaveSpecificLocalizedRecovery(t *testing.T)
 		"oauth_too_many_connections": "待处理的 Cloudflare 连接过多，请先断开并完成清理后重试。",
 		"oauth_cleanup_pending":      "仍有 R2 凭据待清理，请重新连接同一 Cloudflare 账号后重试断开。",
 		"oauth_invalid_state":        "无法读取 Cloudflare 授权状态，原资料已保留。请检查配置目录并恢复有效状态后重新读取。",
+		"oauth_state_changed":        "Cloudflare 授权状态文件已更改或无法读取。请关闭其他实例并重启 Passpine 后重试。",
 		"oauth_rate_limited":         "Cloudflare 请求受限，请稍后重试。",
-		"credentials_invalid":        "本机保存的同步凭据缺失或不完整，请重新连接。",
+		"credentials_invalid":        "本机同步凭据缺失或损坏。请保留原文件并检查本机凭据存储后重试。",
+		"credentials_state_changed":  "本机同步凭据库已更改。请关闭其他实例并重启 Passpine 后重试。",
+		"busy":                       "已有配置同步操作正在进行，请稍后重试。",
 	}
 	for _, locale := range []string{"en", "zh-CN"} {
 		a, _ := configurationSyncFixture()
@@ -59,6 +62,35 @@ func TestConfigurationSyncSDKFailuresHaveSpecificLocalizedRecovery(t *testing.T)
 				t.Errorf("missing English message for %s", code)
 			}
 		}
+	}
+}
+
+func TestConfigurationSyncChangedSDKSessionRequiresRestart(t *testing.T) {
+	for _, locale := range []string{"en", "zh-CN"} {
+		a, _ := configurationSyncFixture()
+		a.settings.Language = locale
+		a.configSync.status.OAuthLoadErrorCode = "oauth_state_changed"
+		view := ui.NewTester(a.configSyncView, 700, 1000)
+		if !view.HasText(a.configSyncError("oauth_state_changed")) || view.HasText(a.t("重新读取配置")) {
+			t.Fatal("changed session did not preserve restart guidance")
+		}
+	}
+}
+
+func TestConfigurationSyncBusySaveKeepsDraftSecrets(t *testing.T) {
+	a, callbacks := configurationSyncFixture()
+	a.configSync.editing, a.configSync.mode = true, 1
+	a.configSync.manual.secrets = cloudsync.Secrets{AccessKeyID: "fake-key", SecretAccessKey: "fake-secret", Passphrase: "fake-unsaved-phrase"}
+	before := a.configSync.manual
+	a.service = backendFunc(func(app.Request) app.Response {
+		response := syncResponse(a, a.configSync.status)
+		response.Status, response.Code = "error", "busy"
+		return response
+	})
+	a.manageConfigSync("config-sync-save", a.syncConnectionRequest())
+	awaitMain(t, callbacks)
+	if !a.configSync.editing || a.configSync.manual != before || a.configSync.errorCode != "busy" {
+		t.Fatal("busy save was treated as committed or discarded the draft")
 	}
 }
 

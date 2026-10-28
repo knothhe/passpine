@@ -8,6 +8,7 @@ import (
 // Closing retains the active saved connection. Only unsaved authorizations and
 // recorded cleanup work are discarded, with an independent bounded context.
 func (s *Service) closeConfigSync() {
+	defer s.clearSyncSecretSession()
 	s.mu.Lock()
 	skip := s.preview || s.configSync.invalid
 	s.mu.Unlock()
@@ -26,5 +27,6 @@ func (s *Service) closeConfigSync() {
 		}
 	}
 	defer s.configSyncMu.Unlock()
+	defer clear(s.configSync.pendingSecrets)
 	_ = s.discardSyncCandidate(ctx)
 }

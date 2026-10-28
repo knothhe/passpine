@@ -10,6 +10,9 @@ case "$(uname -s)" in
     source_bundle="$output_dir/$app_name.app"
     [[ -d "$source_bundle" ]] || { echo "Missing client build. Run make client:build first." >&2; exit 1; }
     [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$source_bundle/Contents/Info.plist")" == "$bundle_id" ]] || { echo "Refusing a client bundle with a different application identity." >&2; exit 1; }
+    resolved_signing="$(node "$root_dir/scripts/macos-dev-signing.mjs" resolve)"
+    signing_fingerprint="$(node --input-type=module -e 'console.log(JSON.parse(process.argv[1]).certificateSHA256)' "$resolved_signing")"
+    node "$root_dir/scripts/macos-signing.mjs" verify-dev "$source_bundle" "$signing_fingerprint"
     [[ "$("$source_bundle/Contents/MacOS/passpine-host" --build-channel)" == "dev" ]] || { echo "Refusing to install a non-development native host." >&2; exit 1; }
     ;;
   Linux)
@@ -50,7 +53,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   }
   trap cleanup EXIT
   ditto "$source_bundle" "$staging/$app_name.app"
-  codesign --verify --deep --strict "$staging/$app_name.app"
+  node "$root_dir/scripts/macos-signing.mjs" verify-dev "$staging/$app_name.app" "$signing_fingerprint"
   if [[ -e "$destination" ]]; then
     mv "$destination" "$backup"
   fi

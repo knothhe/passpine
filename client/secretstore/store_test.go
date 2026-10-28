@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/knothhe/r2connect/keyring"
 )
@@ -215,5 +216,279 @@ func TestSDKErrorAliasesAndUnavailableMapping(t *testing.T) {
 	b.failOp, b.failErr = "load", keyring.ErrIncomplete
 	if _, e := s.Load("profile"); !errors.Is(e, keyring.ErrIncomplete) {
 		t.Fatal("SDK incomplete-value classification was lost", e)
+	}
+}
+
+func TestRetrySessionWithoutEncryptedMetadataResetsAccessWithoutNativeIO(t *testing.T) {
+	s, backend := newMemoryStore(t)
+	if err := s.Save("profile", []byte("saved")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Load("profile"); err != nil {
+		t.Fatal(err)
+	}
+	calls := backend.calls
+	if changed, err := s.RetrySession(); err != nil || changed || len(s.loaded) != 0 || backend.calls != calls {
+		t.Fatal("plain backend retry did not clear only the read session", changed, err)
+	}
+	backend.failOp, backend.failErr = "load", ErrDenied
+	if _, err := s.Load("profile"); !errors.Is(err, ErrDenied) || !s.Denied() {
+		t.Fatal("native refusal did not close access", err)
+	}
+	calls = backend.calls
+	if changed, err := s.RetrySession(); err != nil || changed || s.Denied() || backend.calls != calls {
+		t.Fatal("plain backend retry accessed native credentials", changed, err)
+	}
+	backend.failOp, backend.failErr = "", nil
+	if value, err := s.Load("profile"); err != nil || string(value) != "saved" {
+		t.Fatal("plain backend retry did not reopen access", err)
+	}
+}
+
+func TestSuccessfulReadsShareOneNativeReadAndReturnCopies(t *testing.T) {
+	s, b := newMemoryStore(t)
+	if err := s.Save("profile", []byte("native secret")); err != nil {
+		t.Fatal(err)
+	}
+	calls := b.calls
+	var group sync.WaitGroup
+	for range 16 {
+		group.Go(func() {
+			value, err := s.Load("profile")
+			if err != nil || string(value) != "native secret" {
+				t.Errorf("load = %q, %v", value, err)
+			}
+			// Neither the cache nor another caller owns this mutable slice.
+			if len(value) > 0 {
+				value[0] = 'X'
+			}
+		})
+	}
+	group.Wait()
+	if b.calls != calls+1 {
+		t.Fatalf("concurrent successful loads made %d native reads", b.calls-calls)
+	}
+	value, err := s.Load("profile")
+	if err != nil || string(value) != "native secret" {
+		t.Fatalf("caller changed the read session: %q, %v", value, err)
+	}
+}
+
+func TestReadFailuresAreNeverCached(t *testing.T) {
+	for _, failure := range []error{ErrNotFound, ErrUnavailable, keyring.ErrIncomplete} {
+		t.Run(failure.Error(), func(t *testing.T) {
+			s, b := newMemoryStore(t)
+			if err := s.Save("profile", []byte("native secret")); err != nil {
+				t.Fatal(err)
+			}
+			b.failOp, b.failErr = "load", failure
+			if _, err := s.Load("profile"); !errors.Is(err, failure) {
+				t.Fatal(err)
+			}
+			calls := b.calls
+			if value, err := s.Load("profile"); err != nil || string(value) != "native secret" || b.calls != calls+1 {
+				t.Fatalf("failed load suppressed a native retry: %q, %v", value, err)
+			}
+		})
+	}
+}
+
+func TestWriteAndDeleteInvalidateOnlyTheirReadValue(t *testing.T) {
+	for _, op := range []string{"save", "delete"} {
+		for _, failure := range []error{nil, ErrUnavailable} {
+			name := op + "/success"
+			if failure != nil {
+				name = op + "/failure"
+			}
+			t.Run(name, func(t *testing.T) {
+				s, b := newMemoryStore(t)
+				for _, key := range []string{"profile", "oauth"} {
+					if err := s.Save(key, []byte("old")); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := s.Load(key); err != nil {
+						t.Fatal(err)
+					}
+				}
+				retained := s.loaded["profile"]
+				if failure != nil {
+					b.failOp, b.failErr = op, failure
+				}
+				var err error
+				if op == "save" {
+					err = s.Save("profile", []byte("replacement"))
+				} else {
+					err = s.Delete("profile")
+				}
+				if !errors.Is(err, failure) {
+					t.Fatalf("operation error = %v, want %v", err, failure)
+				}
+				if !bytes.Equal(retained, make([]byte, len(retained))) {
+					t.Fatal("invalidated read bytes were retained")
+				}
+				calls := b.calls
+				if _, err := s.Load("oauth"); err != nil || b.calls != calls {
+					t.Fatal("unrelated credential read was invalidated", err)
+				}
+				value, err := s.Load("profile")
+				if b.calls != calls+1 {
+					t.Fatal("write or delete bypassed the next real read")
+				}
+				switch {
+				case failure != nil:
+					if err != nil || string(value) != "old" {
+						t.Fatal("failed operation hid the committed native value", err)
+					}
+				case op == "save":
+					if err != nil || string(value) != "replacement" {
+						t.Fatal("rotation did not reread native value", err)
+					}
+				default:
+					if !errors.Is(err, ErrNotFound) {
+						t.Fatal("deleted secret was returned from cache", err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestRefusalErasesAllSuccessfulReadsAndSessionClearCannotReopenAccess(t *testing.T) {
+	for _, op := range []string{"load", "save", "delete"} {
+		t.Run(op, func(t *testing.T) {
+			s, b := newMemoryStore(t)
+			if err := s.Save("profile", []byte("private")); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.Load("profile"); err != nil {
+				t.Fatal(err)
+			}
+			retained := s.loaded["profile"]
+			b.failOp, b.failErr = op, ErrDenied
+			switch op {
+			case "load":
+				_, _ = s.Load("other")
+			case "save":
+				_ = s.Save("other", []byte("new"))
+			case "delete":
+				_ = s.Delete("other")
+			}
+			if !s.Denied() || len(s.loaded) != 0 || !bytes.Equal(retained, make([]byte, len(retained))) {
+				t.Fatal("refusal retained successful reads")
+			}
+			calls := b.calls
+			s.ClearSession()
+			if _, err := s.Load("profile"); !errors.Is(err, ErrDenied) || b.calls != calls {
+				t.Fatal("cached read bypassed denied access", err)
+			}
+			s.RetryAccess()
+			if _, err := s.Load("profile"); err != nil || b.calls != calls+1 {
+				t.Fatal("explicit retry did not start a real native read", err)
+			}
+		})
+	}
+}
+
+func TestSessionResetAndNewStoreReadNativeValues(t *testing.T) {
+	dir := t.TempDir()
+	b := &memoryBackend{items: map[string][]byte{}}
+	s, err := NewWithBackend("dev", dir, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Save("profile", []byte("old")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Load("profile"); err != nil {
+		t.Fatal(err)
+	}
+	retained := s.loaded["profile"]
+	b.items[s.service+"/profile"] = []byte("external update")
+	if value, err := s.Load("profile"); err != nil || string(value) != "old" {
+		t.Fatal("session did not reuse a successful read", err)
+	}
+	s.ClearSession()
+	if !bytes.Equal(retained, make([]byte, len(retained))) {
+		t.Fatal("session clear retained secret bytes")
+	}
+	calls := b.calls
+	if value, err := s.Load("profile"); err != nil || string(value) != "external update" || b.calls != calls+1 {
+		t.Fatal("session reset did not observe updated native value", err)
+	}
+	s.RetryAccess()
+	calls = b.calls
+	if _, err := s.Load("profile"); err != nil || b.calls != calls+1 {
+		t.Fatal("reconnecting reused the old read session", err)
+	}
+	restarted, err := NewWithBackend("dev", dir, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls = b.calls
+	if value, err := restarted.Load("profile"); err != nil || string(value) != "external update" || b.calls != calls+1 {
+		t.Fatal("new process/store inherited a read session", err)
+	}
+}
+
+type blockedReadBackend struct {
+	*memoryBackend
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (b *blockedReadBackend) Load(service, key string) ([]byte, error) {
+	b.once.Do(func() {
+		close(b.started)
+		<-b.release
+	})
+	return b.memoryBackend.Load(service, key)
+}
+
+func TestSessionClearDoesNotWaitForNativeReadOrCacheItsLateResult(t *testing.T) {
+	b := &blockedReadBackend{
+		memoryBackend: &memoryBackend{items: map[string][]byte{}},
+		started:       make(chan struct{}), release: make(chan struct{}),
+	}
+	s, err := NewWithBackend("dev", t.TempDir(), b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Save("profile", []byte("native secret")); err != nil {
+		t.Fatal(err)
+	}
+	var release sync.Once
+	unblock := func() { release.Do(func() { close(b.release) }) }
+	defer unblock()
+	finished := make(chan error, 1)
+	go func() {
+		value, err := s.Load("profile")
+		if err == nil && string(value) != "native secret" {
+			err = errors.New("native read returned the wrong value")
+		}
+		finished <- err
+	}()
+	select {
+	case <-b.started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("native read did not start")
+	}
+	cleared := make(chan struct{})
+	go func() { s.ClearSession(); close(cleared) }()
+	select {
+	case <-cleared:
+	case <-time.After(3 * time.Second):
+		t.Fatal("session clear waited for a native prompt")
+	}
+	unblock()
+	if err := <-finished; err != nil {
+		t.Fatal(err)
+	}
+	calls := b.calls
+	if _, err := s.Load("profile"); err != nil || b.calls != calls+1 {
+		t.Fatal("late native read repopulated the cleared session", err)
+	}
+	if _, err := s.Load("profile"); err != nil || b.calls != calls+1 {
+		t.Fatal("fresh read did not establish the new session", err)
 	}
 }

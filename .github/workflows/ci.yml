@@ -161,9 +161,10 @@ jobs:
       - name: Build signed macOS client package
         if: runner.os == 'macOS'
         env:
-          # A temporary keychain holds the stable identity only during this build.
+          # Both builds and native acceptance share this temporary identity.
           PASSPINE_MACOS_SIGNING_CERTIFICATE: ${{ secrets.PASSPINE_MACOS_SIGNING_CERTIFICATE }}
           PASSPINE_MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.PASSPINE_MACOS_SIGNING_CERTIFICATE_PASSWORD }}
+          PASSPINE_MACOS_VERIFY_DEV_INSTALL: '1'
         run: node scripts/macos-signing.mjs build
 
       - name: Build Linux client package
@@ -186,8 +187,8 @@ jobs:
           xvfb-run --auto-servernum env PASSPINE_NATIVE_SMOKE=1 go -C client test -run '^TestNativePreviewStartup$' ./cmd/passpine
           xvfb-run --auto-servernum node scripts/verify-dev-installation.mjs --run
 
-      - name: Verify isolated macOS and Windows Dev install and uninstall
-        if: runner.os != 'Linux'
+      - name: Verify isolated Windows Dev install and uninstall
+        if: runner.os == 'Windows'
         run: node scripts/verify-dev-installation.mjs --run
 
       - name: Upload client build

@@ -310,11 +310,15 @@ func (a *application) configSyncError(code string) string {
 	case "credentials_unavailable":
 		return a.t("系统凭据存储不可用。请启用系统凭据存储后重试。")
 	case "credentials_invalid":
-		return a.t("本机保存的同步凭据缺失或不完整，请重新连接。")
+		return a.t("本机同步凭据缺失或损坏。请保留原文件并检查本机凭据存储后重试。")
+	case "credentials_state_changed":
+		return a.t("本机同步凭据库已更改。请关闭其他实例并重启 Passpine 后重试。")
 	case "oauth_unavailable", "oauth_invalid_config", "unavailable":
 		return a.t("此版本尚未配置 Cloudflare 授权。请使用手动 S3 配置。")
 	case "cancelled", "oauth_cancelled":
 		return a.t("操作已取消，可以修改配置后重试。")
+	case "busy":
+		return a.t("已有配置同步操作正在进行，请稍后重试。")
 	case "invalid_document":
 		return a.t("同步数据格式无效或来自更新版本，原有数据未被重置。")
 	case "local_storage":
@@ -349,6 +353,8 @@ func (a *application) configSyncError(code string) string {
 		return a.t("仍有 R2 凭据待清理，请重新连接同一 Cloudflare 账号后重试断开。")
 	case "oauth_invalid_state":
 		return a.t("无法读取 Cloudflare 授权状态，原资料已保留。请检查配置目录并恢复有效状态后重新读取。")
+	case "oauth_state_changed":
+		return a.t("Cloudflare 授权状态文件已更改或无法读取。请关闭其他实例并重启 Passpine 后重试。")
 	case "oauth_rate_limited":
 		return a.t("Cloudflare 请求受限，请稍后重试。")
 	default:
@@ -844,7 +850,7 @@ func (a *application) configSyncOAuthDiagnostics(c *ui.Context) {
 	s := a.configSync.status
 	if s.OAuthLoadErrorCode != "" {
 		components.Text(c, a.configSyncError(s.OAuthLoadErrorCode)).Key("oauth-metadata-error").TextColor(c.Theme().Danger).Wrap()
-		if components.Button(c, a.t("重新读取配置"), components.ButtonOutline).AlignSelf(ui.Start).Clicked() {
+		if s.OAuthLoadErrorCode != "oauth_state_changed" && components.Button(c, a.t("重新读取配置"), components.ButtonOutline).AlignSelf(ui.Start).Clicked() {
 			a.manageConfigSync("config-sync-oauth-reload", nil)
 		}
 	}

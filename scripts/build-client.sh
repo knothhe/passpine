@@ -11,20 +11,35 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   export CGO_ENABLED=1
 fi
 IFS=$'\t' read -r channel version base_version output_dir app_name bundle_id package_name client_flags host_flags < <(node "$root_dir/scripts/build-channel.mjs" shell)
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  if [[ -n "${PASSPINE_MACOS_SIGNING_KEYCHAIN:-}" ]]; then
+    # Resolve before entering client/ so discovery and codesign use the same
+    # explicit keychain even when the caller supplies a relative path.
+    PASSPINE_MACOS_SIGNING_KEYCHAIN="$(node --input-type=module -e 'import path from "node:path"; console.log(path.resolve(process.argv[1]))' "$PASSPINE_MACOS_SIGNING_KEYCHAIN")"
+    export PASSPINE_MACOS_SIGNING_KEYCHAIN
+  fi
+  if [[ "$channel" == "dev" ]]; then
+    resolved_signing="$(node "$root_dir/scripts/macos-dev-signing.mjs" resolve)"
+    IFS=$'\t' read -r signing_identity signing_fingerprint < <(node --input-type=module - "$resolved_signing" <<'NODE'
+const value = JSON.parse(process.argv[2]);
+console.log(`${value.identitySHA1}\t${value.certificateSHA256}`);
+NODE
+)
+  else
+    signing_identity="${PASSPINE_MACOS_SIGNING_IDENTITY:-}"
+    if [[ ! "$signing_identity" =~ ^[[:xdigit:]]{40}$ ]]; then
+      echo "Release macOS builds must use an exact pinned signing identity: run node scripts/macos-signing.mjs build." >&2
+      exit 1
+    fi
+  fi
+  signing=(--sign "$signing_identity" --timestamp=none)
+  [[ -z "${PASSPINE_MACOS_SIGNING_KEYCHAIN:-}" ]] || signing+=(--keychain "$PASSPINE_MACOS_SIGNING_KEYCHAIN")
+fi
+# Identity selection must succeed before build side effects or installation.
 node "$root_dir/scripts/dependencies.mjs"
 node "$root_dir/scripts/version.mjs" check
 node "$root_dir/scripts/dev-icons.mjs"
 mkdir -p "$output_dir"
-if [[ "$(uname -s)" == "Darwin" ]]; then
-  # Release builds need the pinned identity so the designated requirement
-  # stays stable across updates; local Dev builds fall back to ad-hoc.
-  signing=(--sign "${PASSPINE_MACOS_SIGNING_IDENTITY:--}" --timestamp=none)
-  [[ -z "${PASSPINE_MACOS_SIGNING_KEYCHAIN:-}" ]] || signing+=(--keychain "$PASSPINE_MACOS_SIGNING_KEYCHAIN")
-  if [[ "$channel" == "release" && -z "${PASSPINE_MACOS_SIGNING_IDENTITY:-}" ]]; then
-    echo "Release macOS builds must be signed with the pinned identity: run node scripts/macos-signing.mjs build." >&2
-    exit 1
-  fi
-fi
 cd "$root_dir/client"
 if [[ "$(uname -s)" == "Darwin" ]]; then
   xcrun swiftc -O -parse-as-library -swift-version 5 \
@@ -63,9 +78,15 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
 <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict></plist>
 PLIST
-  codesign --force --deep "${signing[@]}" "$bundle"
+  codesign --force "${signing[@]}" --identifier "$bundle_id.host" "$bundle/Contents/MacOS/passpine-host"
+  codesign --force "${signing[@]}" --identifier "$bundle_id.device-unlock" "$bundle/Contents/MacOS/passpine-device-unlock"
+  codesign --force "${signing[@]}" --identifier "$bundle_id" "$bundle"
   codesign --verify --deep --strict "$bundle"
-  [[ "$channel" != "release" ]] || node "$root_dir/scripts/macos-signing.mjs" verify "$bundle"
+  if [[ "$channel" == "release" ]]; then
+    node "$root_dir/scripts/macos-signing.mjs" verify "$bundle"
+  else
+    node "$root_dir/scripts/macos-signing.mjs" verify-dev "$bundle" "$signing_fingerprint"
+  fi
   ditto -c -k --norsrc --noextattr --noqtn --keepParent "$bundle" "$output_dir/$package_name-$version-macos-$(uname -m).zip"
   echo "Built: $bundle"
 elif [[ "$(uname -s)" == "Linux" ]]; then

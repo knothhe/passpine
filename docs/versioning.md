@@ -56,9 +56,17 @@ macOS 正式版使用固定的自签名证书签名，仍未接入 Developer ID 
 
 ### macOS 签名身份
 
-ad-hoc 签名的指定要求（designated requirement）是每次构建都会变化的 cdhash，更新后系统会把新版本视为另一个应用：通过 `SMAppService` 注册的开机自启及其他绑定代码身份的系统授权可能失效或需要重新批准。正式版因此改用长期固定的自签名证书，指定要求为 `identifier "com.knothhe.passpine" and certificate leaf = H"…"`，跨版本保持不变。它不能代替 Developer ID 公证：从浏览器下载、带 quarantine 属性的应用仍会被 Gatekeeper 拦截。本地 Dev 构建继续使用 ad-hoc 签名，也可设置 `PASSPINE_MACOS_SIGNING_IDENTITY`（及可选的 `PASSPINE_MACOS_SIGNING_KEYCHAIN`）改用本机身份。
+ad-hoc 签名的指定要求（designated requirement）是每次构建都会变化的 cdhash，更新后系统会把新版本视为另一个应用：通过 `SMAppService` 注册的开机自启及其他绑定代码身份的系统授权可能失效或需要重新批准。正式版因此改用长期固定的自签名证书，指定要求为 `identifier "com.knothhe.passpine" and certificate leaf = H"…"`，跨版本保持不变。它不能代替 Developer ID 公证：从浏览器下载、带 quarantine 属性的应用仍会被 Gatekeeper 拦截。本地 Dev 构建也默认使用本机固定签名，不再回退到 ad-hoc。首次构建在交互终端列出可用代码签名身份的名称、SHA-1、证书 SHA-256 和有效期，必须由用户选择；选择后将公开身份引用记入本仓库忽略的 `.macos-dev-signing.json`，后续构建复用。私钥保留在系统钥匙串中，不导出 P12，不配置或上传正式发行 Secret。
 
-证书 SHA-256 固定在 `config/macos-signing.json`。macOS 构建步骤运行 `node scripts/macos-signing.mjs build`：把 Secret 中的身份导入 `RUNNER_TEMP` 下的临时钥匙串，仅向该步骤的 `build-client.sh` 提供身份，结束后恢复钥匙串搜索列表并删除临时钥匙串。正式构建签名后检查 bundle 与 `Contents/MacOS` 中每个程序的叶证书均为固定证书，且指定要求基于证书而非 cdhash；缺少 Secret、证书不匹配或配置缺失时停止构建，不回退 ad-hoc。
+重新选择本机 Dev 身份可运行 `make client:signing` 或 `node scripts/macos-dev-signing.mjs setup`。没有可用身份时，脚本提供“钥匙串访问 → 证书助理 → 创建证书 → Self Signed Root / Code Signing”的系统生成指引；生成、导入需用户主动操作，不会在每次构建中自动创建。非交互环境缺少选择记录时立即停止并显示配置入口。取消、已选身份缺失、过期、用途不符、私钥不可访问或验签失败都会停止构建与安装，保留现有安装，不会改选另一张证书。
+
+一次性覆盖使用 `PASSPINE_MACOS_SIGNING_IDENTITY=<40 位 identity SHA-1>`，可选 `PASSPINE_MACOS_SIGNING_KEYCHAIN=<keychain 路径>`；显式覆盖优先于已记住的身份，但不改写选择记录。需要显式记住某份身份时，可用 `node scripts/macos-dev-signing.mjs setup --identity <SHA-1>`。Dev 选择记录与正式证书 pin 分开，既可复用同一份证书，也可使用独立的有效本机身份；不要求购买 Developer ID。
+
+构建按顺序签署 Host、系统解锁辅助程序和应用包，分别固定为 `<bundle ID>.host`、`<bundle ID>.device-unlock` 和应用 bundle ID。归档前验证应用完整性，并逐个检查所有自有可执行文件的实际叶证书 SHA-256、代码标识和完整指定要求；安装器在修改目标目录前验证来源包，再验证暂存副本。Dev 验签使用本次解析出的本机身份，正式发行继续使用入库 pin，不混用两种配置。
+
+固定签名保持证书及指定要求稳定，但传统 Keychain 还会检查 partition；自签名身份仍可能因重构建后 cdhash 变化再次询问。首次从 ad-hoc 迁移、换证书或改标识也可能需要重新批准，不能承诺所有系统权限永久免确认。
+
+证书 SHA-256 固定在 `config/macos-signing.json`。macOS 构建步骤运行 `node scripts/macos-signing.mjs build`：把 Secret 中的身份导入 `RUNNER_TEMP` 下的临时钥匙串，仅向该步骤的 `build-client.sh` 提供身份，结束后恢复钥匙串搜索列表并删除临时钥匙串。同一 macOS 签名步骤还在临时身份可用时执行隔离的 Dev 安装、启动、正常退出及重复卸载验收，子进程只继承精确身份引用和钥匙串路径，不继承签名 Secret；验收失败同样停止并清理临时材料。正式构建签名后检查 bundle 与 `Contents/MacOS` 中每个程序的叶证书均为固定证书，且指定要求基于证书而非 cdhash；缺少 Secret、证书不匹配或配置缺失时停止构建，不回退 ad-hoc。
 
 | GitHub 配置 | 格式及用途 |
 | --- | --- |

@@ -166,11 +166,11 @@ func oauthFixture(t *testing.T) (*Service, *oauthMemorySecrets, *oauthAPI, strin
 	_ = listener.Close()
 	t.Setenv("PASSPINE_CF_OAUTH_CLIENT_ID", oauthTestClientID)
 	t.Setenv("PASSPINE_CF_OAUTH_REDIRECT_URL", redirect)
-	s.configSync.managerFactory = func(clientID, statePath string) (*r2connect.Manager, *r2connect.Client, error) {
+	s.configSync.managerFactory = func(clientID string, state r2connect.StateStore) (*r2connect.Manager, *r2connect.Client, error) {
 		client := r2connect.NewClient(clientID)
 		client.APIBaseURL = server.URL
 		client.OAuthBaseURL = server.URL
-		manager := r2connect.NewManager(client, r2connect.ManagerOptions{Secrets: memory, State: r2connect.FileStateStore{Path: statePath}, TokenNamePrefix: "Passpine-", OnWarning: func(r2connect.Warning) {
+		manager := r2connect.NewManager(client, r2connect.ManagerOptions{Secrets: s.configSync.store, State: state, TokenNamePrefix: "Passpine-", OnWarning: func(r2connect.Warning) {
 			s.mu.Lock()
 			s.configSync.warningCode = "oauth_cleanup_pending"
 			s.mu.Unlock()

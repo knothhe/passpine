@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -105,9 +106,10 @@ type syncSecrets interface {
 }
 type configSyncState struct {
 	pendingSecrets map[string]syncSecret
-	managerFactory func(clientID, statePath string) (*r2connect.Manager, *r2connect.Client, error)
+	managerFactory func(clientID string, state r2connect.StateStore) (*r2connect.Manager, *r2connect.Client, error)
 	manager        *r2connect.Manager
 	client         *r2connect.Client
+	sdkState       *syncSessionState
 	warningCode    string
 	meta           syncMetadata
 	status         ConfigSyncStatus
@@ -125,7 +127,7 @@ func (s *Service) initConfigSync() {
 	s.configSync.meta = syncMetadata{Version: 1, Profiles: map[string]syncProfile{}}
 	s.configSync.engine = cloudsync.New(nil)
 	locale := i18n.Resolve(s.prefs.Settings.Language, i18n.SystemLocale())
-	s.configSync.store, _ = secretstore.New(buildinfo.ChannelName(), s.directory, i18n.Text(locale, "Passpine 同步凭据"))
+	s.configSync.store, _ = secretstore.New(buildinfo.ChannelName(), s.directory, i18n.Text(locale, "Passpine 同步主密钥"))
 	if b, e := readPrivate(filepath.Join(s.directory, "config-sync.json"), 1<<20); e == nil {
 		if json.Unmarshal(b, &s.configSync.meta) != nil || s.configSync.meta.Version != 1 || s.configSync.meta.Profiles == nil || s.configSync.meta.Options != nil && !validConfigSyncOptions(*s.configSync.meta.Options) {
 			s.configSync.invalid = true
@@ -204,14 +206,17 @@ func (s *Service) loadSyncSecret(ref string) (syncSecret, error) {
 	if s.configSync.store == nil {
 		return out, secretstore.ErrUnavailable
 	}
-	if st, ok := s.configSync.store.(interface{ Denied() bool }); ok && st.Denied() {
-		return out, secretstore.ErrDenied
+	// Pending values retain failed saves, but must not conceal a removed or
+	// changed encrypted secret file. This check never opens native secrets.
+	if err := s.syncSecretSessionError(); err != nil {
+		return out, err
 	}
 	if pending, ok := s.configSync.pendingSecrets[ref]; ok {
 		b, e := json.Marshal(pending)
 		if e != nil {
 			return out, e
 		}
+		defer clear(b)
 		e = json.Unmarshal(b, &out)
 		return out, e
 	}
@@ -219,25 +224,32 @@ func (s *Service) loadSyncSecret(ref string) (syncSecret, error) {
 	if e != nil {
 		return out, e
 	}
+	defer clear(b)
 	if json.Unmarshal(b, &out) != nil {
 		return out, &cloudsync.Error{Code: "invalid_document"}
 	}
 	return out, nil
 }
 
-func (s *Service) storeSyncSecret(ref string, v syncSecret) error {
-	if s.configSync.store == nil {
-		return secretstore.ErrUnavailable
-	}
+func persistedSyncSecret(v syncSecret) syncSecret {
 	if v.ConnectionID != "" {
 		v.Secrets.AccessKeyID = ""
 		v.Secrets.SecretAccessKey = ""
 		v.Secrets.SessionToken = ""
 	}
+	return v
+}
+
+func (s *Service) storeSyncSecret(ref string, v syncSecret) error {
+	if s.configSync.store == nil {
+		return secretstore.ErrUnavailable
+	}
+	v = persistedSyncSecret(v)
 	b, e := json.Marshal(v)
 	if e != nil {
 		return e
 	}
+	defer clear(b)
 	e = s.configSync.store.Save(ref, b)
 	if e != nil {
 		if s.configSync.pendingSecrets == nil {
@@ -263,11 +275,20 @@ func (s *Service) cancelConfigSync() {
 		cancel()
 	}
 }
+
+func configSyncNeedsUserAction(code string) bool {
+	switch code {
+	case "conflict", "credentials_denied", "credentials_invalid", "credentials_state_changed", "oauth_state_changed":
+		return true
+	}
+	return false
+}
+
 func (s *Service) scheduleConfigSync() {
 	allowed := s.syncSecretAccessAllowed()
 	s.mu.Lock()
 	c := &s.configSync
-	if !allowed || s.preview || s.closed || c.invalid || s.configSyncOptions().Mode != "automatic" || !c.meta.Enabled || c.meta.Active == "" || c.queued || c.status.Busy || time.Now().Before(c.next) || c.status.ErrorCode == "conflict" || c.status.ErrorCode == "credentials_denied" {
+	if !allowed || s.preview || s.closed || c.invalid || s.configSyncOptions().Mode != "automatic" || !c.meta.Enabled || c.meta.Active == "" || c.queued || c.status.Busy || time.Now().Before(c.next) || configSyncNeedsUserAction(c.status.ErrorCode) {
 		s.mu.Unlock()
 		return
 	}
@@ -311,8 +332,30 @@ func (s *Service) executeConfigSync(r Request, source string) Response {
 	// lane, independently of vault locking and normal credential requests.
 	s.updateRequests.RLock()
 	defer s.updateRequests.RUnlock()
-	s.configSyncMu.Lock()
-	defer s.configSyncMu.Unlock()
+	// A repeated connection click must not queue another RetryAccess behind
+	// the active request, especially after its native prompt was refused.
+	newAccess := r.Action == "config-sync-oauth-start" || r.Action == "config-sync-disconnect" || r.Action == "config-sync-save" && r.SyncConnection != nil && r.SyncConnection.Provider == "s3"
+	if newAccess {
+		if !s.configSyncMu.TryLock() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			return s.syncResponseLocked(r, &cloudsync.Error{Code: "busy"})
+		}
+	} else {
+		s.configSyncMu.Lock()
+	}
+	defer func() {
+		s.mu.Lock()
+		closed := s.closed
+		s.mu.Unlock()
+		// A native prompt can outlive the bounded shutdown drain. Discard any
+		// successful reads from that late worker before it releases the lane.
+		if closed {
+			s.clearSyncSecretSession()
+			clear(s.configSync.pendingSecrets)
+		}
+		s.configSyncMu.Unlock()
+	}()
 	s.mu.Lock()
 	if s.closed || s.updatePaused.Load() {
 		out := s.syncResponseLocked(r, &cloudsync.Error{Code: "cancelled"})
@@ -326,7 +369,7 @@ func (s *Service) executeConfigSync(r Request, source string) Response {
 	}
 	// A queued worker may acquire the lane after an options save changed
 	// mode or its deadline. Re-check before starting any automatic work.
-	if source == "automatic" && (s.configSyncOptions().Mode != "automatic" || !s.configSync.meta.Enabled || time.Now().Before(s.configSync.next) || s.configSync.status.ErrorCode == "conflict" || s.configSync.status.ErrorCode == "credentials_denied") {
+	if source == "automatic" && (s.configSyncOptions().Mode != "automatic" || !s.configSync.meta.Enabled || time.Now().Before(s.configSync.next) || configSyncNeedsUserAction(s.configSync.status.ErrorCode)) {
 		out := s.syncResponseLocked(r, nil)
 		s.mu.Unlock()
 		return out
@@ -428,6 +471,9 @@ func syncErrorCode(e error) string {
 	if errors.Is(e, secretstore.ErrUnavailable) || errors.Is(e, secretstore.ErrNotFound) {
 		return "credentials_unavailable"
 	}
+	if errors.Is(e, secretstore.ErrSessionChanged) {
+		return "credentials_state_changed"
+	}
 	if errors.Is(e, secretstore.ErrInvalid) {
 		return "credentials_invalid"
 	}
@@ -436,6 +482,9 @@ func syncErrorCode(e error) string {
 	}
 	if errors.Is(e, keyring.ErrIncomplete) {
 		return "credentials_invalid"
+	}
+	if errors.Is(e, errSyncSessionChanged) {
+		return "oauth_state_changed"
 	}
 	for _, mapped := range []struct {
 		err  error
@@ -537,7 +586,9 @@ func (s *Service) saveSyncConnection(ctx context.Context, r *SyncConnectionReque
 		return secretstore.ErrUnavailable
 	}
 	if r.Provider == "s3" {
-		s.configSync.store.RetryAccess()
+		if err := s.retrySyncSecretAccess(); err != nil {
+			return err
+		}
 	}
 	var p syncProfile
 	var v syncSecret
@@ -797,6 +848,11 @@ func (s *Service) syncConfiguration(ctx context.Context, resolution string) erro
 	if e != nil {
 		return e
 	}
+	previousSecret, e := json.Marshal(persistedSyncSecret(v))
+	if e != nil {
+		return e
+	}
+	defer clear(previousSecret)
 	if meta.Active == "r2" {
 		if e = s.renewR2Credentials(ctx, &p, &v); e != nil {
 			return e
@@ -856,8 +912,18 @@ func (s *Service) syncConfiguration(ctx context.Context, resolution string) erro
 		return e
 	}
 	v = advanceConfigSyncBaseline(v, result.Values, options)
-	if e = s.storeSyncSecret(p.SecretRef, v); e != nil {
+	nextSecret, e := json.Marshal(persistedSyncSecret(v))
+	if e != nil {
 		return e
+	}
+	defer clear(nextSecret)
+	// An unchanged sync must not rewrite the Keychain entry and invalidate
+	// its successful read session. Failed prior writes still need retrying.
+	_, pending := s.configSync.pendingSecrets[p.SecretRef]
+	if pending || !bytes.Equal(previousSecret, nextSecret) {
+		if e = s.storeSyncSecret(p.SecretRef, v); e != nil {
+			return e
+		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

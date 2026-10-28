@@ -24,16 +24,64 @@ func (s *Service) syncSecretAccessAllowed() bool {
 	return true
 }
 
+func (s *Service) syncSecretSessionError() error {
+	if s.configSync.store == nil {
+		return secretstore.ErrUnavailable
+	}
+	if !s.syncSecretAccessAllowed() {
+		return secretstore.ErrDenied
+	}
+	if st, ok := s.configSync.store.(interface{ CheckSession() error }); ok {
+		return st.CheckSession()
+	}
+	return nil
+}
+
+func (s *Service) clearSyncSecretSession() {
+	if st, ok := s.configSync.store.(interface{ ClearSession() }); ok {
+		st.ClearSession()
+	}
+}
+
+func (s *Service) retrySyncSecretAccess() error {
+	if s.configSync.store == nil {
+		return secretstore.ErrUnavailable
+	}
+	// A failed baseline write may be the only record of a completed upload.
+	// Keep it across explicit access retries unless persisted storage changed.
+	if st, ok := s.configSync.store.(interface{ RetrySession() (bool, error) }); ok {
+		changed, err := st.RetrySession()
+		if err != nil {
+			return err
+		}
+		if changed {
+			clear(s.configSync.pendingSecrets)
+		}
+		return nil
+	}
+	if st, ok := s.configSync.store.(interface{ CheckSession() error }); ok {
+		err := st.CheckSession()
+		if errors.Is(err, secretstore.ErrSessionChanged) {
+			clear(s.configSync.pendingSecrets)
+		} else if err != nil {
+			return err
+		}
+	}
+	s.configSync.store.RetryAccess()
+	return nil
+}
+
 func (s *Service) newSyncManager(clientID, statePath string) (*r2connect.Manager, *r2connect.Client, error) {
+	s.configSync.sdkState = newSyncSessionState(statePath, s.clearSyncSecretSession)
 	if s.configSync.managerFactory != nil {
-		return s.configSync.managerFactory(clientID, statePath)
+		return s.configSync.managerFactory(clientID, s.configSync.sdkState)
 	}
 	if s.configSync.store == nil {
 		return nil, nil, secretstore.ErrUnavailable
 	}
 	client := r2connect.NewClient(clientID)
 	manager := r2connect.NewManager(client, r2connect.ManagerOptions{
-		Secrets: s.configSync.store, State: r2connect.FileStateStore{Path: statePath}, TokenNamePrefix: "Passpine-",
+		Secrets: s.configSync.store, State: s.configSync.sdkState, TokenNamePrefix: "Passpine-",
 		OnWarning: func(r2connect.Warning) {
 			s.mu.Lock()
 			s.configSync.warningCode = "oauth_cleanup_pending"
@@ -51,7 +99,13 @@ func (s *Service) ensureSyncManager() error {
 			return err
 		}
 	}
-	return s.configSync.manager.LoadError()
+	if err := s.configSync.manager.LoadError(); err != nil {
+		return err
+	}
+	if s.configSync.sdkState != nil {
+		return s.configSync.sdkState.Check()
+	}
+	return nil
 }
 
 func (s *Service) initSyncSDK() error {
@@ -82,6 +136,7 @@ func (s *Service) updateSyncSDKStatus() {
 // pending refresh rotations and cleanup state across transient failures.
 func (s *Service) reloadSyncSDK() error {
 	if s.configSync.manager != nil && s.configSync.manager.LoadError() != nil {
+		s.clearSyncSecretSession()
 		s.configSync.manager, s.configSync.client = nil, nil
 	}
 	err := s.ensureSyncManager()
@@ -123,7 +178,9 @@ func (s *Service) startSyncOAuth(ctx context.Context, request *SyncConnectionReq
 		return secretstore.ErrUnavailable
 	}
 	// Only a new explicit connection or disconnect may clear a refusal.
-	s.configSync.store.RetryAccess()
+	if err := s.retrySyncSecretAccess(); err != nil {
+		return err
+	}
 	if err := s.discardSyncCandidate(ctx); err != nil {
 		return err
 	}
@@ -408,10 +465,15 @@ func (s *Service) renewR2Credentials(ctx context.Context, p *syncProfile, v *syn
 	if err != nil {
 		return err
 	}
+	// Early renewal can return still-valid credentials after a failed state
+	// write. An external state change must stop that fallback as well.
+	if err := s.ensureSyncManager(); err != nil {
+		return err
+	}
 	// SDK early-renew fallback must not resume app background work after a
 	// system store prompt was refused during that renewal.
-	if !s.syncSecretAccessAllowed() {
-		return secretstore.ErrDenied
+	if err := s.syncSecretSessionError(); err != nil {
+		return err
 	}
 	v.Secrets.AccessKeyID, v.Secrets.SecretAccessKey = credentials.AccessKeyID, credentials.SecretAccessKey
 	v.Secrets.SessionToken = ""
@@ -587,7 +649,9 @@ func (s *Service) disconnectSync(ctx context.Context) error {
 	manualOnly := s.configSync.meta.Active == "s3"
 	s.mu.Unlock()
 	if s.configSync.store != nil {
-		s.configSync.store.RetryAccess()
+		if err := s.retrySyncSecretAccess(); err != nil {
+			return err
+		}
 	}
 	if !manualOnly {
 		if err := s.discardSyncCandidate(ctx); err != nil {

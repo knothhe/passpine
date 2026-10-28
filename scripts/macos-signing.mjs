@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Stable macOS code-signing identity for release builds. A self-signed
-// certificate keeps the designated requirement identical across releases, so
-// login items and other identity-bound grants survive updates. It does not
-// replace Developer ID notarization for Gatekeeper.
+// certificate keeps the designated requirement stable across releases.
+// Keychain partition checks can still require authorization after a rebuild;
+// this does not replace Developer ID notarization for Gatekeeper.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -64,8 +64,110 @@ export function selectIdentity(pem, sha1) {
   return { certificate: certificate.toString(), key: key.export({ type: 'pkcs8', format: 'pem' }) };
 }
 
-export function assertCertificateRequirement(requirement) {
-  requireThat(/designated => .*certificate leaf = H"[0-9a-f]{40}"/i.test(requirement) && !/cdhash/i.test(requirement), 'Signed bundle must use a certificate-based designated requirement.');
+// Accept complete, controlled requirement expressions rather than looking for
+// a certificate somewhere in an expression which might also contain a bypass.
+// codesign prints reconstructed requirement source; its certificate constants
+// are SHA-1, independently of our SHA-256 pin on the actual extracted DER.
+function requirementTerms(output) {
+  const source = output.split(/\r?\n/).filter(line => !/^Executable=/.test(line)).join('\n').trim()
+    .replace(/^#\s*(?=designated\s*=>)/, '');
+  const designated = /^designated\s*=>\s*([\s\S]+)$/.exec(source);
+  requireThat(designated, 'Signed code must have a complete certificate-based designated requirement.');
+  const expression = designated[1].replace(/\/\*\s*exists\s*\*\//g, ' exists ');
+  const tokens = [];
+  const token = /\s+|H"[a-fA-F0-9]{40}"|"(?:[^"\\]|\\[\s\S])*"|[A-Za-z0-9_.-]+|[()[\]=]/y;
+  for (let offset = 0; offset < expression.length;) {
+    token.lastIndex = offset;
+    const match = token.exec(expression);
+    requireThat(match, 'Unsupported designated requirement syntax.');
+    if (!/^\s+$/.test(match[0])) tokens.push(match[0]);
+    offset = token.lastIndex;
+  }
+  let cursor = 0;
+  const take = () => tokens[cursor++];
+  const expect = value => requireThat(take() === value, 'Unsupported designated requirement syntax.');
+  const string = () => {
+    const value = take();
+    requireThat(value && (/^"(?:[^"\\]|\\[\s\S])*"$/.test(value) || /^[A-Za-z0-9.]+$/.test(value)), 'Expected a designated requirement string.');
+    return value.startsWith('"') ? value.slice(1, -1).replace(/\\([\s\S])/g, '$1') : value;
+  };
+  const hash = () => {
+    const value = take();
+    requireThat(/^H"[a-fA-F0-9]{40}"$/.test(value ?? ''), 'Designated requirement must use a certificate SHA-1 constant.');
+    return value.slice(2, -1).toLowerCase();
+  };
+  const slot = () => {
+    const value = take();
+    requireThat(['leaf', 'root', '0', '-1', '1'].includes(value), 'Unsupported designated requirement certificate slot.');
+    return ({ leaf: '0', root: '-1' })[value] ?? value;
+  };
+  const atom = () => {
+    const kind = take();
+    if (kind === 'identifier') {
+      if (tokens[cursor] === '=') take();
+      return { kind, value: string() };
+    }
+    if (kind === 'anchor') {
+      if (tokens[cursor] === '=') { take(); return { kind: 'hash', slot: '-1', value: hash() }; }
+      expect('apple'); expect('generic');
+      return { kind: 'apple' };
+    }
+    requireThat(kind === 'certificate', 'Unsupported designated requirement predicate.');
+    const position = slot();
+    if (tokens[cursor] === '=') { take(); return { kind: 'hash', slot: position, value: hash() }; }
+    expect('[');
+    const field = take();
+    expect(']');
+    if (field === 'subject.CN' || field === 'subject.OU') {
+      expect('=');
+      return { kind: 'subject', slot: position, field: field.slice(8), value: string() };
+    }
+    requireThat(/^field\.[0-9.]+$/.test(field ?? ''), 'Unsupported designated requirement certificate field.');
+    expect('exists');
+    return { kind: 'exists', slot: position, oid: field.slice(6) };
+  };
+  const conjunction = () => {
+    const result = [];
+    const term = () => {
+      if (tokens[cursor] !== '(') return [atom()];
+      take();
+      const nested = conjunction();
+      expect(')');
+      return nested;
+    };
+    result.push(...term());
+    while (tokens[cursor] === 'and') { take(); result.push(...term()); }
+    return result;
+  };
+  const terms = conjunction();
+  requireThat(cursor === tokens.length, 'Designated requirement must not contain alternatives, negation or trailing predicates.');
+  return terms;
+}
+
+export function assertCertificateRequirement(requirement, { expectedIdentifier, expectedCertificateSHA1, selfSigned = false, subject } = {}) {
+  const terms = requirementTerms(requirement);
+  const identifiers = terms.filter(term => term.kind === 'identifier');
+  requireThat(identifiers.length === 1 && /^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(identifiers[0].value)
+    && (!expectedIdentifier || identifiers[0].value === expectedIdentifier), 'Designated requirement has an unexpected code identifier.');
+  const hashes = terms.filter(term => term.kind === 'hash');
+  if (terms.length === 2 && hashes.length === 1) {
+    const pin = hashes[0];
+    requireThat((pin.slot === '0' || pin.slot === '-1' && selfSigned)
+      && (!expectedCertificateSHA1 || pin.value === expectedCertificateSHA1.toLowerCase()), 'Designated requirement does not bind the actual signing certificate.');
+    return;
+  }
+  // Apple-issued identities use an Apple anchor, certificate-class fields and
+  // the actual developer Team ID / common name. Preserve those standard DRs;
+  // the extracted leaf still has to match our explicit certificate pin.
+  const issuerOIDs = ['1.2.840.113635.100.6.2.1', '1.2.840.113635.100.6.2.6'];
+  const leafOIDs = ['1.2.840.113635.100.6.1.2', '1.2.840.113635.100.6.1.7', '1.2.840.113635.100.6.1.9', '1.2.840.113635.100.6.1.12', '1.2.840.113635.100.6.1.13'];
+  const subjects = terms.filter(term => term.kind === 'subject');
+  const existence = terms.filter(term => term.kind === 'exists');
+  requireThat(!selfSigned && hashes.length === 0 && terms.filter(term => term.kind === 'apple').length === 1
+    && subjects.length > 0 && subjects.every(term => term.slot === '0' && typeof subject?.[term.field] === 'string' && term.value === subject[term.field] && term.value !== '')
+    && existence.some(term => term.slot === '1' && issuerOIDs.includes(term.oid))
+    && existence.every(term => term.slot === '1' ? issuerOIDs.includes(term.oid) : term.slot === '0' && leafOIDs.includes(term.oid))
+    && terms.length === 2 + subjects.length + existence.length, 'Signed code must use a controlled certificate-based designated requirement.');
 }
 
 export function generate({ output = defaultIdentityDir, config = defaultConfigPath, force = false, now = new Date() } = {}) {
@@ -100,41 +202,75 @@ export function generate({ output = defaultIdentityDir, config = defaultConfigPa
   return { fingerprint, certificate: files[0], identity: files[1], password: files[2], replaced };
 }
 
-function codesignDetails(target, ...args) {
-  const result = spawnSync('/usr/bin/codesign', ['-d', ...args, target], { encoding: 'utf8' });
-  requireThat(result.status === 0, `codesign could not read ${target}: ${result.stderr.trim()}`);
-  return `${result.stdout}${result.stderr}`;
+function runNativeCodesign(args) {
+  const result = spawnSync('/usr/bin/codesign', args, { encoding: 'utf8' });
+  requireThat(result.status === 0, `codesign failed for ${args.at(-1)}: ${(result.stderr ?? result.error?.message ?? '').trim()}`);
+  return `${result.stdout ?? ''}${result.stderr ?? ''}`;
 }
 
-export function verify(bundle, config = readSigningConfig()) {
+export function verifyApp(bundle, { expectedFingerprint, expectedBundleID = 'com.knothhe.passpine', runCodesign = runNativeCodesign } = {}) {
+  expectedFingerprint ??= readSigningConfig().certificateSHA256;
+  requireThat(/^[a-f0-9]{64}$/.test(expectedFingerprint), 'Invalid expected macOS signing certificate fingerprint.');
+  requireThat(/^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(expectedBundleID), 'Invalid expected macOS bundle identifier.');
+  const executableIDs = { passpine: expectedBundleID, 'passpine-host': `${expectedBundleID}.host`, 'passpine-device-unlock': `${expectedBundleID}.device-unlock` };
+  const executableDir = path.join(bundle, 'Contents/MacOS');
+  const names = fs.readdirSync(executableDir);
+  requireThat(names.slice().sort().join(',') === Object.keys(executableIDs).sort().join(','), 'macOS bundle must contain exactly the expected application, Host and device-unlock executables.');
+  for (const name of names) requireThat(fs.lstatSync(path.join(executableDir, name)).isFile(), `Expected a regular executable: ${name}.`);
+  runCodesign(['--verify', '--deep', '--strict', bundle]);
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-signature-'));
   try {
-    const executables = fs.readdirSync(path.join(bundle, 'Contents/MacOS')).map(name => path.join(bundle, 'Contents/MacOS', name));
-    for (const [index, target] of [bundle, ...executables].entries()) {
+    const targets = [[bundle, expectedBundleID], ...Object.entries(executableIDs).map(([name, identifier]) => [path.join(executableDir, name), identifier])];
+    for (const [index, [target, identifier]] of targets.entries()) {
+      const details = runCodesign(['-d', '--verbose=4', target]);
+      const actualIdentifiers = [...details.matchAll(/^Identifier=(.+)$/gm)].map(match => match[1].trim());
+      requireThat(actualIdentifiers.length === 1 && actualIdentifiers[0] === identifier, `${target} has an unexpected macOS code identifier.`);
       const prefix = path.join(work, `${index}-`);
-      codesignDetails(target, `--extract-certificates=${prefix}`);
-      requireThat(certificateFingerprint(fs.readFileSync(`${prefix}0`)) === config.certificateSHA256, `${target} is not signed with the pinned macOS release certificate.`);
-      assertCertificateRequirement(codesignDetails(target, '-r-'));
+      runCodesign(['-d', `--extract-certificates=${prefix}`, target]);
+      const certificate = new crypto.X509Certificate(fs.readFileSync(`${prefix}0`));
+      requireThat(certificateFingerprint(certificate.raw) === expectedFingerprint, `${target} is not signed with the expected pinned macOS certificate.`);
+      const certificateSHA1 = certificate.fingerprint.replaceAll(':', '').toLowerCase();
+      assertCertificateRequirement(runCodesign(['-d', '-r-', target]), {
+        expectedIdentifier: identifier, expectedCertificateSHA1: certificateSHA1,
+        selfSigned: certificate.subject === certificate.issuer && certificate.verify(certificate.publicKey), subject: certificate.toLegacyObject().subject,
+      });
+      runCodesign(['--verify', '--strict', '-R', `=identifier "${identifier}" and certificate leaf = H"${certificateSHA1}"`, target]);
     }
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }
 }
 
-// Imports the CI identity into a throwaway keychain only for the release
-// build, then restores the keychain search list.
-export function buildRelease(env = process.env, root = projectRoot) {
-  requireThat(process.platform === 'darwin' && env.GITHUB_ACTIONS === 'true' && env.RUNNER_TEMP, 'Release signing runs only on an ephemeral macOS GitHub Actions runner.');
+// Keep the release entry point compatible with its strict repository pin.
+export function verify(bundle, config = readSigningConfig()) {
+  return verifyApp(bundle, { expectedFingerprint: config.certificateSHA256 });
+}
+
+function runNativeSecurity(args) {
+  try {
+    return execFileSync('/usr/bin/security', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (error) {
+    // security's command arguments can contain the PKCS#12 or keychain
+    // password. Keep its raw exception and captured output out of diagnostics.
+    throw new Error(`macOS signing keychain operation ${args[0]} failed (${error.status ?? error.signal ?? 'unavailable'}).`);
+  }
+}
+
+// Keep the imported identity alive through the release build and the optional
+// isolated Dev acceptance build, then restore the original keychain search list.
+export function buildRelease(env = process.env, root = projectRoot, { platform = process.platform, runSecurity = runNativeSecurity, runProcess = spawnSync } = {}) {
+  requireThat(platform === 'darwin' && env.GITHUB_ACTIONS === 'true' && env.RUNNER_TEMP, 'Release signing runs only on an ephemeral macOS GitHub Actions runner.');
   requireThat(env[certificateEnv] && env[passwordEnv], `Missing ${certificateEnv} or ${passwordEnv} Actions secret.`);
   readSigningConfig(path.join(root, 'config/macos-signing.json'));
   const work = fs.mkdtempSync(path.join(fs.realpathSync(env.RUNNER_TEMP), 'passpine-signing-'));
   const keychain = path.join(work, 'release.keychain-db'), identity = path.join(work, 'identity.p12');
   const password = crypto.randomBytes(24).toString('base64url');
-  const security = (...args) => execFileSync('/usr/bin/security', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  const searchList = security('list-keychains', '-d', 'user').split('\n').map(line => line.trim().replace(/^"|"$/g, '')).filter(Boolean);
-  let created = false;
+  const security = (...args) => runSecurity(args);
+  let searchList, creationAttempted = false, created = false, failure;
   try {
+    searchList = security('list-keychains', '-d', 'user').split('\n').map(line => line.trim().replace(/^"|"$/g, '')).filter(Boolean);
     fs.writeFileSync(identity, Buffer.from(env[certificateEnv], 'base64'), { mode: 0o600 });
+    creationAttempted = true;
     security('create-keychain', '-p', password, keychain); created = true;
     security('set-keychain-settings', '-lut', '3600', keychain);
     security('unlock-keychain', '-p', password, keychain);
@@ -145,13 +281,28 @@ export function buildRelease(env = process.env, root = projectRoot) {
     requireThat(identities.length === 1, `Expected one macOS signing identity, found ${identities.length}.`);
     const childEnv = { ...env, PASSPINE_MACOS_SIGNING_IDENTITY: identities[0], PASSPINE_MACOS_SIGNING_KEYCHAIN: keychain };
     delete childEnv[certificateEnv]; delete childEnv[passwordEnv];
-    const build = spawnSync('bash', [path.join(root, 'scripts/build-client.sh')], { cwd: root, env: childEnv, stdio: 'inherit' });
+    const build = runProcess('bash', [path.join(root, 'scripts/build-client.sh')], { cwd: root, env: childEnv, stdio: 'inherit' });
     requireThat(build.status === 0, `Signed macOS build failed (${build.status ?? build.signal}).`);
-  } finally {
-    if (created) {
-      try { security('list-keychains', '-d', 'user', '-s', ...searchList); } finally { security('delete-keychain', keychain); }
+    if (env.PASSPINE_MACOS_VERIFY_DEV_INSTALL === '1') {
+      const acceptance = runProcess(process.execPath, [path.join(root, 'scripts/verify-dev-installation.mjs'), '--run'], { cwd: root, env: childEnv, stdio: 'inherit' });
+      requireThat(acceptance.status === 0, `macOS Dev installation acceptance failed (${acceptance.status ?? acceptance.signal}).`);
     }
-    fs.rmSync(work, { recursive: true, force: true });
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    const cleanupErrors = [];
+    if (creationAttempted) {
+      try { security('list-keychains', '-d', 'user', '-s', ...searchList); } catch (error) { cleanupErrors.push(error); }
+    }
+    if (created || fs.existsSync(keychain)) {
+      try { security('delete-keychain', keychain); } catch (error) { cleanupErrors.push(error); }
+    }
+    try { fs.rmSync(work, { recursive: true, force: true }); } catch (error) { cleanupErrors.push(error); }
+    if (cleanupErrors.length) {
+      throw new AggregateError(failure ? [failure, ...cleanupErrors] : cleanupErrors,
+        `${failure ? `${failure.message} ` : ''}macOS signing cleanup failed: ${cleanupErrors.map(error => error.message).join('; ')}`);
+    }
   }
 }
 
@@ -302,10 +453,13 @@ if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === imp
     } else if (action === 'verify' && args.length === 1) {
       verify(path.resolve(args[0]));
       console.log(`Verified the pinned release signature: ${args[0]}`);
+    } else if (action === 'verify-dev' && args.length === 2) {
+      verifyApp(path.resolve(args[0]), { expectedFingerprint: args[1], expectedBundleID: 'com.knothhe.passpine.dev' });
+      console.log(`Verified the selected Dev signature: ${args[0]}`);
     } else if (action === 'build' && args.length === 0) {
       buildRelease();
     } else {
-      throw new Error('Usage: macos-signing.mjs (interactive setup) | verify APP_BUNDLE | build');
+      throw new Error('Usage: macos-signing.mjs (interactive setup) | verify APP_BUNDLE | verify-dev APP_BUNDLE CERTIFICATE_SHA256 | build');
     }
   } catch (error) {
     console.error(`macOS signing failed: ${error.message}`);
