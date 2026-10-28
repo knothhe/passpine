@@ -122,7 +122,7 @@ function VaultApp({ client: sourceClient }: { client: Client }) {
     const state = await client.request<SessionStatus>({ action: 'status' });
     const observation = observe(state, sequence);
     const previous = latestSnapshot.current;
-    const needsSnapshot = !previous || previous.vaultId !== state.vaultId || previous.locked !== state.locked || previous.configured !== state.configured || previous.entriesVersion !== state.entriesVersion;
+    const needsSnapshot = !previous || previous.vaultId !== state.vaultId || previous.locked !== state.locked || previous.configured !== state.configured || previous.entriesVersion !== state.entriesVersion || previous.associationVersion !== state.associationVersion;
     if (observation.accepted && (observation.invalidated || observation.metadataChanged || needsSnapshot)) {
       setSnapshot(previous => previous && previous.vaultId === state.vaultId ? { ...previous, locked: state.locked } : undefined);
       void refresh();

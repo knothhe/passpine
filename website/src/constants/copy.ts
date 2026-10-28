@@ -268,12 +268,12 @@ export const zh = {
         body: "客户端、扩展和本网站都不包含广告、分析 SDK 或使用数据上传。",
       },
       {
-        title: "数据留在你的设备",
-        body: "条目以 OpenPGP 加密保存在你选择的目录；扩展只与同一台电脑上的客户端通信。",
+        title: "本地保存，按需同步",
+        body: "条目以 OpenPGP 加密保存在你选择的目录；网站关联可由客户端保存，并按你的设置加密同步到你自己的对象存储。",
       },
       {
         title: "联网，清楚可见",
-        body: "填充和 Git 同步由你触发；正式版客户端每天向 GitHub 检查一次更新。",
+        body: "填充由你触发，Git 与配置云同步按你的设置执行；正式版客户端每天向 GitHub 检查一次更新。",
       },
     ],
     tocLabel: "目录",
@@ -332,7 +332,9 @@ export const zh = {
             "私钥以受口令保护的形式保存在客户端应用数据目录，与同步的密码库分开。系统解锁如已启用，由客户端和操作系统处理。",
             "扩展通过 Native Messaging 与本机的 Native Host 通信，Native Host 再通过带令牌验证的本机回环连接转发给客户端；这段本机连接不使用 TLS。",
             "展示或填充所需的解密内容只短暂存在于扩展内存中。弹窗隐藏、锁定、断开连接或切换密码库时，扩展会清理相关界面状态；这不保证操作系统或运行时中的每份内存副本都被立即擦除。",
-            "偏好和网站关联保存在浏览器本地存储中，不使用浏览器同步存储，也不保存密码或解密后的条目内容。网站关联以密码库 ID、条目路径和精确主机名计算出的 SHA-256 键加一个是否关联的值保存；哈希不等于加密或匿名化。完整网址不会作为浏览记录保存。偏好和关联没有自动过期时间。",
+            "扩展使用浏览器本地存储保存偏好和网站关联缓存，不使用浏览器同步存储，也不持久保存密码或解密后的条目内容。",
+            "扩展会与客户端协商网站关联存储能力。支持时，客户端在应用数据目录保存关联记录，扩展保留缓存并约每分钟从本机客户端刷新；旧版客户端不支持时，关联继续只保存在浏览器本地。升级后会尝试导入原有记录，保留原浏览器记录。",
+            "网站关联以密码库标识或稳定密码库范围、条目路径和精确主机名计算出的 SHA-256 键加一个是否关联的值保存，并记录用于跨设备匹配的派生密码库标识。哈希不等于加密或匿名化。完整网址不会作为浏览记录保存。偏好和关联没有自动过期时间。",
             "操作记录只保存在本机，默认开启，最多保留 7 天、1,000 条，可调整或关闭；过期记录在客户端运行期间定期清理。",
           ),
         ],
@@ -357,6 +359,10 @@ export const zh = {
               text: "默认关闭。你配置远端并手动同步或开启自动同步后，客户端使用系统 Git 和你已有的认证配置连接你指定的仓库，传输加密的库文件及可见的路径、收件人标识和 Git 元数据。托管方按其自身政策处理账户、访问日志与数据保留。私钥不进入同步仓库。",
             },
             {
+              term: "网站关联云同步",
+              text: "你自行配置并启用客户端的配置同步与扩展同步后，客户端可将网站关联的派生标识和关联或取消关联状态同步到你自己的 Cloudflare R2 或兼容 S3 的对象存储。数据通过 scrypt 派生密钥和 AES-GCM 加密后上传，按你的自动或手动同步设置执行。扩展不直接连接云端，也不接收云端凭据；存储服务按其自身政策处理连接信息和数据保留。",
+            },
+            {
               term: "更新检查",
               text: "正式版客户端每天从 GitHub Releases 获取一次已签名的更新清单，默认自动下载更新包，可在设置中关闭自动下载。请求不含密码库内容、账户或设备标识；与任何下载一样，GitHub 能看到你的 IP 地址和请求信息。",
             },
@@ -378,7 +384,7 @@ export const zh = {
             [
               {
                 name: "nativeMessaging",
-                text: "与单独安装的 Passpine 桌面客户端通信。客户端负责密码库、解锁会话、加解密、密码生成和凭证复制。",
+                text: "与单独安装的 Passpine 桌面客户端通信。客户端负责密码库、解锁会话、加解密、密码生成、凭证复制，并在支持时保存和返回网站关联数据。",
               },
               {
                 name: "activeTab",
@@ -390,7 +396,11 @@ export const zh = {
               },
               {
                 name: "storage",
-                text: "在浏览器本地保存语言、外观、快捷键和网站关联决定。",
+                text: "在浏览器本地保存语言、外观、快捷键及网站关联缓存；旧版客户端不支持关联存储时，保存本地关联决定。",
+              },
+              {
+                name: "alarms",
+                text: "约每分钟唤醒扩展后台，从支持此功能的本机客户端刷新网站关联缓存。定时同步不读取网页内容，也不直接连接云端。",
               },
               {
                 name: "optional_host_permissions",
@@ -434,6 +444,7 @@ export const zh = {
         blocks: [
           list(
             "你可以随时修改条目、取消网站关联、调整偏好、锁定会话、关闭操作记录或卸载扩展。",
+            "取消网站关联会保留否定状态，以防再次从条目路径推导出关联。卸载扩展不会移除客户端保存的关联或对象存储中的同步副本；暂停或断开配置同步也会保留远端对象，这些副本需要在客户端数据目录或你选择的存储服务中分别处理。",
             "删除的账号会先移入客户端的加密回收站，可以恢复；在客户端永久删除后才会移除该副本。",
             "卸载扩展会移除它在浏览器中的本地数据，但不会删除密码库、客户端数据、导出的恢复私钥、系统备份、剪贴板历史或 Git 远端。这些数据需要在客户端、文件系统和你选择的服务中分别处理；删除本地工作副本不会删除 Git 历史或远端备份。",
             "由于没有托管账户，开发者无法访问、导出或删除你设备上的数据，也无法替你找回口令或私钥。",
@@ -734,12 +745,12 @@ export const en: Copy = {
         body: "The desktop app, extension, and website contain no ads, analytics SDKs, or usage uploads.",
       },
       {
-        title: "Your data stays on your device",
-        body: "Entries are OpenPGP-encrypted in a folder you choose. The extension talks only to the app on the same computer.",
+        title: "Stored locally, synced by choice",
+        body: "Entries are OpenPGP-encrypted in a folder you choose. Website associations can be saved by the app and encrypted for sync to your own object storage when configured.",
       },
       {
         title: "Network use you can see",
-        body: "You trigger filling and Git sync. Release builds of the desktop app check GitHub for updates once a day.",
+        body: "You trigger filling; Git and cloud configuration sync follow your settings. Release builds of the desktop app check GitHub for updates once a day.",
       },
     ],
     tocLabel: "On this page",
@@ -800,7 +811,9 @@ export const en: Copy = {
             "Private keys are passphrase-protected and kept in the app’s data directory, separate from the synchronized vault. If enabled, system unlock is handled by the app and the operating system.",
             "The extension uses Native Messaging to reach the local Native Host, which relays requests to the app over a token-authenticated loopback connection. This local connection doesn’t use TLS.",
             "Decrypted content needed for display or filling exists only briefly in extension memory. Related UI state is cleared when the popup closes, the vault locks or disconnects, or you switch vaults. This doesn’t guarantee immediate erasure of every copy in runtime or operating-system memory.",
-            "Preferences and associations use local browser storage, never browser sync storage, and never store passwords or decrypted entries. An association is saved as a SHA-256 key derived from the vault ID, entry path, and exact hostname, plus a yes/no value; hashing is not encryption or anonymization. Full URLs are not saved as browsing history. Preferences and associations don’t expire automatically.",
+            "The extension uses local browser storage for preferences and cached website associations, never browser sync storage, and never persists passwords or decrypted entries there.",
+            "The extension negotiates association storage support with the app. When supported, the app saves records in its data directory and the extension keeps a cache refreshed from the local app about once a minute. With older apps that lack this support, associations stay in local browser storage. After an upgrade, the extension attempts to import existing records while retaining the original browser records.",
+            "An association is saved as a SHA-256 key derived from a vault identifier or stable vault scope, entry path, and exact hostname, plus a yes/no value. Derived vault identifiers are also retained for matching across devices. Hashing is not encryption or anonymization. Full URLs are not saved as browsing history. Preferences and associations don’t expire automatically.",
             "Activity records stay on your device. Recording is on by default and keeps up to 7 days or 1,000 records; you can adjust or disable it. Expired records are pruned while the app is running.",
           ),
         ],
@@ -825,6 +838,10 @@ export const en: Copy = {
               text: "Off by default. Once you configure a remote and sync manually or turn on automatic sync, the app uses system Git and your existing authentication to reach the repository you chose, transferring encrypted vault files along with visible paths, recipient identifiers, and Git metadata. Your hosting provider handles accounts, access logs, and retention under its own policy. Private keys stay out of the synchronized repository.",
             },
             {
+              term: "Website association cloud sync",
+              text: "After you configure and enable configuration sync and extension sync in the app, it can synchronize derived association identifiers and linked or unlinked states to your own Cloudflare R2 or S3-compatible object storage. Data is encrypted using a scrypt-derived key and AES-GCM before upload, following your automatic or manual sync settings. The extension does not connect directly to the cloud or receive cloud credentials. The storage provider handles connection information and retention under its own policy.",
+            },
+            {
               term: "Update checks",
               text: "Release builds of the desktop app fetch a signed update manifest from GitHub Releases once a day and, by default, download updates automatically; you can turn off automatic downloads in settings. Requests contain no vault contents, account, or device identifiers. As with any download, GitHub can see your IP address and request details.",
             },
@@ -846,7 +863,7 @@ export const en: Copy = {
             [
               {
                 name: "nativeMessaging",
-                text: "Communicate with the separately installed Passpine desktop app, which owns the vault and unlock session, encryption, password generation, and credential copying.",
+                text: "Communicate with the separately installed Passpine desktop app, which owns the vault and unlock session, encryption, password generation, and credential copying, and saves and returns website association data when supported.",
               },
               {
                 name: "activeTab",
@@ -858,7 +875,11 @@ export const en: Copy = {
               },
               {
                 name: "storage",
-                text: "Save language, appearance, shortcuts, and website associations in local browser storage.",
+                text: "Save language, appearance, shortcuts, and cached website associations in local browser storage, or local association decisions when an older app does not support association storage.",
+              },
+              {
+                name: "alarms",
+                text: "Wake the extension background about once a minute to refresh cached website associations from a supporting local app. Scheduled refreshes do not read page contents or connect directly to the cloud.",
               },
               {
                 name: "optional_host_permissions",
@@ -902,6 +923,7 @@ export const en: Copy = {
         blocks: [
           list(
             "You can edit entries, remove website associations, change preferences, lock the session, turn off activity records, or uninstall the extension at any time.",
+            "Unlinking a website retains a negative state so the entry path does not infer the association again. Uninstalling the extension does not remove associations saved by the app or synchronized copies in object storage. Pausing or disconnecting configuration sync also retains remote objects. Manage those copies separately in the app data directory or your chosen storage service.",
             "Deleted accounts first move to the app’s encrypted trash, where they can be restored; that copy is removed once you delete it permanently in the app.",
             "Uninstalling the extension removes its local browser data, but not your vault, app data, exported recovery keys, system backups, clipboard history, or Git remotes. Remove those separately in the app, your file system, and the services you chose. Deleting a local working copy doesn’t delete Git history or remote backups.",
             "Because there are no hosted accounts, the developer cannot access, export, or delete data on your devices, or recover your passphrase or private key.",

@@ -29,6 +29,10 @@ it('retains the Firefox identity when packaging', async () => {
   expect(result?.browser_specific_settings?.gecko?.id).toBe(identity.firefoxID);
 });
 
+it.each(['chrome', 'firefox'] as const)('allows periodic association cache refresh in %s', async browser => {
+  expect((await manifest(config, browser, 'production'))?.permissions).toContain('alarms');
+});
+
 it.each([config, storeConfig])('uses browser-specific macOS shortcuts without changing other platform defaults', async source => {
   const chrome = await manifest(source, 'chrome', 'production');
   const firefox = await manifest(source, 'firefox', 'production');

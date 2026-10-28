@@ -153,10 +153,21 @@ func newSyncServiceFixture(t *testing.T, dir string, memory *syncMemorySecrets, 
 		dir = t.TempDir()
 	}
 	s := &Service{directory: dir, prefs: preferences{Vaults: []VaultInfo{}, Settings: DefaultSettings()}, done: make(chan struct{})}
+	var legacyAssociations json.RawMessage
 	if b, e := os.ReadFile(filepath.Join(dir, "preferences.json")); e == nil {
 		if e = json.Unmarshal(b, &s.prefs); e != nil {
 			t.Fatal(e)
 		}
+		var legacy struct {
+			BrowserAssociations json.RawMessage `json:"browserAssociations"`
+		}
+		if e = json.Unmarshal(b, &legacy); e != nil {
+			t.Fatal(e)
+		}
+		legacyAssociations = legacy.BrowserAssociations
+	}
+	if err := s.initBrowserAssociations(legacyAssociations); err != nil {
+		t.Fatal(err)
 	}
 	s.initConfigSync()
 	s.configSync.store = memory

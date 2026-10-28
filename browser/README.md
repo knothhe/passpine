@@ -62,10 +62,10 @@ pnpm run preview
 - 协议为 `{ protocol: 1, requestId, action, ... }`，返回 `{ protocol: 1, requestId, status, data, code?, message? }`。所有条目操作携带当前 `vaultId`；编辑和删除携带读取时的 `revision`，重命名使用原条目加 `destination`。
 - 协议版本独立于产品版本；不同版本的客户端与扩展可以连接。兼容扩展继续使用协议 1，仅破坏消息结构或既有语义时提升协议号。不支持的协议明确返回 `protocol_mismatch`，规则见[协议兼容](../docs/ARCHITECTURE.md#协议兼容)。
 - 只允许正确扩展 ID 和精确 `popup.html` / `options.html` 地址发起内部请求；设置页允许浏览器标签页元数据。无后台响应、格式异常与真实协议版本差异分别报告，避免将连接失败误报为版本不一致。内容脚本和任意网页不能请求密码。
-- 权限仅为 `activeTab`、`scripting`、`nativeMessaging`、`storage`、`clipboardWrite`。没有 `<all_urls>`、`tabs`、`clipboardRead` 或常驻注入脚本。
+- 权限仅为 `activeTab`、`scripting`、`nativeMessaging`、`storage`、`clipboardWrite`、`alarms`；`alarms` 用于每分钟刷新客户端网站关联缓存。没有 `<all_urls>`、`tabs`、`clipboardRead` 或常驻注入脚本。
 - 用户点击填充或使用快捷键后，后台核验活动 tab ID、完整 URL 与精确 hostname，再向顶层 frame 注入一次性填写函数；函数再次核验完整 URL。填充不要求已有网站关联，填写成功后才保存该账号与当前 hostname 的关联。不会自动提交表单，也不进入跨域 iframe。
-- 系统验证期间暂停状态轮询，并将排队的元数据请求延后到验证结束。弹窗可见时每 2 秒读取轻量 status，只有 entriesVersion 改变才刷新完整列表。锁定、切库、断线或页面隐藏会清除详情与编辑状态；会话 epoch 和响应序号防止过期解密结果重新显示。OTP 到期先遮挡，再在仍打开的详情中刷新。
-- 密码与私钥不写入浏览器持久存储。网站关联和取消关联仅以 vault/entry/hostname 组合的 SHA-256 摘要及状态存储；不使用远程 favicon 请求。条目复制由原生客户端操作剪贴板并按客户端设置清空。
+- 系统验证期间暂停状态轮询，并将排队的元数据请求延后到验证结束。弹窗可见时每 2 秒读取轻量 status，条目版本或网站关联缓存版本改变时刷新完整列表；仅关联变化会保留详情和编辑输入。锁定、切库、断线或页面隐藏会清除详情与编辑状态；会话 epoch 和响应序号防止过期解密结果重新显示。OTP 到期先遮挡，再在仍打开的详情中刷新。
+- 密码与私钥不写入浏览器持久存储。网站关联和取消关联仅以密码库身份 / entry / hostname 组合的 SHA-256 摘要及状态存储；新客户端声明 `browser-associations-v1` 时由客户端持久保存，扩展缓存并每分钟刷新，同时迁移已有本地记录。旧客户端继续使用扩展本地存储。客户端配置同步可加密同步这些记录，详见[扩展网站关联](../docs/config-sync.md#扩展网站关联)。不使用远程 favicon 请求。条目复制由原生客户端操作剪贴板并按客户端设置清空。
 - 独立生成器的「复制」通过后台发送 `copy-generated`，由原生客户端设置敏感标记并按客户端设置清空；不要求密码库解锁，连接失败时显示错误，不回退浏览器剪贴板。生成值仅保存在打开的 UI 内存中，不会自动保存。独立 demo 预览仍使用浏览器剪贴板模拟复制；设置页复制扩展 ID 使用浏览器剪贴板，无需连接客户端。
 
 ## 当前覆盖与限制

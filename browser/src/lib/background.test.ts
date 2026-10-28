@@ -12,6 +12,7 @@ const environment = vi.hoisted(() => ({
     storage: { local: { get: vi.fn(), set: vi.fn() }, onChanged: { addListener: vi.fn(), removeListener: vi.fn() } },
     scripting: { executeScript: vi.fn() },
     commands: { onCommand: { addListener: vi.fn() } },
+    alarms: { create: vi.fn(), onAlarm: { addListener: vi.fn() } },
     action: { openPopup: vi.fn() },
     permissions: { contains: vi.fn() },
   },
@@ -60,6 +61,7 @@ beforeEach(async () => {
   environment.native.mockImplementation(async (value: NativeRequest) => value.action === 'fetch' ? { contents: 'secret\nusername: alice\nurl: https://unrelated.test', revision: 'revision' } : state);
   environment.browser.runtime.getURL.mockReturnValue('chrome-extension://test-extension/');
   environment.browser.permissions.contains.mockResolvedValue(true);
+  environment.browser.alarms.create.mockResolvedValue(undefined);
   environment.browser.action.openPopup.mockResolvedValue(undefined);
   environment.browser.management.getSelf.mockResolvedValue({ installType: 'development' });
   environment.browser.tabs.query.mockImplementation(async () => [current]);
@@ -72,6 +74,67 @@ beforeEach(async () => {
 });
 
 describe('background fill and website associations', () => {
+  function clientAssociations(initial: Record<string, boolean> = {}, aliases = ['vault']) {
+    state.capabilities = ['browser-associations-v1'];
+    const links = { ...initial }, scope = 'b'.repeat(64), storeId = 'a'.repeat(64);
+    environment.native.mockImplementation(async (value: NativeRequest) => {
+      if (value.action === 'fetch') return { contents: 'secret\nusername: alice', revision: 'revision' };
+      if (value.action !== 'browser-associations') return state;
+      for (const [key, enabled] of Object.entries(value.associationImport ?? {})) if (!(key in links)) links[key] = enabled;
+      Object.assign(links, value.associationPatch);
+      return { associationStoreId: storeId, associationScope: scope, associationVaultIds: aliases, associations: { ...links } };
+    });
+    return { links, scope };
+  }
+
+  it('migrates legacy links to a capable client and stores explicit unlinks under its portable scope', async () => {
+    const legacy = await associationKey('vault', account, tab.hostname);
+    stored.associations = { [legacy]: true };
+    const server = clientAssociations();
+    expect((await request<Snapshot>({ action: 'snapshot' })).data?.matches).toEqual([account]);
+    expect(server.links[legacy]).toBe(true);
+    expect((await request({ action: 'dissociate', vaultId: 'vault', entry: account, tab })).status).toBe('ok');
+    expect(server.links[await associationKey(server.scope, account, tab.hostname)]).toBe(false);
+    expect(stored.associations).toEqual({ [legacy]: true });
+    expect((await request<Snapshot>({ action: 'snapshot' })).data?.matches).toEqual([]);
+  });
+
+  it('uses migrated aliases across machines, preferring legacy unlinks until a canonical choice exists', async () => {
+    const local = await associationKey('vault', account, tab.hostname);
+    const remote = await associationKey('other-machine', account, tab.hostname);
+    const server = clientAssociations({ [local]: true, [remote]: false }, ['vault', 'other-machine']);
+    expect((await request<Snapshot>({ action: 'snapshot' })).data?.matches).toEqual([]);
+    expect((await fill()).data?.associated).toBe(true);
+    expect(server.links[await associationKey(server.scope, account, tab.hostname)]).toBe(true);
+    expect((await request<Snapshot>({ action: 'snapshot' })).data?.matches).toEqual([account]);
+  });
+
+  it('refreshes client associations on an alarm without reading a page or credentials, and exposes a separate version', async () => {
+    const server = clientAssociations();
+    const key = await associationKey(server.scope, account, tab.hostname);
+    const initial = (await request<Snapshot>({ action: 'snapshot' })).data!;
+    const alarm = environment.browser.alarms.onAlarm.addListener.mock.calls[0]![0];
+    expect(environment.browser.alarms.create).toHaveBeenCalledWith('passpine-associations-refresh', { periodInMinutes: 1 });
+    server.links[key] = true;
+    environment.native.mockClear(); environment.browser.tabs.query.mockClear(); environment.browser.scripting.executeScript.mockClear();
+    alarm({ name: 'passpine-associations-refresh' });
+    await vi.waitFor(() => expect(environment.native).toHaveBeenCalledWith({ protocol: 1, action: 'browser-associations', vaultId: 'vault' }));
+    const next = (await request<Snapshot>({ action: 'status' })).data!;
+    expect(next.associationVersion).not.toBe(initial.associationVersion);
+    expect(next.entriesVersion).toBe(initial.entriesVersion);
+    expect(environment.browser.tabs.query).not.toHaveBeenCalled();
+    expect(environment.browser.scripting.executeScript).not.toHaveBeenCalled();
+    expect(environment.native.mock.calls.some(([value]) => value.action === 'fetch')).toBe(false);
+    expect((await request<Snapshot>({ action: 'snapshot' })).data?.matches).toEqual([account]);
+  });
+
+  it('does not send association requests to an older client during scheduled refresh', async () => {
+    const alarm = environment.browser.alarms.onAlarm.addListener.mock.calls[0]![0];
+    alarm({ name: 'passpine-associations-refresh' });
+    await vi.waitFor(() => expect(environment.native).toHaveBeenCalledWith({ protocol: 1, action: 'configure', includeEntries: false }));
+    expect(environment.native.mock.calls.some(([value]) => value.action === 'browser-associations')).toBe(false);
+  });
+
   it('forwards activity alone without reading credentials, tabs or associations', async () => {
     environment.native.mockResolvedValue({});
     expect(await request({ action: 'touch' })).toEqual({ protocol: 1, status: 'ok', data: {} });

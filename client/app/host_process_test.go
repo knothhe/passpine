@@ -6,6 +6,8 @@ import (
 	"github.com/knothhe/passpine/client/nativehost"
 	"os"
 	"os/exec"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -54,8 +56,29 @@ func TestNativeHelperProcess(t *testing.T) {
 		}
 		return response
 	}
-	if r := roundtrip(Request{Action: "configure"}); r.Status != "ok" || r.Data.VaultID != state.VaultID {
+	if r := roundtrip(Request{Action: "configure"}); r.Status != "ok" || r.Data.VaultID != state.VaultID || !slices.Contains(r.Data.Capabilities, "browser-associations-v1") || !slices.Contains(r.Data.Capabilities, "browser-association-operations-v1") {
 		t.Fatal(r)
+	}
+	identity := roundtrip(Request{Action: "browser-associations", VaultID: state.VaultID})
+	if identity.Status != "ok" || identity.Data.AssociationScope == "" || identity.Data.Associations == nil || len(*identity.Data.Associations) != 0 {
+		t.Fatalf("empty association store did not survive native framing: %+v", identity)
+	}
+	key := strings.Repeat("a", 64)
+	patch := map[string]bool{key: false}
+	operation := Request{Action: "browser-associations", VaultID: state.VaultID, AssociationScope: identity.Data.AssociationScope, AssociationStoreID: identity.Data.AssociationStoreID, AssociationOperationID: strings.Repeat("b", 64), AssociationPatch: &patch}
+	linked := roundtrip(operation)
+	if linked.Status != "ok" || linked.Data.Associations == nil {
+		t.Fatalf("association patch failed through native helper: %+v", linked)
+	}
+	if value, present := (*linked.Data.Associations)[key]; !present || value {
+		t.Fatal("native helper lost an explicit unlink")
+	}
+	newer := map[string]bool{key: true}
+	if r := roundtrip(Request{Action: "browser-associations", VaultID: state.VaultID, AssociationScope: identity.Data.AssociationScope, AssociationStoreID: identity.Data.AssociationStoreID, AssociationPatch: &newer}); r.Status != "ok" {
+		t.Fatal("newer association failed through native helper", r.Code)
+	}
+	if r := roundtrip(operation); r.Status != "ok" || r.Data.Associations == nil || !(*r.Data.Associations)[key] {
+		t.Fatal("native helper replayed an acknowledged operation over a newer association")
 	}
 	if r := roundtrip(Request{Action: "fetch", VaultID: state.VaultID, Entry: saved.Entry}); r.Status != "ok" || r.Data.Password != "fixture-password" {
 		t.Fatal(r)

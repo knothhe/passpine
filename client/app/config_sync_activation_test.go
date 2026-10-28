@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -18,6 +19,10 @@ func TestConfigSyncFailedActivationRestoresCurrentPreferences(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			s, memory, engine, activeConfig, secrets, _ := newSyncAppSpace(t)
+			associationFixtureVault(t, s, "")
+			association := associationRead(t, s)
+			hash := strings.Repeat("a", 64)
+			associationPatchFixture(t, s, association, map[string]bool{hash: false})
 			data := saveSyncFixture(t, s, activeConfig, secrets)
 			settings := data.Settings
 			settings.Theme = "light"
@@ -33,6 +38,7 @@ func TestConfigSyncFailedActivationRestoresCurrentPreferences(t *testing.T) {
 			candidate.Endpoint = server.URL
 			candidate.Prefix = "candidate-space"
 			remote := syncTestValues("desktop.theme", `"dark"`, "browser.theme", `"dark"`, "browser.themeStyle", `"onevra"`, "browser.language", `"en"`, "browser.fontScale", `120`)
+			remote[associationValuePrefix+association.AssociationScope+"."+hash] = jsonValue(true)
 			if _, err := engine.Sync(t.Context(), candidate, secrets, remote, nil); err != nil {
 				t.Fatal(err)
 			}
@@ -46,6 +52,7 @@ func TestConfigSyncFailedActivationRestoresCurrentPreferences(t *testing.T) {
 			})
 			wantTheme := "light"
 			var expectedPreferences []byte
+			var expectedAssociations []byte
 			memory.mu.Lock()
 			memory.saveHook = func() {
 				if newerEdit {
@@ -57,6 +64,10 @@ func TestConfigSyncFailedActivationRestoresCurrentPreferences(t *testing.T) {
 				}
 				var err error
 				expectedPreferences, err = os.ReadFile(filepath.Join(s.directory, "preferences.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				expectedAssociations, err = os.ReadFile(filepath.Join(s.directory, browserAssociationFile))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -84,6 +95,10 @@ func TestConfigSyncFailedActivationRestoresCurrentPreferences(t *testing.T) {
 			}
 			if !bytes.Equal(stored, expectedPreferences) {
 				t.Fatal("failed activation did not restore the current on-disk preference snapshot")
+			}
+			storedAssociations, err := os.ReadFile(filepath.Join(s.directory, browserAssociationFile))
+			if err != nil || !bytes.Equal(storedAssociations, expectedAssociations) {
+				t.Fatal("failed activation did not restore website associations", err)
 			}
 			if err = os.Remove(metadataPath); err != nil {
 				t.Fatal(err)

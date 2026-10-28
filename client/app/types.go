@@ -8,38 +8,43 @@ import (
 // Request is shared by the native UI and the browser native-messaging boundary.
 // The browser boundary separately restricts which actions and arguments it accepts.
 type Request struct {
-	RequestID        string                  `json:"requestId,omitempty"`
-	Protocol         int                     `json:"protocol,omitempty"`
-	Action           string                  `json:"action"`
-	Interactive      bool                    `json:"interactive,omitempty"`
-	VaultID          string                  `json:"vaultId,omitempty"`
-	Entry            string                  `json:"entry,omitempty"`
-	Contents         string                  `json:"contents,omitempty"`
-	Revision         string                  `json:"revision,omitempty"`
-	Destination      string                  `json:"destination,omitempty"`
-	Mode             string                  `json:"mode,omitempty"`
-	Directory        string                  `json:"directory,omitempty"`
-	KeyFile          string                  `json:"keyFile,omitempty"`
-	PublicKeyFile    string                  `json:"publicKeyFile,omitempty"`
-	Passphrase       string                  `json:"passphrase,omitempty"`
-	Name             string                  `json:"name,omitempty"`
-	Email            string                  `json:"email,omitempty"`
-	Query            string                  `json:"query,omitempty"`
-	ID               string                  `json:"id,omitempty"`
-	Kind             string                  `json:"kind,omitempty"`
-	Field            string                  `json:"field,omitempty"`
-	URL              string                  `json:"url,omitempty"`
-	Length           int                     `json:"length,omitempty"`
-	Lowercase        bool                    `json:"lowercase,omitempty"`
-	Uppercase        bool                    `json:"uppercase,omitempty"`
-	Numbers          bool                    `json:"numbers,omitempty"`
-	Symbols          bool                    `json:"symbols,omitempty"`
-	ExcludeAmbiguous bool                    `json:"excludeAmbiguous,omitempty"`
-	Settings         *Settings               `json:"settings,omitempty"`
-	SyncConnection   *SyncConnectionRequest  `json:"syncConnection,omitempty"`
-	SyncPreferences  *BrowserSyncPreferences `json:"syncPreferences,omitempty"`
-	SyncOptions      *ConfigSyncOptions      `json:"syncOptions,omitempty"`
-	SyncSpaceID      string                  `json:"syncSpaceId,omitempty"`
+	RequestID              string                  `json:"requestId,omitempty"`
+	Protocol               int                     `json:"protocol,omitempty"`
+	Action                 string                  `json:"action"`
+	Interactive            bool                    `json:"interactive,omitempty"`
+	VaultID                string                  `json:"vaultId,omitempty"`
+	Entry                  string                  `json:"entry,omitempty"`
+	Contents               string                  `json:"contents,omitempty"`
+	Revision               string                  `json:"revision,omitempty"`
+	Destination            string                  `json:"destination,omitempty"`
+	Mode                   string                  `json:"mode,omitempty"`
+	Directory              string                  `json:"directory,omitempty"`
+	KeyFile                string                  `json:"keyFile,omitempty"`
+	PublicKeyFile          string                  `json:"publicKeyFile,omitempty"`
+	Passphrase             string                  `json:"passphrase,omitempty"`
+	Name                   string                  `json:"name,omitempty"`
+	Email                  string                  `json:"email,omitempty"`
+	Query                  string                  `json:"query,omitempty"`
+	ID                     string                  `json:"id,omitempty"`
+	Kind                   string                  `json:"kind,omitempty"`
+	Field                  string                  `json:"field,omitempty"`
+	URL                    string                  `json:"url,omitempty"`
+	Length                 int                     `json:"length,omitempty"`
+	Lowercase              bool                    `json:"lowercase,omitempty"`
+	Uppercase              bool                    `json:"uppercase,omitempty"`
+	Numbers                bool                    `json:"numbers,omitempty"`
+	Symbols                bool                    `json:"symbols,omitempty"`
+	ExcludeAmbiguous       bool                    `json:"excludeAmbiguous,omitempty"`
+	Settings               *Settings               `json:"settings,omitempty"`
+	SyncConnection         *SyncConnectionRequest  `json:"syncConnection,omitempty"`
+	SyncPreferences        *BrowserSyncPreferences `json:"syncPreferences,omitempty"`
+	SyncOptions            *ConfigSyncOptions      `json:"syncOptions,omitempty"`
+	SyncSpaceID            string                  `json:"syncSpaceId,omitempty"`
+	AssociationScope       string                  `json:"associationScope,omitempty"`
+	AssociationStoreID     string                  `json:"associationStoreId,omitempty"`
+	AssociationOperationID string                  `json:"associationOperationId,omitempty"`
+	AssociationPatch       *map[string]bool        `json:"associationPatch,omitempty"`
+	AssociationImport      *map[string]bool        `json:"associationImport,omitempty"`
 }
 
 type Response struct {
@@ -109,6 +114,10 @@ type Settings struct {
 	GlobalShortcut        string `json:"globalShortcut"`
 }
 type Data struct {
+	AssociationStoreID       string                           `json:"associationStoreId,omitempty"`
+	AssociationScope         string                           `json:"associationScope,omitempty"`
+	AssociationVaultIDs      []string                         `json:"associationVaultIds,omitempty"`
+	Associations             *map[string]bool                 `json:"associations,omitempty"`
 	ConfigSync               *ConfigSyncStatus                `json:"configSync,omitempty"`
 	SyncedBrowserPreferences *BrowserSyncPreferences          `json:"syncedBrowserPreferences,omitempty"`
 	EntriesVersion           uint64                           `json:"entriesVersion"`

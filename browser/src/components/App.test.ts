@@ -451,6 +451,21 @@ async function clickAction(label: string) {
 }
 
 describe('responsive detail navigation and session safety', () => {
+  it.each([false, true])('refreshes association matches while preserving the open detail or editor (editing=%s)', async editing => {
+    const fixture = detailFixture();
+    fixture.state.associationVersion = 1;
+    await render(fixture.client); await clickAction('查看 Alex');
+    await act(async () => fixture.fetch.resolve(credentials));
+    if (editing) await clickAction('编辑账号');
+    fixture.state.matches = ['example.test/Alex'];
+    fixture.state.associationVersion = 2;
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')));
+    expect(currentPage().dataset.popupPage).toBe(editing ? 'editor' : 'detail');
+    expect(fixture.actions.filter(action => action === 'fetch')).toHaveLength(1);
+    if (editing) expect(Array.from(currentPage().querySelectorAll('input')).some(input => input.value === 'private-user')).toBe(true);
+    else expect(currentPage().querySelector('[aria-label="已关联当前网站"]')).not.toBeNull();
+  });
+
   it('clears details and unsaved edits when switching clients even with identical vault metadata', async () => {
     const fixture = detailFixture();
     await render(fixture.client); await clickAction('查看 Alex');

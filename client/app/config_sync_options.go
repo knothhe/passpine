@@ -89,6 +89,9 @@ func (s *Service) saveConfigSyncOptions(r Request, source string) Response {
 			err = &cloudsync.Error{Code: "local_storage"}
 		} else {
 			s.configSync.meta = next
+			if options.Browser && !previous.Browser {
+				s.configSync.dirty = true
+			}
 			for _, key := range allConfigSyncKeys() {
 				if configSyncKeyEnabled(options, key) && !configSyncKeyEnabled(previous, key) {
 					s.configSync.dirty = true
@@ -219,6 +222,11 @@ func configSyncKeyPending(previous syncSecret, key string) bool {
 
 func configSyncPolicy(previous syncSecret, options ConfigSyncOptions) cloudsync.MergePolicy {
 	var policy cloudsync.MergePolicy
+	if !options.Browser {
+		policy.IgnoredPrefixes = []string{associationValuePrefix, associationAliasPrefix, associationLegacyPrefix}
+	} else if !previous.AssociationsInitialized || previous.PendingBrowser {
+		policy.InitialPrefixes = []string{associationValuePrefix, associationAliasPrefix, associationLegacyPrefix}
+	}
 	for _, key := range allConfigSyncKeys() {
 		if !configSyncKeyEnabled(options, key) {
 			policy.IgnoredKeys = append(policy.IgnoredKeys, key)
@@ -234,6 +242,20 @@ func advanceConfigSyncBaseline(previous syncSecret, merged cloudsync.Values, opt
 	next.Baseline = copySyncValues(merged)
 	next.PendingDesktop, next.PendingBrowser = false, false
 	next.PendingKeys = nil
+	if options.Browser {
+		next.AssociationsInitialized = true
+	} else {
+		for key := range next.Baseline {
+			if _, _, _, ok := associationCloudKey(key); ok {
+				delete(next.Baseline, key)
+			}
+		}
+		for key, raw := range previous.Baseline {
+			if _, _, _, ok := associationCloudKey(key); ok {
+				next.Baseline[key] = append([]byte(nil), raw...)
+			}
+		}
+	}
 	for _, key := range allConfigSyncKeys() {
 		if configSyncKeyEnabled(options, key) {
 			continue

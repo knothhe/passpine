@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -413,6 +414,7 @@ func (a *application) configSyncOptions(c *ui.Context) {
 			a.configSyncFieldOptions(c, "sync-desktop", a.t("客户端偏好"), &a.configSync.options.Desktop, &a.configSync.options.DesktopFields)
 			ui.Box(c).FillWidth().Height(1).Background(c.Theme().Border)
 			a.configSyncFieldOptions(c, "sync-browser", a.t("扩展偏好"), &a.configSync.options.Browser, &a.configSync.options.BrowserFields)
+			muted(c, a.t("扩展偏好开启时，也会同步扩展保存的网站关联与取消关联。"))
 			muted(c, a.t("未选中的内容保留在本机，云端已有配置也会保留。密码库继续使用 Git 同步。"))
 		})
 		ui.Column(c).Key("sync-behavior-options").FillWidth().MinWidth(0).Padding(20).Gap(16).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(10).Children(func() {
@@ -807,6 +809,13 @@ func (a *application) configSyncConflict(c *ui.Context) {
 	labels := map[string]string{"desktop.theme": "客户端主题", "desktop.themeStyle": "客户端主题风格", "desktop.fontScale": "客户端字号", "desktop.language": "客户端语言", "browser.theme": "扩展主题", "browser.themeStyle": "扩展主题风格", "browser.fontScale": "扩展字号", "browser.language": "扩展语言"}
 	shown := []string{}
 	for _, key := range a.configSync.status.ConflictKeys {
+		if strings.HasPrefix(key, "browser.associations.") || strings.HasPrefix(key, "browser.associationAliases.") || strings.HasPrefix(key, "browser.associationLegacy.") {
+			label := a.t("扩展网站关联")
+			if !slices.Contains(shown, label) {
+				shown = append(shown, label)
+			}
+			continue
+		}
 		if label, ok := labels[key]; ok {
 			shown = append(shown, a.t(label))
 		}

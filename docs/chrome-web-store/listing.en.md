@@ -1,6 +1,6 @@
 # Chrome Web Store copy · English
 
-Version: 0.1.7. Listing locale: English / `en`. Field notes are not part of the description to paste.
+Source version: 0.1.13. Listing locale: English / `en`. Field notes are not part of the description to paste.
 
 ## Name
 
@@ -21,12 +21,12 @@ Install and run the Passpine desktop client first, create or open a vault, and r
 Features:
 • Search your local vault and view account names, usernames, passwords, websites, notes, and available one-time codes. Manage custom fields in the account editor.
 • Click an account to fill the current page's username, password, and supported one-time-code fields. Filling does not submit the form.
-• Associate accounts with the current website to find them next time. Associations use the exact hostname and do not automatically extend to other subdomains.
+• Associate accounts with the current website to find them next time. Associations use the exact hostname and do not automatically extend to other subdomains. Supporting desktop clients save these associations, while the extension caches and periodically refreshes them; older clients keep the existing browser-local behavior.
 • Create and edit accounts, generate passwords within the account form, and move deleted accounts to the client's encrypted trash.
 • Share the desktop client's unlock session. When locked, use system authentication on supported and configured devices, or unlock in the client.
 • Choose English, Simplified Chinese, or the system language. Customize themes, appearance, text size, and keyboard shortcuts.
 
-Data handling: the extension communicates with the local Passpine client through Native Messaging to retrieve or save credentials for your actions. It reads the current tab's address to match accounts. When you request filling, it inspects login inputs and gives the selected credentials to that page. Website associations and extension preferences stay in local browser storage. If you choose Git synchronization, the desktop client connects to your configured repository. Entry contents in that repository use OpenPGP encryption; file paths and Git metadata remain visible.
+Data handling: the extension communicates with the local Passpine client through Native Messaging to retrieve or save credentials for your actions. It reads the current tab's address to match accounts. When you request filling, it inspects login inputs and gives the selected credentials to that page. A supporting client saves derived website association identifiers and linked/unlinked states, and the extension refreshes its local cache about once a minute. Older clients continue using local browser records. After you configure and enable configuration sync and extension sync, the client can encrypt and synchronize association records to your own R2 or S3-compatible object storage. The extension does not connect directly to the cloud or receive its credentials. If you choose Git synchronization, the desktop client connects to your configured repository. Entry contents in that repository use OpenPGP encryption; file paths and Git metadata remain visible.
 
 Requirements and limits: the desktop client must keep running; the extension is not a standalone vault. Browser internal pages, cross-origin frames, closed Shadow DOM, and some custom forms may not support filling. Check the website before filling. HTTP pages do not provide HTTPS transport protection. System authentication availability depends on the operating system and client configuration.
 

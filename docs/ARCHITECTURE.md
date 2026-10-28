@@ -52,6 +52,10 @@ OpenPGP 密码库
 
 兼容的可选字段、响应字段和新增能力继续使用协议 1；接收方忽略未知字段与能力，缺失的可选字段采用兼容默认值。`configure` 的 `capabilities` 可供新增功能判断支持情况；旧客户端不支持的新操作返回 `unsupported_action`，不要求两端始终同步更新。
 
+网站关联使用可选能力 `browser-associations-v1` 和 `browser-associations` 操作。读取要求当前 `vaultId`；导入和局部更新还要求读取时的 `associationScope`，在切库或密码库身份变更后拒绝旧写入。响应只含客户端存储身份、密码库摘要身份、旧密码库 ID 别名和摘要到布尔值的映射；不返回 Git 地址、收件人或本机路径。导入只填补缺失记录，显式修改可覆盖，`false` 表示取消关联。扩展后台统一排序拉取、迁移和写入，按客户端存储身份隔离缓存，并通过 `alarms` 每分钟刷新；支持端写入失败保留缓存并反馈错误，缺失能力才回到原本地保存逻辑。云同步通过现有加密配置通道逐条合并，见[配置同步](config-sync.md#扩展网站关联)。
+
+`browser-association-operations-v1` 增加可选的 `associationStoreId` 写前校验，以及补交关联修改的 `associationOperationId`。扩展先持久保存冻结的批次与操作标识，再发送请求；客户端将操作摘要与关联状态在同一私有文件中原子保存。相同标识和相同内容的重试只读取最新状态，不重复应用；标识复用但内容不同则拒绝。操作确认记录不上传云端。独立的 `browser-associations.json` 是关联数据的本机事实来源，避免旧版客户端重写 `preferences.json` 时丢失新增字段；设置与云同步更新失败时保留原数据并补偿已完成的文件写入。
+
 扩展统一使用同一 Chrome / Firefox ID。正式与 Dev 客户端仍保留独立的 Native Host 和数据目录。默认目标为正式 Host；只有浏览器报告 `management.getSelf().installType === 'development'` 的本地解包安装才允许选择 Dev，商店安装及来源查询失败均强制正式 Host，忽略持久设置中的 Dev 值。该 API 无需额外的 `management` 权限，参见 [Chrome 官方文档](https://developer.chrome.com/docs/extensions/reference/api/management)。
 
 界面会话创建时绑定所选客户端，内部消息携带来源目标，后台与当前有效目标再次比对。目标切换会断开旧 Native Port、拒绝在途及排队请求，并清除弹窗会话与未保存编辑；旧界面的迟到操作不能转发给新目标，切走再切回也不会恢复旧界面作用域。不会自动切换到另一个客户端，也不会重放旧目标的操作。已经发出的客户端写操作仍可能完成，切换本身不承诺撤销已发送操作。旧客户端需更新并修复浏览器注册，才能授权统一扩展连接 Dev Host。

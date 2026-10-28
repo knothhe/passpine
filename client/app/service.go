@@ -28,52 +28,57 @@ type preferences struct {
 	Vaults             []VaultInfo             `json:"vaults"`
 	Settings           Settings                `json:"settings"`
 	BrowserPreferences *BrowserSyncPreferences `json:"browserPreferences,omitempty"`
+	// Kept in memory with the preference transaction, but stored separately so
+	// older clients cannot erase associations while rewriting preferences.json.
+	BrowserAssociations *browserAssociationStore `json:"-"`
 }
 type Service struct {
-	configSync       configSyncState
-	configSyncMu     sync.Mutex
-	onSettingsChange func()
-	updateRequests   sync.RWMutex
-	updatePaused     atomic.Bool
-	device           deviceunlock.Provider
-	deviceMu         sync.Mutex
-	deviceCancel     context.CancelFunc
-	onChange         func()
-	onGitChange      func()
-	entriesVersion   uint64
-	cloneCancel      context.CancelFunc
-	mu               sync.Mutex
-	directory        string
-	preview          bool
-	prefs            preferences
-	active           *vault.Vault
-	server           *nativehost.Server
-	onOpen           func()
-	onLock           func()
-	clipboard        func(ClipboardWrite) error
-	done             chan struct{}
-	closed           bool
-	activity         []Activity
-	activityPrunedAt time.Time
-	browser          browserState
-	gitError         string
-	gitStatusError   string
-	gitData          Data
-	gitVault         *vault.Vault
-	gitRefreshAt     time.Time
-	gitOperation     bool
-	gitEpoch         uint64
-	lastSync         time.Time
-	gitSyncPending   bool
-	gitSyncQueued    bool
-	gitRetryAt       time.Time
-	lastActivity     atomic.Int64
-	cancellation     atomic.Uint64
-	cancelVault      atomic.Pointer[vault.Vault]
-	cachedEntries    []vault.Entry
-	cachedFolders    []string
-	cachedAt         time.Time
-	folderUndos      map[string]folderUndoReceipt
+	configSync                configSyncState
+	configSyncMu              sync.Mutex
+	onSettingsChange          func()
+	updateRequests            sync.RWMutex
+	updatePaused              atomic.Bool
+	device                    deviceunlock.Provider
+	deviceMu                  sync.Mutex
+	deviceCancel              context.CancelFunc
+	onChange                  func()
+	onGitChange               func()
+	entriesVersion            uint64
+	cloneCancel               context.CancelFunc
+	mu                        sync.Mutex
+	directory                 string
+	preview                   bool
+	prefs                     preferences
+	associationPersisted      []byte
+	associationStorageInvalid bool
+	active                    *vault.Vault
+	server                    *nativehost.Server
+	onOpen                    func()
+	onLock                    func()
+	clipboard                 func(ClipboardWrite) error
+	done                      chan struct{}
+	closed                    bool
+	activity                  []Activity
+	activityPrunedAt          time.Time
+	browser                   browserState
+	gitError                  string
+	gitStatusError            string
+	gitData                   Data
+	gitVault                  *vault.Vault
+	gitRefreshAt              time.Time
+	gitOperation              bool
+	gitEpoch                  uint64
+	lastSync                  time.Time
+	gitSyncPending            bool
+	gitSyncQueued             bool
+	gitRetryAt                time.Time
+	lastActivity              atomic.Int64
+	cancellation              atomic.Uint64
+	cancelVault               atomic.Pointer[vault.Vault]
+	cachedEntries             []vault.Entry
+	cachedFolders             []string
+	cachedAt                  time.Time
+	folderUndos               map[string]folderUndoReceipt
 }
 
 func DefaultSettings() Settings {
@@ -124,12 +129,23 @@ func New(o Options) (*Service, error) {
 		}
 	}
 	p := filepath.Join(dir, "preferences.json")
+	var legacyAssociations json.RawMessage
 	if b, e := readPrivate(p, 1<<20); e == nil {
 		if e = json.Unmarshal(b, &s.prefs); e != nil {
 			return nil, fmt.Errorf("settings are invalid: %w", e)
 		}
+		var legacy struct {
+			BrowserAssociations json.RawMessage `json:"browserAssociations"`
+		}
+		if e = json.Unmarshal(b, &legacy); e != nil {
+			return nil, e
+		}
+		legacyAssociations = legacy.BrowserAssociations
 	} else if !os.IsNotExist(e) {
 		return nil, e
+	}
+	if err = s.initBrowserAssociations(legacyAssociations); err != nil {
+		return nil, err
 	}
 	s.initConfigSync()
 
@@ -316,15 +332,42 @@ func (s *Service) remember(dir, name string) error {
 	return s.savePreferences()
 }
 func (s *Service) savePreferences() error {
+	if s.associationStorageInvalid {
+		return &associationError{"local_storage"}
+	}
 	b, e := json.MarshalIndent(s.prefs, "", "  ")
 	if e != nil {
 		return e
 	}
-	return writePrivate(filepath.Join(s.directory, "preferences.json"), b, false)
+	path := filepath.Join(s.directory, "preferences.json")
+	previous, err := readPrivate(path, 1<<20)
+	missing := os.IsNotExist(err)
+	if err != nil && !missing {
+		return err
+	}
+	if err = writePrivate(path, b, false); err != nil {
+		return err
+	}
+	if err = s.saveBrowserAssociations(); err != nil {
+		// Cloud application updates preferences and associations together. A
+		// failed association commit restores the previous preference bytes.
+		var rollback error
+		if missing {
+			rollback = os.Remove(path)
+		} else {
+			rollback = writePrivate(path, previous, false)
+		}
+		if rollback != nil {
+			s.associationStorageInvalid = true
+			return fmt.Errorf("association save failed: %w; preference rollback failed: %v", err, rollback)
+		}
+		return err
+	}
+	return nil
 }
 func (s *Service) snapshot() Data { return s.snapshotWithEntries(true) }
 func (s *Service) snapshotWithEntries(includeEntries bool) Data {
-	d := Data{EntriesVersion: s.entriesVersion, Configured: s.active != nil, Locked: true, Preview: s.preview, Vaults: append([]VaultInfo{}, s.prefs.Vaults...), Entries: []Entry{}, Settings: s.prefs.Settings, Capabilities: []string{"rename", "revision", "trash", "generate", "copy", "copy-generated", "otp", "interactive_fetch", "interactive_copy"}, VaultID: s.prefs.Current}
+	d := Data{EntriesVersion: s.entriesVersion, Configured: s.active != nil, Locked: true, Preview: s.preview, Vaults: append([]VaultInfo{}, s.prefs.Vaults...), Entries: []Entry{}, Settings: s.prefs.Settings, Capabilities: []string{"rename", "revision", "trash", "generate", "copy", "copy-generated", "otp", "interactive_fetch", "interactive_copy", "browser-associations-v1", "browser-association-operations-v1"}, VaultID: s.prefs.Current}
 	s.configSyncSnapshot(&d)
 	d.DeviceUnlockAvailable = !s.preview && s.device != nil && s.device.Available()
 	d.DeviceUnlockEnrolled = s.deviceEnrolled()
@@ -479,7 +522,7 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 		out.Status = "error"
 		out.Code, out.Message = classify(err)
 	}
-	if r.Action != "configure" && r.Action != "status" && r.Action != "list" && r.Action != "activity" {
+	if r.Action != "configure" && r.Action != "status" && r.Action != "list" && r.Action != "activity" && r.Action != "browser-associations" {
 		s.log(r.Action, source, out.Status)
 	}
 	if source == "browser" && err == nil && s.onChange != nil {
@@ -504,6 +547,10 @@ func (s *Service) executeWithBrowserLease(r Request, source string, browserLease
 	return out
 }
 func mergeData(out *Data, v Data) {
+	out.AssociationStoreID = v.AssociationStoreID
+	out.AssociationScope = v.AssociationScope
+	out.AssociationVaultIDs = v.AssociationVaultIDs
+	out.Associations = v.Associations
 	out.RemovedFolders = v.RemovedFolders
 	out.RestoredFolders = v.RestoredFolders
 	out.RemainingFolders = v.RemainingFolders
@@ -547,6 +594,8 @@ func (s *Service) requireVault() error {
 }
 func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error) {
 	switch r.Action {
+	case "browser-associations":
+		return s.browserAssociations(r)
 	case "configure", "status":
 		return Data{}, nil
 	case "list":
@@ -956,6 +1005,10 @@ func validateSettings(v Settings) error {
 	return nil
 }
 func classify(e error) (string, string) {
+	var association *associationError
+	if errors.As(e, &association) {
+		return association.code, ""
+	}
 	var authentication *browserUnlockError
 	if errors.As(e, &authentication) {
 		return authentication.code, authentication.message
@@ -1043,8 +1096,15 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 	if r.Protocol != nativehost.Protocol {
 		return encode(Response{RequestID: r.RequestID, Protocol: nativehost.Protocol, Status: "error", Code: "protocol_mismatch"})
 	}
+	if r.Action == "browser-associations" {
+		if !validBrowserAssociationRequest(raw, r) {
+			return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})
+		}
+	} else if hasBrowserAssociationFields(raw) {
+		return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})
+	}
 	switch r.Action {
-	case "configure", "status", "list", "unlock", "lock", "generate", "config-sync-browser":
+	case "configure", "status", "list", "unlock", "lock", "generate", "config-sync-browser", "browser-associations":
 	case "touch":
 		var fields map[string]json.RawMessage
 		if json.Unmarshal(raw, &fields) != nil {

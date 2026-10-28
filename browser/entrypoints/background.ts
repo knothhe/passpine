@@ -10,9 +10,11 @@ import { hasPageShortcutAccess, readPageShortcuts, type PageShortcutCommand } fr
 import { initializePageShortcuts } from '../src/lib/page-shortcut-registration';
 import { initializeToolbarAppearance } from '../src/lib/appearance';
 import { initializeConfigurationSync } from '../src/lib/config-sync';
+import { associationCapability, initializeAssociationSync } from '../src/lib/associations';
 import { PROTOCOL, type EntryDocument, type FillResult, type NativeRequest, type SessionStatus, type Snapshot, type TabContext, type UIRequest, type VaultState } from '../src/lib/types';
 
 interface NativeSession {
+  readonly target: ClientTarget;
   assertCurrent(): void;
   request<T>(request: NativeRequest): Promise<T>;
 }
@@ -21,11 +23,15 @@ export default defineBackground(() => {
   initializeToolbarAppearance();
   initializePageShortcuts();
   const configurationSync = initializeConfigurationSync();
+  const associationSync = initializeAssociationSync();
+  let associationState: VaultState | undefined;
   let generation = 0;
   let selected: { target: Awaited<ReturnType<typeof loadClientTarget>>; connection: NativeConnection } | undefined;
   const invalidateTarget = () => {
     generation++;
     configurationSync.invalidate();
+    associationSync.invalidate();
+    associationState = undefined;
     selected?.connection.disconnect();
     selected = undefined;
   };
@@ -43,12 +49,14 @@ export default defineBackground(() => {
       if (capturedGeneration !== generation || selected !== captured) throw new PassPineError('native_connection_failed');
     };
     const nativeSession: NativeSession = {
+      target,
       assertCurrent,
       async request<T>(request: NativeRequest): Promise<T> {
         assertCurrent();
         const response = await captured.connection.request<T>(request);
         assertCurrent();
         if (request.action === 'configure' || request.action === 'status') configurationSync.observe({ id: capturedGeneration, target: captured.target, assertCurrent, request: next => nativeSession.request(next) }, response);
+        if (request.action === 'configure' || request.action === 'list') associationState = response as VaultState;
         return response;
       },
     };
@@ -60,22 +68,22 @@ export default defineBackground(() => {
     if (!tab || !sameTab(expected, tab)) throw new PassPineError('tab_changed');
     return tabContext(tab)!;
   };
-  const associations = async (): Promise<Record<string, boolean>> => {
-    const data = await browser.storage.local.get('associations');
-    return data.associations && typeof data.associations === 'object' && !Array.isArray(data.associations) ? Object.fromEntries(Object.entries(data.associations).filter(([key, value]) => /^[a-f0-9]{64}$/.test(key) && typeof value === 'boolean')) : {};
-  };
   const snapshot = async (native: NativeSession): Promise<Snapshot> => {
     native.assertCurrent();
-    const [state, tab, links] = await Promise.all([native.request<VaultState>({ protocol: PROTOCOL, action: 'configure', includeEntries: true }), activeTab(), associations()]);
+    const [state, tab] = await Promise.all([native.request<VaultState>({ protocol: PROTOCOL, action: 'configure', includeEntries: true }), activeTab()]);
+    const { links, vaultIds, revision } = await associationSync.read(native, state);
     native.assertCurrent();
     const context = tab && tabContext(tab);
     const entries = Array.isArray(state.entries) ? state.entries : [];
     const matches = context ? (await Promise.all(entries.map(async entry => {
-      const linked = links[await associationKey(state.vaultId, entry.path, context.hostname)];
+      const values = await Promise.all(vaultIds.map(async id => links[await associationKey(id, entry.path, context.hostname)]));
+      // The canonical scope takes priority. For conflicting legacy aliases,
+      // retain an explicit unlink until the user links this account again.
+      const linked = values[0] ?? (values.includes(false) ? false : values.find(value => value !== undefined));
       return (linked ?? pathMatchesHost(entry.path, context.hostname)) ? entry.path : undefined;
     }))).filter((value): value is string => !!value) : [];
     native.assertCurrent();
-    return { ...state, entries, capabilities: state.capabilities ?? [], tab: context, matches };
+    return { ...state, entries, capabilities: state.capabilities ?? [], tab: context, matches, associationVersion: revision };
   };
   let pendingAssociation: Promise<unknown> = Promise.resolve();
   const setAssociation = (request: Extract<UIRequest, { action: 'fill' | 'associate' | 'dissociate' }>, associated: boolean, native: NativeSession): Promise<void> => {
@@ -84,13 +92,10 @@ export default defineBackground(() => {
       const context = await currentTab(request.tab);
       const state = await native.request<VaultState>({ protocol: PROTOCOL, action: 'list', vaultId: request.vaultId });
       if (state.vaultId !== request.vaultId || !state.entries.some(entry => entry.path === request.entry)) throw new PassPineError('vault_changed');
-      const key = await associationKey(request.vaultId, request.entry, context.hostname);
-      native.assertCurrent();
-      const links = await associations();
-      await currentTab(request.tab);
-      native.assertCurrent();
-      links[key] = associated;
-      await browser.storage.local.set({ associations: links });
+      await associationSync.set(native, state, request.entry, context.hostname, associated, async () => {
+        await currentTab(request.tab);
+        native.assertCurrent();
+      });
       native.assertCurrent();
     });
     pendingAssociation = write.catch(() => {});
@@ -99,7 +104,17 @@ export default defineBackground(() => {
   const execute = async (request: UIRequest, native: NativeSession): Promise<unknown> => {
     native.assertCurrent();
     if (request.action === 'snapshot') return snapshot(native);
-    if (request.action === 'status' || request.action === 'lock') return native.request({ protocol: PROTOCOL, action: request.action });
+    if (request.action === 'status') {
+      const state = await native.request<SessionStatus>({ protocol: PROTOCOL, action: 'status' });
+      const known = associationState;
+      if (state.configured && known?.vaultId === state.vaultId && known.capabilities?.includes(associationCapability)) {
+        const view = await associationSync.read(native, known);
+        native.assertCurrent();
+        return { ...state, associationVersion: view.revision };
+      }
+      return state;
+    }
+    if (request.action === 'lock') return native.request({ protocol: PROTOCOL, action: 'lock' });
     if (request.action === 'unlock') return native.request({ protocol: PROTOCOL, action: 'unlock', interactive: true });
     if (request.action === 'fetch') {
       const detail = await native.request<EntryDocument & SessionStatus>(nativeRequest(request));
@@ -177,4 +192,16 @@ export default defineBackground(() => {
     if (command !== FILL_COMMAND) return;
     await runShortcut(FILL_COMMAND);
   });
+  const associationAlarm = 'passpine-associations-refresh';
+  // Alarms survive MV3 worker suspension. No page or credential access is
+  // needed to refresh the client-owned cache while the popup is closed.
+  browser.alarms.onAlarm.addListener(alarm => {
+    if (alarm.name !== associationAlarm) return;
+    void (async () => {
+      const native = await session();
+      const state = await native.request<VaultState>({ protocol: PROTOCOL, action: 'configure', includeEntries: false });
+      if (state.configured && state.capabilities?.includes(associationCapability)) await associationSync.read(native, state, true);
+    })().catch(() => {});
+  });
+  void browser.alarms.create(associationAlarm, { periodInMinutes: 1 }).catch(() => {});
 });

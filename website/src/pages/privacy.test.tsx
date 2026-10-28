@@ -28,7 +28,7 @@ describe("privacy policy", () => {
       (block) => block.kind === "table",
     );
     expect(table?.kind === "table" && table.rows.map((row) => row.name)).toEqual(
-      ["nativeMessaging", "activeTab", "scripting", "storage", "optional_host_permissions", "clipboardWrite"],
+      ["nativeMessaging", "activeTab", "scripting", "storage", "alarms", "optional_host_permissions", "clipboardWrite"],
     );
   });
 
@@ -44,7 +44,7 @@ describe("privacy policy", () => {
       expect(html).toContain(`href="#${id}"`);
     }
     expect(html).toContain(`<h1 id="policy-title">${c.privacy.title}</h1>`);
-    expect(html).toContain('dateTime="2026-10-24"');
+    expect(html).toContain('dateTime="2026-10-28"');
     expect(html).toContain('href="mailto:knothhe@gmail.com"');
   });
 

@@ -361,11 +361,11 @@ func TestConfigurationSyncRemotePreferencesKeepLocalDraftAndDetail(t *testing.T)
 func TestConfigurationSyncConflictUsesLocalizedFieldLabelsAndExplicitResolution(t *testing.T) {
 	a, callbacks := configurationSyncFixture()
 	a.configSync.editing = false
-	a.configSync.status = app.ConfigSyncStatus{Enabled: true, Ready: true, Provider: "s3", ErrorCode: "conflict", ConflictKeys: []string{"desktop.theme", "browser.language", "future.collection"}, Config: cloudsync.Config{Bucket: "passpine-config", Endpoint: "https://storage.example.test", Prefix: "personal"}}
+	a.configSync.status = app.ConfigSyncStatus{Enabled: true, Ready: true, Provider: "s3", ErrorCode: "conflict", ConflictKeys: []string{"desktop.theme", "browser.language", "browser.associations.scope.one", "browser.associationLegacy.one", "browser.associationAliases.scope.one", "future.collection"}, Config: cloudsync.Config{Bucket: "passpine-config", Endpoint: "https://storage.example.test", Prefix: "personal"}}
 	requests := make(chan app.Request, 2)
 	a.service = backendFunc(func(r app.Request) app.Response { requests <- r; return syncResponse(a, a.configSync.status) })
 	view := ui.NewTester(a.configSyncView, 700, 760)
-	if !view.HasText(a.t("客户端主题")+" · "+a.t("扩展语言")) || view.HasText("future.collection") {
+	if !view.HasText(a.t("客户端主题")+" · "+a.t("扩展语言")+" · "+a.t("扩展网站关联")) || view.HasText("future.collection") || view.HasText("browser.associations.scope") {
 		t.Fatal("conflict fields were shown as technical keys")
 	}
 	if err := view.Click(a.t("保留此设备配置")); err != nil {

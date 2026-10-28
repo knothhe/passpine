@@ -89,12 +89,13 @@ type syncMetadata struct {
 	PendingCleanup []syncProfile          `json:"pendingCleanup,omitempty"`
 }
 type syncSecret struct {
-	ConnectionID   string            `json:"connectionId,omitempty"`
-	Secrets        cloudsync.Secrets `json:"secrets"`
-	Baseline       cloudsync.Values  `json:"baseline,omitempty"`
-	PendingDesktop bool              `json:"pendingDesktop,omitempty"`
-	PendingBrowser bool              `json:"pendingBrowser,omitempty"`
-	PendingKeys    []string          `json:"pendingKeys,omitempty"`
+	ConnectionID            string            `json:"connectionId,omitempty"`
+	Secrets                 cloudsync.Secrets `json:"secrets"`
+	Baseline                cloudsync.Values  `json:"baseline,omitempty"`
+	PendingDesktop          bool              `json:"pendingDesktop,omitempty"`
+	PendingBrowser          bool              `json:"pendingBrowser,omitempty"`
+	AssociationsInitialized bool              `json:"associationsInitialized,omitempty"`
+	PendingKeys             []string          `json:"pendingKeys,omitempty"`
 }
 type syncSecrets interface {
 	Load(string) ([]byte, error)
@@ -511,6 +512,7 @@ func (s *Service) manualConnection(r *SyncConnectionRequest) (syncProfile, syncS
 		if v.Secrets.Passphrase == old.Secrets.Passphrase {
 			v.Baseline = old.Baseline
 			v.PendingDesktop, v.PendingBrowser = old.PendingDesktop, old.PendingBrowser
+			v.AssociationsInitialized = old.AssociationsInitialized
 			v.PendingKeys = append([]string(nil), old.PendingKeys...)
 		}
 	}
@@ -592,7 +594,11 @@ func (s *Service) saveSyncConnection(ctx context.Context, r *SyncConnectionReque
 	local := s.localSyncValues(v.Baseline)
 	started := s.localSyncValues(nil)
 	options := s.configSyncOptions()
+	associationsValid := validAssociationStore(s.prefs.BrowserAssociations)
 	s.mu.Unlock()
+	if options.Browser && !associationsValid {
+		return &cloudsync.Error{Code: "invalid_document"}
+	}
 	// Validate and synchronize the candidate before replacing a working profile.
 	// A wrong phrase or rejected write must leave its saved credentials intact.
 	result, e := s.configSync.engine.SyncValidatedWithPolicy(ctx, p.Config, v.Secrets, local, v.Baseline, validateSyncedValues, configSyncPolicy(v, options))
@@ -608,7 +614,7 @@ func (s *Service) saveSyncConnection(ctx context.Context, r *SyncConnectionReque
 		s.mu.Unlock()
 		return context.Canceled
 	}
-	previousSettings, previousBrowser := s.prefs.Settings, s.prefs.BrowserPreferences
+	previousSettings, previousBrowser, previousAssociations := s.prefs.Settings, s.prefs.BrowserPreferences, s.prefs.BrowserAssociations
 	if e = s.applySyncValues(result.Values, started); e != nil {
 		s.mu.Unlock()
 		return e
@@ -654,6 +660,7 @@ func (s *Service) saveSyncConnection(ctx context.Context, r *SyncConnectionReque
 		// Activation and preference writes share this lock. Restore the state
 		// captured after the network request, including any intervening edits.
 		s.prefs.Settings, s.prefs.BrowserPreferences = previousSettings, previousBrowser
+		s.prefs.BrowserAssociations = previousAssociations
 		s.configSync.browser = previousBrowser
 		if rollback := s.savePreferences(); rollback != nil {
 			s.configSync.invalid = true
@@ -712,6 +719,7 @@ func (s *Service) reuseSyncBaseline(p syncProfile, v *syncSecret) error {
 			if previous.Secrets.Passphrase == v.Secrets.Passphrase {
 				v.Baseline = copySyncValues(previous.Baseline)
 				v.PendingDesktop, v.PendingBrowser = previous.PendingDesktop, previous.PendingBrowser
+				v.AssociationsInitialized = previous.AssociationsInitialized
 				v.PendingKeys = append([]string(nil), previous.PendingKeys...)
 				if previous.Baseline == nil {
 					v.Baseline = nil
@@ -755,6 +763,11 @@ func (s *Service) localSyncValues(base cloudsync.Values) cloudsync.Values {
 			local["browser.language"] = jsonValue(*p.Language)
 		}
 	}
+	if options.Browser && validAssociationStore(s.prefs.BrowserAssociations) {
+		for key, value := range associationSyncValues(s.prefs.BrowserAssociations) {
+			local[key] = value
+		}
+	}
 	for key, value := range local {
 		if configSyncKeyEnabled(options, key) {
 			v[key] = value
@@ -793,7 +806,11 @@ func (s *Service) syncConfiguration(ctx context.Context, resolution string) erro
 	local := s.localSyncValues(v.Baseline)
 	started := s.localSyncValues(nil)
 	options := s.configSyncOptions()
+	associationsValid := validAssociationStore(s.prefs.BrowserAssociations)
 	s.mu.Unlock()
+	if options.Browser && !associationsValid {
+		return &cloudsync.Error{Code: "invalid_document"}
+	}
 	baseline := v.Baseline
 	if resolution == "local" || resolution == "remote" {
 		remote, e := s.configSync.engine.Read(ctx, p.Config, v.Secrets)
@@ -917,13 +934,20 @@ func (s *Service) applySyncValues(values, started cloudsync.Values) error {
 	}
 	previous := s.prefs.Settings
 	previousBrowser := s.prefs.BrowserPreferences
+	previousAssociations := s.prefs.BrowserAssociations
+	associations, err := s.mergedAssociationSyncValues(values, current, started)
+	if err != nil {
+		return err
+	}
 	s.prefs.Settings = settings
+	s.prefs.BrowserAssociations = associations
 	if browser != nil {
 		s.prefs.BrowserPreferences = browser
 	}
 	if e := s.savePreferences(); e != nil {
 		s.prefs.Settings = previous
 		s.prefs.BrowserPreferences = previousBrowser
+		s.prefs.BrowserAssociations = previousAssociations
 		return e
 	}
 	if browser != nil {
@@ -1013,6 +1037,9 @@ func cloneBrowserSync(p *BrowserSyncPreferences) *BrowserSyncPreferences {
 }
 
 func validateSyncedValues(values cloudsync.Values) error {
+	if err := validateAssociationSyncValues(values); err != nil {
+		return err
+	}
 	stringsAllowed := map[string][]string{
 		"desktop.theme": {"system", "light", "dark"}, "desktop.themeStyle": {"monochrome", "onevra", "omarchy"}, "desktop.language": {"system", "en", "zh-CN"},
 		"browser.theme": {"system", "light", "dark"}, "browser.themeStyle": {"monochrome", "onevra"}, "browser.language": {"system", "en", "zh-CN"},

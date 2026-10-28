@@ -51,6 +51,8 @@ func init() {
 		"客户端偏好": "Client preferences",
 		"同步客户端的主题、外观、字号和语言。": "Sync the client's theme, appearance, font size and language.",
 		"扩展偏好": "Extension preferences",
+		"扩展偏好开启时，也会同步扩展保存的网站关联与取消关联。": "When extension preferences are enabled, saved website links and unlinks also sync.",
+		"扩展网站关联": "Extension website links",
 		"通过此客户端同步浏览器扩展的主题、外观、字号和语言。":         "Sync the browser extension's theme, appearance, font size and language through this client.",
 		"关闭某类同步会保留本机和云端已有配置。密码库继续使用 Git 同步。": "Turning off a category preserves existing local and cloud preferences. Vaults continue to use Git sync.",
 		"保存同步选项":         "Save sync options",

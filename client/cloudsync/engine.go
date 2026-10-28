@@ -3,6 +3,7 @@ package cloudsync
 import (
 	"context"
 	"net/http"
+	"strings"
 )
 
 // Read fetches an existing space without creating or changing an object. In
@@ -49,8 +50,10 @@ func (e *Engine) SyncValidated(ctx context.Context, config Config, secrets Secre
 // the initial-setup rule: import a remote value if present, otherwise upload the
 // local value. An ignored key takes precedence over an initial key.
 type MergePolicy struct {
-	IgnoredKeys []string
-	InitialKeys []string
+	IgnoredKeys     []string
+	InitialKeys     []string
+	IgnoredPrefixes []string
+	InitialPrefixes []string
 }
 
 // SyncValidatedWithPolicy applies a field policy against each remote revision,
@@ -89,12 +92,31 @@ func (e *Engine) SyncValidatedWithPolicy(ctx context.Context, config Config, sec
 			mergeBase = nil
 		}
 		mergeLocal := local
-		if len(policy.IgnoredKeys) != 0 || len(policy.InitialKeys) != 0 {
+		ignoredKeys, initialKeys := append([]string(nil), policy.IgnoredKeys...), append([]string(nil), policy.InitialKeys...)
+		// Dynamic namespaces must also select keys first encountered in this
+		// remote revision, including a revision read after a CAS retry.
+		for _, values := range []Values{local, baseline, remote} {
+			for key := range values {
+				for _, prefix := range policy.IgnoredPrefixes {
+					if strings.HasPrefix(key, prefix) {
+						ignoredKeys = append(ignoredKeys, key)
+						break
+					}
+				}
+				for _, prefix := range policy.InitialPrefixes {
+					if strings.HasPrefix(key, prefix) {
+						initialKeys = append(initialKeys, key)
+						break
+					}
+				}
+			}
+		}
+		if len(ignoredKeys) != 0 || len(initialKeys) != 0 {
 			mergeLocal = cloneValues(local)
 			if mergeBase != nil {
 				mergeBase = cloneValues(mergeBase)
 			}
-			for _, key := range policy.InitialKeys {
+			for _, key := range initialKeys {
 				if value, ok := remote[key]; ok {
 					mergeLocal[key] = value
 					if mergeBase != nil {
@@ -104,7 +126,7 @@ func (e *Engine) SyncValidatedWithPolicy(ctx context.Context, config Config, sec
 					delete(mergeBase, key)
 				}
 			}
-			for _, key := range policy.IgnoredKeys {
+			for _, key := range ignoredKeys {
 				delete(mergeLocal, key)
 				delete(mergeBase, key)
 			}

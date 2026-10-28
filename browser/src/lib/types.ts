@@ -1,7 +1,13 @@
 // Protocol compatibility is independent of extension and desktop product versions.
 export const PROTOCOL = 1;
 
-export type NativeAction = 'configure' | 'status' | 'touch' | 'list' | 'fetch' | 'save' | 'delete' | 'lock' | 'unlock' | 'generate' | 'copy' | 'copy-generated' | 'config-sync-browser';
+export type NativeAction = 'configure' | 'status' | 'touch' | 'list' | 'fetch' | 'save' | 'delete' | 'lock' | 'unlock' | 'generate' | 'copy' | 'copy-generated' | 'config-sync-browser' | 'browser-associations';
+export interface BrowserAssociations {
+  associationStoreId: string;
+  associationScope: string;
+  associationVaultIds: string[];
+  associations: Record<string, boolean>;
+}
 export interface SyncedBrowserPreferences {
   themeStyle: 'monochrome' | 'onevra';
   theme: 'system' | 'light' | 'dark';
@@ -30,14 +36,19 @@ export interface NativeRequest {
   excludeAmbiguous?: boolean;
   syncPreferences?: Partial<SyncedBrowserPreferences>;
   syncSpaceId?: string;
+  associationScope?: string;
+  associationStoreId?: string;
+  associationOperationId?: string;
+  associationPatch?: Record<string, boolean>;
+  associationImport?: Record<string, boolean>;
 }
 export interface NativeResponse<T = unknown> { protocol: number; requestId?: string; status: 'ok' | 'error'; data?: T; code?: string; message?: string }
 export interface EntryMetadata { path: string; name: string; folder: string }
 export interface VaultState { configured: boolean; vaultId: string; vaultName: string; locked: boolean; entries: EntryMetadata[]; entriesVersion?: number; capabilities: string[] }
-export type SessionStatus = Pick<VaultState, 'configured' | 'vaultId' | 'vaultName' | 'locked' | 'entriesVersion'>;
+export type SessionStatus = Pick<VaultState, 'configured' | 'vaultId' | 'vaultName' | 'locked' | 'entriesVersion'> & { associationVersion?: number };
 export interface TabContext { id: number; url: string; hostname: string; secure: boolean }
 export interface Entry { path: string; title: string; folder: string; matched: boolean }
-export interface Snapshot extends VaultState { tab?: TabContext; matches: string[] }
+export interface Snapshot extends VaultState { tab?: TabContext; matches: string[]; associationVersion?: number }
 export interface EntryDocument { contents: string; revision: string; otp?: string; otpSeconds?: number; session?: SessionStatus }
 export interface Credentials { password: string; username: string; urls: string[]; otp?: string; notes: string; fields: Array<{ key: string; value: string }> }
 export interface GeneratorOptions { length: number; lowercase: boolean; uppercase: boolean; numbers: boolean; symbols: boolean; excludeAmbiguous: boolean }
