@@ -172,6 +172,7 @@ kbd { font-family:inherit; font-size:calc(11px * var(--pine-font-scale,1)); colo
 .preview-toolbar>a { margin-left:auto; font-size:calc(11.5px * var(--pine-font-scale,1)); color:var(--pine-muted); text-decoration:none; }
 .preview-controls { margin:18px 0; }
 .preview-controls .rt-Button { font-size:calc(11px * var(--pine-font-scale,1)); }
+.preview-capture .demo-ribbon { display:none; }
 .preview-popup { width:fit-content; max-width:100%; margin:0 auto; border:1px solid var(--pine-border); border-radius:10px; overflow:hidden; box-shadow:0 8px 30px var(--black-a2); }
 @media(max-width:480px) {
   .preview-page { padding:16px 0; }

@@ -21,7 +21,7 @@ try {
 }
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const output = path.join(root, 'docs/chrome-web-store/assets');
+const output = path.join(root, 'assets/chrome-web-store');
 await fs.mkdir(output, { recursive: true });
 const appIcon = await fs.readFile(path.join(root, 'client/assets/app-icon-monochrome.svg'));
 const iconUrl = `data:image/svg+xml;base64,${appIcon.toString('base64')}`;

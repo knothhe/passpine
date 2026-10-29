@@ -6,24 +6,24 @@
 
 | 文件 | 尺寸 / 格式 | 用途 |
 | --- | --- | --- |
-| [icon-128.png](assets/icon-128.png) | 128×128 PNG，保留透明度 | 必需商店图标；原样复用扩展当前黑白图标 |
-| [promo-440x280.png](assets/promo-440x280.png) | 440×280 PNG，RGB 不透明 | 必需小宣传图；复用项目标识与英文产品定位 |
-| [marquee-1400x560.png](assets/marquee-1400x560.png) | 1400×560 PNG，RGB 不透明 | 可选 Marquee 宣传图 |
-| `assets/en/01-accounts.png`、`02-details.png`、`03-generator.png` | 每张 1280×800 PNG，RGB 不透明 | English 截图，按 01–03 顺序上传 |
-| `assets/zh-CN/01-accounts.png`、`02-details.png`、`03-generator.png` | 每张 1280×800 PNG，RGB 不透明 | 简体中文截图，按 01–03 顺序上传 |
+| [icon-128.png](../../assets/chrome-web-store/icon-128.png) | 128×128 PNG，保留透明度 | 必需商店图标；原样复用扩展当前黑白图标 |
+| [promo-440x280.png](../../assets/chrome-web-store/promo-440x280.png) | 440×280 PNG，RGB 不透明 | 必需小宣传图；复用项目标识与英文产品定位 |
+| [marquee-1400x560.png](../../assets/chrome-web-store/marquee-1400x560.png) | 1400×560 PNG，RGB 不透明 | 可选 Marquee 宣传图 |
+| `assets/chrome-web-store/en/01-accounts.png`、`02-details.png`、`03-generator.png` | 每张 1280×800 PNG，RGB 不透明 | English 截图，按 01–03 顺序上传 |
+| `assets/chrome-web-store/zh-CN/01-accounts.png`、`02-details.png`、`03-generator.png` | 每张 1280×800 PNG，RGB 不透明 | 简体中文截图，按 01–03 顺序上传 |
 
 每种语言三张截图：账号列表、默认隐藏密码的详情、密码生成器。可在商店相应语言条目使用；不要把六张都放进同一个最多五张的截图槽位。宣传图两种语言共用。
 
-[中文账号列表](assets/zh-CN/01-accounts.png) · [中文详情](assets/zh-CN/02-details.png) · [中文生成器](assets/zh-CN/03-generator.png)
+[中文账号列表](../../assets/chrome-web-store/zh-CN/01-accounts.png) · [中文详情](../../assets/chrome-web-store/zh-CN/02-details.png) · [中文生成器](../../assets/chrome-web-store/zh-CN/03-generator.png)
 
-[English accounts](assets/en/01-accounts.png) · [English details](assets/en/02-details.png) · [English generator](assets/en/03-generator.png)
+[English accounts](../../assets/chrome-web-store/en/01-accounts.png) · [English details](../../assets/chrome-web-store/en/02-details.png) · [English generator](../../assets/chrome-web-store/en/03-generator.png)
 
 ## 实拍来源与验证范围
 
 - 使用 0.1.7 的 `browser/.output/chrome-mv3` 生产构建，Linux 上 Playwright 提供的 Chromium 156.0.8078.4（品牌版 Chrome 不支持 `--load-extension`），独立临时 profile。通过真正的 `chrome.action.openPopup()` 工具栏弹窗入口拍摄，没有将 popup 当普通标签页打开或绕过消息来源校验。
 - 隔离 Go 客户端服务由 [store-demo/main.go](../../scripts/store-demo/main.go) 创建：使用正式 `app.Service`、真实 OpenPGP 密钥/条目加密及 Native Messaging 转发；五个虚构账号保存在临时目录。关闭设备解锁、Git 同步和操作记录，不操作个人账户。测试结束关闭服务和浏览器，并删除测试 profile、密码库和私钥。
 - 语言与浅色主题通过扩展真实设置控件切换。账号名称、目录和备注是用户数据，中文截图中保留其英文内容。
-- 原始弹窗为 380×460，保存在 `source-screenshots/<语言>/`。最终图将完整实拍等比放大到 456×552，加入品牌底图和外围说明；没有重绘或修改扩展内部 UI。等待转场结束，检查无叠影、裁字或遮挡。
+- 原始弹窗为 380×460，保存在 `assets/chrome-web-store/source-screenshots/<语言>/`。最终图将完整实拍等比放大到 456×552，加入品牌底图和外围说明；没有重绘或修改扩展内部 UI。等待转场结束，检查无叠影、裁字或遮挡。
 - 已实际验证真实连接、账号列表、解密详情、密码默认遮罩、本机密码生成及语言/主题设置。截图不展示网页填充，也不证明商店安装 ID、系统解锁、剪贴板到期或完整桌面窗口流程均已验收；提交前按[审核指南](reviewer-instructions.md)复跑。
 - [capture-metadata.json](capture-metadata.json) 记录版本、浏览器、时间和场景。它不是提交审核记录。
 

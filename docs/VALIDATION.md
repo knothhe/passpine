@@ -208,6 +208,6 @@ go test -run '^$' -bench . -benchmem ./nativehost ./vault ./desktop
 
 浏览器截图来自内置 Browser 中的交互预览：
 
-![浏览器交互预览](screenshots/browser-preview.png)
+![浏览器交互预览](../assets/screenshots/browser-preview.png)
 
 上面的历史验证没有注册正式浏览器 Host 或操作真实密码数据；Chrome 扩展曾按当时配置同步到受管安装目录。真实浏览器连接和系统验证弹窗仍需用户在重新加载扩展后验收。

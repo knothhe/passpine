@@ -29,6 +29,16 @@ pnpm --dir website run sync:releases
 
 根目录提供 `pnpm run dev:website`、`build:website`、`test:website`、`preview:website`、`sync:website` 和 `deploy:website` 别名。网站版本和部署独立于桌面客户端、浏览器扩展的 SemVer 发布；默认 `make` 不构建或部署官网。常规开发、检查与构建使用仓库中的 Release 快照，不依赖 GitHub 网络访问。
 
+## 产品截图
+
+首页的客户端与扩展截图按访客语言切换，源文件位于仓库根目录 `assets/website/<zh-CN|en>/`，构建时由 `vite.config.ts` 中的 `website-images` 插件输出到 `/images/<语言>/`。界面变化后在仓库根目录重新拍摄：
+
+```sh
+PASSPINE_CAPTURE_BROWSER="$(command -v google-chrome-stable)" node scripts/capture-website-screenshots.mjs
+```
+
+客户端截图由 Go 无头渲染器以 2 倍分辨率生成，扩展截图来自浏览器预览页的弹窗模式（`?view=popup`），全部使用虚构演示数据。拍摄后逐张检查语言、主题与内容。
+
 ## 页面与路由
 
 每个页面都是独立的静态 HTML 文档，不使用前端路由，也不启用单页应用回退：

@@ -23,7 +23,11 @@ import {
 import { Button } from "../components/ui/button";
 import { ExternalLink, SiteLayout } from "../components/site-chrome";
 import { homebrewInstallCommand, type Copy } from "../constants/copy";
-import { promoVideo } from "../constants/media";
+import {
+  productScreenshots,
+  promoVideo,
+  type MediaLanguage,
+} from "../constants/media";
 import { routes, sectionHref } from "../constants/routes";
 import {
   chooseAsset,
@@ -108,7 +112,14 @@ function PlatformIcon({
   return <Monitor aria-hidden="true" className={className} />;
 }
 
-function ProductPreview({ c }: { c: Copy }) {
+function ProductPreview({
+  c,
+  language,
+}: {
+  c: Copy;
+  language: MediaLanguage;
+}) {
+  const screenshots = productScreenshots(language);
   return (
     <m.figure
       className="product-preview"
@@ -128,7 +139,7 @@ function ProductPreview({ c }: { c: Copy }) {
           <LockKeyhole size={10} />
         </div>
         <img
-          src="/images/desktop.png"
+          src={screenshots.desktop}
           alt={c.hero.desktopAlt}
           width="1120"
           height="760"
@@ -137,7 +148,7 @@ function ProductPreview({ c }: { c: Copy }) {
       </div>
       <div className="extension-window">
         <img
-          src="/images/extension.png"
+          src={screenshots.extension}
           alt={c.hero.extensionAlt}
           width="380"
           height="460"
@@ -415,7 +426,7 @@ export function HomePage({
           </div>
           <p className="platform-support">{c.hero.platforms}</p>
         </m.div>
-        <ProductPreview c={c} />
+        <ProductPreview c={c} language={language} />
         <div className="hero-points">
           {c.hero.points.map((text) => (
             <span key={text}>

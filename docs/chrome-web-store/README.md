@@ -13,7 +13,7 @@
 | [reviewer-instructions.md](reviewer-instructions.md) | 中英文审核步骤、配套客户端前提及虚构测试表单 |
 | [sources.md](sources.md) | 已访问的 Chrome 官方来源、当前要求及本地事实来源 |
 
-图片、拍摄环境和复现命令见 [素材记录](assets.md)。已提供中英文各三张实际扩展截图、128px 图标、440×280 小宣传图及可选 1400×560 Marquee。可直接检查 [中文截图](assets/zh-CN/01-accounts.png) 与 [English 截图](assets/en/01-accounts.png)。
+图片、拍摄环境和复现命令见 [素材记录](assets.md)。已提供中英文各三张实际扩展截图、128px 图标、440×280 小宣传图及可选 1400×560 Marquee。可直接检查 [中文截图](../../assets/chrome-web-store/zh-CN/01-accounts.png) 与 [English 截图](../../assets/chrome-web-store/en/01-accounts.png)。
 
 ## 当前核对状态
 

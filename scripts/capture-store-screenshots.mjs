@@ -23,7 +23,8 @@ const base = await fs.mkdtemp(path.join(os.tmpdir(), 'passpine-store-'));
 const profile = path.join(base, 'profile');
 const binary = path.join(base, 'demo-helper');
 const data = path.join(base, 'data');
-const output = path.join(root, 'docs/chrome-web-store');
+const output = path.join(root, 'assets/chrome-web-store');
+const metadata = path.join(root, 'docs/chrome-web-store/capture-metadata.json');
 let helper, context;
 
 const run = (command, args, options = {}) => new Promise((resolve, reject) => {
@@ -60,7 +61,7 @@ async function compose(raw, locale, scene) {
   const text = (lines, y, size, color, weight = 400) => lines.map((line, index) => `<text x="80" y="${y + index * size * 1.3}" font-family="${font}" font-size="${size}" font-weight="${weight}" fill="${color}">${escapeXML(line)}</text>`).join('');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800"><defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#f8f8fa"/><stop offset="1" stop-color="#e8e8ed"/></linearGradient><filter id="shadow" x="-30%" y="-20%" width="160%" height="150%"><feDropShadow dx="0" dy="20" stdDeviation="24" flood-opacity=".12"/></filter></defs><rect width="1280" height="800" fill="url(#bg)"/><image x="74" y="64" width="72" height="72" href="data:image/svg+xml;base64,${icon}"/><text x="162" y="111" font-family="${font}" font-size="31" font-weight="600" fill="#18191b">Passpine</text>${text(headline, 305, locale === 'en' ? 46 : 42, '#18191b', 600)}${text(description, 462, 21, '#62636a')}<text x="80" y="727" font-family="${font}" font-size="15" fill="#787981">${escapeXML(copy[locale].footer)}</text><rect x="718" y="99" width="456" height="552" rx="8" fill="#ffffff" filter="url(#shadow)"/></svg>`;
   const ui = await sharp(raw).resize(456, 552).png().toBuffer();
-  const destination = path.join(output, 'assets', locale, `${name}.png`);
+  const destination = path.join(output, locale, `${name}.png`);
   await fs.mkdir(path.dirname(destination), { recursive: true });
   await sharp(Buffer.from(svg)).composite([{ input: ui, left: 718, top: 99 }]).removeAlpha().png().toFile(destination);
 }
@@ -162,7 +163,7 @@ try {
     cdp.off('Target.receivedMessageFromTarget', received);
     await cdp.send('Target.closeTarget', { targetId: target.targetId });
   }
-  await fs.writeFile(path.join(output, 'capture-metadata.json'), JSON.stringify({ version: manifest.version, capturedAt: new Date().toISOString(), browser: context.browser().version(), extensionId: id, fixtures: 'scripts/store-demo/main.go; all generated data is disposable; no personal vault/profile used', records }, null, 2) + '\n');
+  await fs.writeFile(metadata, JSON.stringify({ version: manifest.version, capturedAt: new Date().toISOString(), browser: context.browser().version(), extensionId: id, fixtures: 'scripts/store-demo/main.go; all generated data is disposable; no personal vault/profile used', records }, null, 2) + '\n');
   console.log(`Captured ${records.length} genuine extension screenshots for Passpine ${manifest.version}`);
 } finally {
   await context?.close();

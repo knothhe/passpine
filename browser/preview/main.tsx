@@ -18,6 +18,8 @@ function Preview() {
   const copy = useCopy();
   const [state, setState] = useState<'connected' | 'locked' | 'disconnected'>(initialState);
   if (previewParameters.get('view') === 'options') return <Options client={demoClient} extensionId={identity.chromiumID}/>;
+  // The bare popup, at its real size, for website screenshots.
+  if (previewParameters.get('view') === 'popup') return <main className="preview-capture"><App client={demoClient}/></main>;
   return <main className="preview-page">
     <header className="preview-toolbar"><Text size="2" weight="medium">{copy.preview.title}</Text><Badge color="gray">{copy.preview.exampleData}</Badge><a href="/?view=options">{copy.preview.settings}</a></header>
     <Flex gap="2" justify="center" className="preview-controls">

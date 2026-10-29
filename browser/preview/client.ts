@@ -1,8 +1,20 @@
 // This module is imported only by the standalone preview, never by extension entrypoints.
 import { PassPineError } from '../src/lib/errors';
 import type { Client, EntryDocument, FillResult, Snapshot, UIRequest } from '../src/lib/types';
+import { resolveLocale } from '../src/lib/i18n';
 
-const examples: Record<string, string> = {
+// Demo vault contents are user data, so each language gets its own fictional set
+// instead of translated keys. English captures should not show Chinese names.
+const english = resolveLocale() === 'en';
+const vaultName = english ? 'Personal vault' : '个人密码库';
+const examples: Record<string, string> = english ? {
+  'github.com/Personal': 'preview-only-password\nusername: alex@hey.com\nurl: https://github.com\n\nPersonal and open-source projects.',
+  'github.com/Work': 'preview-only-password\nusername: alex@studio.design\nurl: https://github.com\n\nTeam workspace.',
+  'linear.app/Studio': 'preview-only-password\nusername: alex@studio.design\nurl: https://linear.app',
+  'notion.so/My workspace': 'preview-only-password\nusername: alex@hey.com\nurl: https://notion.so',
+  'vercel.com/Side projects': 'preview-only-password\nusername: alex@hey.com\nurl: https://vercel.com',
+  'figma.com/Design team': 'preview-only-password\nusername: alex@studio.design\nurl: https://figma.com',
+} : {
   'github.com/个人账号': 'preview-only-password\nusername: alex@hey.com\nurl: https://github.com\n\n个人项目与开源代码。',
   'github.com/工作账号': 'preview-only-password\nusername: alex@studio.design\nurl: https://github.com\n\n团队工作空间。',
   'linear.app/Studio': 'preview-only-password\nusername: alex@studio.design\nurl: https://linear.app',
@@ -22,7 +34,7 @@ const snapshot = (): Snapshot => {
   const hostname = fixture === 'rich' ? 'accounts.very-long-organization-name.example.test' : 'github.com';
   const paths = configured && fixture !== 'empty' ? Object.keys(examples) : [];
   if (fixture === 'long') for (let index = 1; index <= 24; index++) paths.push(`工作/开发工具/示例 ${index}/用于检查省略与滚动的较长账号名称 ${index}`);
-  return { configured, vaultId: 'demo-vault', vaultName: configured ? '个人密码库' : '', locked, entriesVersion: revision, capabilities: ['fetch', 'save', 'delete', 'copy', 'generate', 'copy-generated'], entries: paths.map(path => ({ path, name: path.split('/').at(-1)!, folder: path.split('/').slice(0, -1).join('/') })), tab: { id: 1, url: `https://${hostname}/login`, hostname, secure: true }, matches: paths.filter(path => matches.has(path)) };
+  return { configured, vaultId: 'demo-vault', vaultName: configured ? vaultName : '', locked, entriesVersion: revision, capabilities: ['fetch', 'save', 'delete', 'copy', 'generate', 'copy-generated'], entries: paths.map(path => ({ path, name: path.split('/').at(-1)!, folder: path.split('/').slice(0, -1).join('/') })), tab: { id: 1, url: `https://${hostname}/login`, hostname, secure: true }, matches: paths.filter(path => matches.has(path)) };
 };
 
 export const demoClient: Client = {
