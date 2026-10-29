@@ -69,7 +69,7 @@ func (a *application) mainShellOptions() sidebar.ShellOptions {
 		},
 		LeftCollapsed:    a.lifecycle.leftCollapsed,
 		LeftOverlayBelow: 960, LeftOverlayCloseLabel: a.t("关闭左栏"),
-		Theme: a.clientTheme, Left: a.sidebarView, Content: a.contentView,
+		Theme: a.clientTheme, Left: a.sidebarView, Content: a.contentView, Shortcuts: a.commandPaletteShortcuts,
 		LeftBackground:   func(c *ui.Context) ui.Color { return c.Theme().Background },
 		HeaderBackground: func(c *ui.Context) ui.Color { return c.Theme().Background },
 		ContentTitle:     a.header, LeftToolbar: a.sidebarToolbar,

@@ -186,6 +186,11 @@ func (a *application) handleMainWindowClose(event *mygo.CloseEvent) {
 	if a.closing {
 		return
 	}
+	if a.palette.open {
+		event.PreventDefault()
+		a.closeCommandPalette()
+		return
+	}
 	if a.generator.open {
 		event.PreventDefault()
 		a.closeGenerator()

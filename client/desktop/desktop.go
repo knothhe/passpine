@@ -72,6 +72,7 @@ type application struct {
 	history                                                              navigationState
 	vaultNameDraft, vaultNameID                                          string
 	shortcut                                                             shortcutState
+	palette                                                              commandPaletteState
 	quick                                                                quickSearchState
 	notifications                                                        notificationState
 	notificationActionSerial                                             uint64
@@ -983,6 +984,9 @@ func (a *application) header(c *ui.Context) {
 			components.Text(c, title).Bold().SingleLine()
 		}
 		ui.Spacer(c)
+		if iconButton(c, lucide.Command(), a.t("打开命令面板"), components.ButtonGhost).Tooltip(a.t("命令面板（Ctrl+Shift+P）")).Disabled(a.commandPaletteBlocked()).Clicked() {
+			a.toggleCommandPalette()
+		}
 		if a.state.Configured {
 			a.vaultSelector(c)
 			a.gitHeaderStatus(c)
@@ -1138,6 +1142,7 @@ func (a *application) contentView(c *ui.Context) {
 	if isPreferencesPage(a.page) {
 		a.preferencesDialogs(c)
 	}
+	a.commandPaletteView(c)
 	a.flushNotifications(c)
 	a.flushMetadataRefresh()
 }
@@ -1147,6 +1152,10 @@ func (a *application) installMenu() {
 		return &mygo.MenuItem{Label: label, Accelerator: shortcut, Click: func(*mygo.MenuItem, *mygo.Window) {
 			if a.shortcut.recording {
 				a.recordShortcut(shortcut)
+				return
+			}
+			// Native menu callbacks bypass the modal input scope.
+			if a.palette.open && shortcut != "Ctrl+Shift+P" {
 				return
 			}
 			fn()
@@ -1163,6 +1172,7 @@ func (a *application) installMenu() {
 		{Label: a.t("文件"), Submenu: []*mygo.MenuItem{action(a.t("新建条目"), "CmdOrCtrl+N", a.newEntry), action(a.t("打开密码库…"), "", a.openSetup), mygo.Separator(), action(a.t("锁定密码库"), "CmdOrCtrl+Shift+L", a.lock)}},
 		editMenu,
 		{Label: a.t("显示"), Submenu: []*mygo.MenuItem{
+			action(a.t("命令面板"), "Ctrl+Shift+P", a.toggleCommandPalette),
 			action(a.t("搜索"), "CmdOrCtrl+F", func() {
 				if a.quick.visible {
 					a.quick.searchRef.Focus()

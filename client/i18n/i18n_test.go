@@ -85,3 +85,11 @@ func TestMessagesTranslateBeforeFormattingAndPreserveData(t *testing.T) {
 		t.Fatalf("unformatted percent was changed: %q", got)
 	}
 }
+
+func TestToggleOffAndPaletteDismissMessagesHaveSeparateTranslations(t *testing.T) {
+	for source, want := range map[string]string{"关闭": "Off", "关闭面板": "Close"} {
+		if got := Text(English, source); got != want {
+			t.Errorf("Text(English, %q) = %q, want %q", source, got, want)
+		}
+	}
+}

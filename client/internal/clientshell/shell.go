@@ -33,6 +33,9 @@ type ShellOptions struct {
 	// Use HeaderHeight(c) as top padding to keep controls below it while
 	// allowing a region's background to extend to the top. Nil leaves it empty.
 	Left, Content func(*ui.Context)
+	// Shortcuts registers application shortcuts at window scope, including
+	// when no control or a control in the navigation sidebar has focus.
+	Shortcuts func(*ui.Context)
 	// LeftBackground paints the entire sidebar, including its header and
 	// bottom toolbar. Nil preserves the platform material or theme surface.
 	LeftBackground func(*ui.Context) ui.Color
@@ -325,6 +328,9 @@ func (s *Shell) view(c *ui.Context) {
 	// The theme must be installed before any widget is created.
 	if s.options.Theme != nil {
 		c.SetTheme(s.options.Theme(c))
+	}
+	if s.options.Shortcuts != nil {
+		s.options.Shortcuts(c)
 	}
 	components.WithDialogWindowDrag(c, HeaderHeight(c), func() { s.build(c) })
 	toasts := s.options.Toasts

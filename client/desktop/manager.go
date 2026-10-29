@@ -125,11 +125,11 @@ func (a *application) closeNavigationOverlay() {
 }
 
 func (a *application) navigateManager(filter string) {
-	if a.editor.open && (a.page != "entries" || a.filter != filter) {
+	if a.editor.open && (a.setup || a.page != "entries" || a.filter != filter) {
 		a.requestEditorClose(func() { a.navigateManager(filter) })
 		return
 	}
-	if a.page != "entries" || a.filter != filter {
+	if a.setup || a.page != "entries" || a.filter != filter {
 		// Selection belongs to one folder's list; switching folders clears it.
 		a.exitBatch()
 		a.navigate("entries", filter)
@@ -151,7 +151,7 @@ func (a *application) navigateRecovery(kind int) {
 		a.requestEditorClose(func() { a.navigateRecovery(kind) })
 		return
 	}
-	if a.page != "recovery" || a.recoveryKind != kind {
+	if a.setup || a.page != "recovery" || a.recoveryKind != kind {
 		a.exitBatch()
 		a.recoveryKind = kind
 		a.recovery = nil

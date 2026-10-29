@@ -16,6 +16,9 @@ func monochromeInputBackground(dark bool) ui.Color {
 // solid surface so their contrast does not depend on the pane underneath.
 func textBox(c *ui.Context, value *string, options components.TextBoxOptions) ui.Element {
 	input := components.TextBox(c, value, options)
+	if owner := *commandPaletteOwner(c); owner != nil {
+		input.OnTextKey(owner.commandPaletteTextKey)
+	}
 	t := c.Theme()
 	if isMonochromePalette(t) {
 		background := monochromeInputBackground(t.Dark)
