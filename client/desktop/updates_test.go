@@ -201,7 +201,7 @@ func TestUpdateReleaseRowOpensTheCorrespondingReleaseByPointerAndKeyboard(t *tes
 	}
 }
 
-func TestUpdateReleaseRowUsesCurrentVersionBeforeCheckAndDisablesUnknownBuilds(t *testing.T) {
+func TestUpdateReleaseRowUsesCurrentVersionBeforeCheckAndHidesUnknownBuilds(t *testing.T) {
 	for _, language := range []string{"zh-CN", "en"} {
 		a, _ := updateFixture(update.StateIdle)
 		a.state.Settings.Language = language
@@ -215,11 +215,9 @@ func TestUpdateReleaseRowUsesCurrentVersionBeforeCheckAndDisablesUnknownBuilds(t
 		}
 		a.buildVersion = "0.1.4-dev.a123"
 		view.Frame()
-		if !view.HasText(a.t("暂无对应的更新说明")) {
-			t.Fatal("unknown build is missing its localized unavailable description")
-		}
-		if err := view.Click(a.t("更新说明")); err != nil {
-			t.Fatal(err)
+		// Without a release there is nothing to open, so the row is omitted.
+		if view.HasText(a.t("v%s · GitHub Release", "0.1.4")) || view.HasText(a.t("v%s · GitHub Release", "0.1.4-dev.a123")) {
+			t.Fatal("development build still shows a release notes row")
 		}
 		if len(view.OpenedURLs()) != 1 {
 			t.Fatal("development build opened an invented release tag")
@@ -246,8 +244,8 @@ func TestUpdateReleaseRowLayout(t *testing.T) {
 					if !ok || box.X < 0 || box.Y < 0 || box.X+box.W > float32(width) || box.Y+box.H > 760 || box.H < 60 {
 						t.Fatalf("release row overflows or loses its two-line layout: %+v", box)
 					}
-					if !view.HasText(a.t("v%s · GitHub Release", version)) || !view.HasText(a.t("安装前会再次校验更新包。")) {
-						t.Fatal("release destination or verification footer is missing")
+					if !view.HasText(a.t("v%s · GitHub Release", version)) {
+						t.Fatal("release destination is missing")
 					}
 					managerResizeScreenshot(t, view, fmt.Sprintf("updates-release-row-%s-%s-%d", state, language, width))
 				})

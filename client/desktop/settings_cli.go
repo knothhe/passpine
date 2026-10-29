@@ -141,7 +141,7 @@ func (a *application) cliSettingsView(c *ui.Context) {
 			showProgress = true
 		}
 	}
-	ui.Column(c).Key("cli-settings").FillWidth().MaxWidth(664).MinWidth(0).Gap(12).Children(func() {
+	ui.Column(c).Key("cli-settings").FillWidth().MinWidth(0).Gap(12).Children(func() {
 		ui.Column(c).Key("installation-card").FillWidth().MinWidth(0).Padding(20).Gap(20).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(10).Children(func() {
 			if runtime.GOOS == "windows" {
 				muted(c, a.t("Windows 版暂不支持命令行，请在 macOS 或 Linux 上使用 %s。", a.t("命令行工具")))

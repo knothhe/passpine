@@ -42,7 +42,7 @@ export function useClientTarget(demo = false) {
 
 export function ClientTargetSettings({ state }: { state: ReturnType<typeof useClientTarget> }) {
   const copy = useCopy();
-  return <SettingsGroup><SettingsRow label={copy.clientTarget.title} description={state.canSelect ? copy.clientTarget.description : copy.clientTarget.storeDescription} control={state.canSelect && <SegmentedControl.Root size="1" value={state.target} disabled={state.loading || state.saving} aria-label={copy.clientTarget.title} aria-busy={state.loading || state.saving || undefined} onValueChange={target => { void state.changeTarget(target as ClientTarget); }}>
+  return <SettingsGroup><SettingsRow label={copy.clientTarget.title} description={state.canSelect ? undefined : copy.clientTarget.storeDescription} control={state.canSelect && <SegmentedControl.Root size="1" value={state.target} disabled={state.loading || state.saving} aria-label={copy.clientTarget.title} aria-busy={state.loading || state.saving || undefined} onValueChange={target => { void state.changeTarget(target as ClientTarget); }}>
         <SegmentedControl.Item value="release">{copy.clientTarget.release}</SegmentedControl.Item><SegmentedControl.Item value="dev">{copy.clientTarget.dev}</SegmentedControl.Item>
       </SegmentedControl.Root>}>
     {state.error && <Callout.Root mt="3" size="1" color="red" role="alert"><Callout.Text>{state.error === 'load' ? copy.clientTarget.loadFailed : copy.clientTarget.saveFailed}</Callout.Text></Callout.Root>}

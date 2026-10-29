@@ -19,14 +19,14 @@ export function AppearanceSettings({ language }: { language?: ReactNode } = {}) 
     void setPreferences(next).catch(error => setError(errorMessage(error, copy)));
   };
   return <>
-    <SettingsGroup caption={copy.options.interfacePreferences}>
+    <SettingsGroup>
       {language}
       <SettingsRow label={copy.appearance.mode} control={<SegmentedControl.Root size="1" value={preferences.appearance} onValueChange={appearance => change({ ...preferences, appearance: appearance as Appearance })} aria-label={copy.appearance.mode} disabled={saving}>
         <SegmentedControl.Item value="system"><Monitor size={14}/>{copy.appearance.system}</SegmentedControl.Item>
         <SegmentedControl.Item value="light"><Sun size={14}/>{copy.appearance.light}</SegmentedControl.Item>
         <SegmentedControl.Item value="dark"><Moon size={14}/>{copy.appearance.dark}</SegmentedControl.Item>
       </SegmentedControl.Root>}/>
-      <SettingsRow label={copy.appearance.fontSize} description={copy.appearance.fontSizeDescription} control={<SegmentedControl.Root size="1" value={String(preferences.fontScale)} onValueChange={value => change({ ...preferences, fontScale: Number(value) as FontScale })} aria-label={copy.appearance.fontSize} disabled={saving}>
+      <SettingsRow label={copy.appearance.fontSize} control={<SegmentedControl.Root size="1" value={String(preferences.fontScale)} onValueChange={value => change({ ...preferences, fontScale: Number(value) as FontScale })} aria-label={copy.appearance.fontSize} disabled={saving}>
         {fontScales.map(scale => <SegmentedControl.Item key={scale} value={String(scale)}>{copy.common.percent(scale)}</SegmentedControl.Item>)}
       </SegmentedControl.Root>}/>
     </SettingsGroup>
@@ -38,12 +38,10 @@ export function AppearanceSettings({ language }: { language?: ReactNode } = {}) 
           <div className="style-preview-header"><ApplicationIcon style={style.id} size={28}/><span>{copy.brand}</span><span className="style-preview-action"/></div>
           <div className="style-preview-row"><span/><i/><i/></div><div className="style-preview-row"><span/><i/><i/></div>
         </Theme>
-        <div className="style-choice-caption"><Text as="span" size="2" weight="medium">{copy.appearance[style.id].label}</Text><Text as="span" size="1" color="gray">{copy.appearance[style.id].description}</Text></div>
+        <div className="style-choice-caption"><Text as="span" size="2" weight="medium">{copy.appearance[style.id].label}</Text></div>
       </RadioCards.Item>)}
     </RadioCards.Root>
-    <Text as="p" size="1" color="gray" className="settings-hint">{copy.appearance.description}</Text>
     </div></SettingsGroup>
-    <Text as="p" size="1" color="gray" className="appearance-help">{copy.appearance.help}</Text>
     {error && <Callout.Root mt="3" size="1" color="red" role="alert"><Callout.Text>{error}</Callout.Text></Callout.Root>}
   </>;
 }

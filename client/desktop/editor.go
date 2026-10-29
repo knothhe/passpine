@@ -320,13 +320,8 @@ func (a *application) editorView(c *ui.Context) {
 			title = a.t("编辑条目")
 		}
 		ui.Row(c).FillWidth().AlignItems(ui.Start).Gap(12).Children(func() {
-			ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-				ui.Row(c).FillWidth().Height(32).AlignItems(ui.Center).Children(func() {
-					components.Text(c, title).FontSize(scaledFontSize(c, 22)).Bold()
-				})
-				if a.editor.originalPath != "" {
-					components.Text(c, a.editor.originalPath).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).Wrap()
-				}
+			ui.Row(c).Grow(1).MinWidth(0).Height(32).AlignItems(ui.Center).Children(func() {
+				components.Text(c, title).FontSize(scaledFontSize(c, 22)).Bold()
 			})
 			if iconButton(c, lucide.X(), a.t("关闭编辑器"), components.ButtonGhost).Disabled(a.editorBusy()).Clicked() {
 				a.cancelEditor()
@@ -407,7 +402,7 @@ func (a *application) editorView(c *ui.Context) {
 								}
 							})
 						}
-						if components.Button(c, a.t("添加字段"), components.ButtonGhost).Clicked() {
+						if components.Button(c, a.t("添加字段"), components.ButtonOutline).AlignSelf(ui.Start).Clicked() {
 							a.editor.fields.add("", "", -1)
 						}
 						if !a.editor.customFieldsValid() {
@@ -484,12 +479,12 @@ func (a *application) dialogs(c *ui.Context) {
 
 func (a *application) preferencesDialogs(c *ui.Context) {
 	components.Dialog(c, &a.backupOpen, components.DialogOptions{Label: a.t("验证恢复私钥"), DisableBackdropClose: true}, func(panel ui.Element) {
-		panel.Width(460).Padding(24).Gap(18)
-		section(c, a.t("验证恢复私钥"), "", nil)
+		panel.Width(460)
+		components.Text(c, a.t("验证恢复私钥")).Bold()
 		muted(c, a.backupPath)
 		input := field(c, a.t("备份私钥口令"), &a.backupPassphrase, a.t("输入口令"), true)
 		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
-			if components.Button(c, a.t("取消"), components.ButtonOutline).Clicked() {
+			if components.Button(c, a.t("取消"), components.ButtonSecondary).Clicked() {
 				a.backupOpen = false
 				a.backupPassphrase = ""
 			}

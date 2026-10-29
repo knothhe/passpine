@@ -18,8 +18,7 @@ func (a *application) settingsSidebar(c *ui.Context) {
 	categories := a.settingsCategories()
 	a.selectedSettingsCategory(categories)
 	ui.Column(c).Fill().Children(func() {
-		ui.Column(c).FillWidth().Padding(24, 16, 18, 16).Gap(12).Children(func() {
-			components.Text(c, a.t("设置")).Bold().FontSize(scaledFontSize(c, 18))
+		ui.Column(c).FillWidth().Padding(24, 16, 18, 16).Children(func() {
 			search := textBox(c, &a.settingsState.Query, components.TextBoxOptions{LeadingIcon: lucide.Search()}).Label(a.t("搜索设置")).Placeholder(a.t("搜索设置…")).FillWidth()
 			if search.Changed() && a.preferencesPage() != "settings" {
 				a.navigate("settings", "")
@@ -58,18 +57,13 @@ func (a *application) settingsContent(c *ui.Context, categories []components.Set
 	searching := strings.TrimSpace(a.settingsState.Query) != ""
 	width := a.mainContentWidth(c)
 	narrow := width < 660
-	title, description := categories[selected].Title, categories[selected].Description
+	title := categories[selected].Title
 	if searching {
-		title, description = a.t("搜索结果"), ""
+		title = a.t("搜索结果")
 	}
 	ui.Column(c).Fill().MinWidth(0).Children(func() {
-		ui.Row(c).FillWidth().Shrink(0).Padding(24, 28, 20, 28).AlignItems(ui.Center).Gap(16).Children(func() {
-			ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
-				components.Text(c, title).FontSize(scaledFontSize(c, 21)).Bold()
-				if description != "" {
-					muted(c, description)
-				}
-			})
+		ui.Row(c).FillWidth().Shrink(0).MinHeight(76).Padding(24, pageGutter, 20, pageGutter).AlignItems(ui.Center).Gap(16).Children(func() {
+			components.Text(c, title).FontSize(scaledFontSize(c, 21)).Bold().Grow(1).MinWidth(0)
 			if a.settingsSaving || a.gitRemoteSaving {
 				muted(c, a.t("正在保存…"))
 			}
@@ -86,7 +80,7 @@ func (a *application) settingsContent(c *ui.Context, categories []components.Set
 			}
 		})
 		components.ScrollView(c, components.ScrollViewOptions{}).Fill().Children(func() {
-			ui.Column(c).Key(a.settingsState.Category).FillWidth().MinWidth(0).Padding(0, 28, 28, 28).Gap(24).Children(func() {
+			ui.Column(c).Key(a.settingsState.Category).FillWidth().MinWidth(0).Padding(0, pageGutter, 28, pageGutter).Gap(24).Children(func() {
 				count, lastCategory, lastGroup := 0, -1, -1
 				for _, result := range components.SearchSettings(categories, a.settingsState.Query) {
 					if !searching && result.Category != selected {
@@ -114,8 +108,10 @@ func (a *application) settingsContent(c *ui.Context, categories []components.Set
 					count++
 					if item.ID == "git" || item.ID == "browser-status" || item.ID == "about-content" || item.ID == "updates-content" || item.ID == "cli-content" || item.ID == "config-sync-content" {
 						if item.ID == "browser-status" {
-							components.Text(c, item.Title).FontSize(scaledFontSize(c, 14)).Bold()
-							muted(c, item.Description)
+							ui.Column(c).FillWidth().Gap(6).Children(func() {
+								components.Text(c, item.Title).Wrap()
+								components.Text(c, item.Description).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted).Wrap()
+							})
 						}
 						item.Build(c)
 						continue

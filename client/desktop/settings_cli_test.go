@@ -389,7 +389,7 @@ func TestCLISettingsTabAndLayout(t *testing.T) {
 			view.SetPreferences(ui.Preferences{ReduceMotion: true})
 			view.SetDark(variant.dark)
 			view.Advance(time.Second)
-			if !view.HasText(a.t("从终端访问你的密码库。")) {
+			if !view.HasText(a.t("命令行")) {
 				t.Fatal("CLI tab is missing its content")
 			}
 			if runtime.GOOS != "windows" {

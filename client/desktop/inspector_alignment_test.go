@@ -89,7 +89,7 @@ func TestRecoveryCountUsesTheFixedListFooter(t *testing.T) {
 	a := recoveryColumnsFixture()
 	view := ui.NewTester(recoveryColumnsTestView(a, 300), 900, 620)
 	count, found := view.Find(a.countLabel(len(a.recovery)))
-	if !found || count.X != 16 || count.Y < 581 || count.Y+count.H > 620 {
+	if !found || count.X != pageGutter || count.Y < 581 || count.Y+count.H > 620 {
 		t.Fatalf("recovery count is not aligned with the fixed list footer: %v", count)
 	}
 	view.Scroll(120, 180, 0, 400)

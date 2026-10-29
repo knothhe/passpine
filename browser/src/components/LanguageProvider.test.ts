@@ -90,7 +90,7 @@ describe('extension language settings', () => {
     const requests = request.mock.calls.length;
     await choose('English');
     expect(container.querySelector('input[aria-label="Search vault"]')).not.toBeNull();
-    expect(container.textContent).toContain('1 account'); expect(container.textContent).toContain('中文密码库');
+    expect(container.textContent).toContain('No website open'); expect(container.textContent).toContain('中文密码库');
     expect(container.textContent).toContain('账号');
     expect(request.mock.calls.length).toBe(requests);
     expect(document.documentElement.lang).toBe('en'); expect(document.title).toBe('Passpine · Browser settings');

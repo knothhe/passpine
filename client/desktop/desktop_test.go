@@ -319,7 +319,7 @@ func TestScreensRender(t *testing.T) {
 	screens := []string{"entries", "settings", "settings-system", "settings-about", "recovery", "setup", "locked", "editor", "editor-custom", "generator"}
 	directory := os.Getenv("PASSPINE_SNAPSHOT_DIR")
 	if directory != "" {
-		screens = append(screens, "settings-security", "settings-vault", "settings-browser", "activity", "recovery-items", "drafts", "setup-import", "setup-import-files", "setup-import-files-en", "setup-import-files-busy", "setup-import-files-error", "setup-git", "locked-device", "editor-raw", "empty", "git-locked", "git-syncing", "confirm-delete", "confirm-discard", "confirm-purge", "backup")
+		screens = append(screens, "settings-security", "settings-vault", "settings-browser", "settings-config-sync", "settings-cli", "settings-updates", "activity", "recovery-items", "drafts", "setup-import", "setup-import-files", "setup-import-files-en", "setup-import-files-busy", "setup-import-files-error", "setup-git", "locked-device", "editor-raw", "empty", "git-locked", "git-syncing", "confirm-delete", "confirm-discard", "confirm-purge", "backup")
 	}
 	type viewport struct {
 		name          string
@@ -336,7 +336,7 @@ func TestScreensRender(t *testing.T) {
 				a := fixture()
 				a.page = screen
 				switch screen {
-				case "settings-system", "settings-security", "settings-vault", "settings-browser", "settings-about":
+				case "settings-system", "settings-security", "settings-vault", "settings-browser", "settings-config-sync", "settings-cli", "settings-updates", "settings-about":
 					a.page = "settings"
 					a.settingsState.Category = strings.TrimPrefix(screen, "settings-")
 					a.state.DeviceUnlockAvailable, a.state.DeviceUnlockEnrolled = true, true

@@ -141,7 +141,6 @@ func (a *application) detailView(c *ui.Context) {
 		ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Padding(24).Gap(12).Children(func() {
 			components.Icon(c, lucide.ShieldCheck).Size(36, 36).TextColor(c.Theme().TextMuted)
 			components.Text(c, a.t("选择一个条目")).FontSize(scaledFontSize(c, 18)).Bold()
-			muted(c, a.t("从列表选择条目，在右侧查看详情。"))
 			if components.Button(c, a.t("新建条目"), components.ButtonGhost).Clicked() && !pending.Pending {
 				a.newEntry()
 			}

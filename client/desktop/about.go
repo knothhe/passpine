@@ -18,6 +18,7 @@ func (a *application) aboutView(c *ui.Context) {
 	ui.Column(c).FillWidth().MinWidth(0).Gap(20).Children(func() {
 		ui.Column(c).FillWidth().MinWidth(0).Padding(20).Gap(8).Background(c.Theme().Surface).Radius(10).Border(1, c.Theme().Border).Children(func() {
 			components.Text(c, a.t(buildinfo.Name())).FontSize(scaledFontSize(c, 22)).Bold()
+			muted(c, a.t("兼容 pass 的本地密码管理器。"))
 			version := a.t("开发版本")
 			if a.buildVersion != "" && a.buildVersion != "development" {
 				version = a.t("版本 %s", a.buildVersion)
@@ -44,27 +45,24 @@ func (a *application) aboutView(c *ui.Context) {
 				executor = a.t("GitHub Actions")
 			}
 			muted(c, a.t("构建环境：%s · %s", executor, info.OS+"/"+info.Arch))
-			if components.Button(c, a.t("复制构建信息"), components.ButtonOutline).Clicked() {
-				data, _ := json.MarshalIndent(info, "", "  ")
-				// Diagnostic metadata contains no vault paths or credentials.
-				write := a.clipboardWriter
-				if write == nil {
-					write = secureclipboard.WriteText
+			ui.Row(c).FillWidth().Margin(8, 0, 0, 0).Gap(16).AlignItems(ui.Center).Children(func() {
+				if components.Button(c, a.t("复制构建信息"), components.ButtonOutline).Clicked() {
+					data, _ := json.MarshalIndent(info, "", "  ")
+					// Diagnostic metadata contains no vault paths or credentials.
+					write := a.clipboardWriter
+					if write == nil {
+						write = secureclipboard.WriteText
+					}
+					if err := write(string(data), false); err != nil {
+						a.errorText = a.t(i18n.ClipboardWriteFailed)
+					} else {
+						a.notice = a.t("构建信息已复制")
+					}
 				}
-				if err := write(string(data), false); err != nil {
-					a.errorText = a.t(i18n.ClipboardWriteFailed)
-				} else {
-					a.notice = a.t("构建信息已复制")
-				}
-			}
-			muted(c, a.t("兼容 pass 的本地密码管理器。"))
-			ui.Link(c, a.t("项目主页"), about.ProjectURL)
+				ui.Link(c, a.t("项目主页"), about.ProjectURL)
+			})
 		})
-		ui.Column(c).FillWidth().Gap(6).Children(func() {
-			components.Text(c, a.t("主要依赖")).Bold().FontSize(scaledFontSize(c, 15))
-			muted(c, a.t("%d 项主要直接依赖，点击组件查看用途、许可证与上游链接。", len(deps)))
-		})
-		for _, group := range []struct{ id, title string }{{"desktop", a.t("桌面客户端")}} {
+		for _, group := range []struct{ id, title string }{{"desktop", a.t("主要依赖")}} {
 			ui.Column(c).FillWidth().MinWidth(0).Gap(8).Children(func() {
 				components.Text(c, group.title).Bold()
 				ui.Column(c).FillWidth().MinWidth(0).Padding(12).Gap(4).Background(c.Theme().Surface).Radius(8).Border(1, c.Theme().Border).Children(func() {
@@ -76,10 +74,13 @@ func (a *application) aboutView(c *ui.Context) {
 							open := a.aboutExpanded[dep.ID]
 							parts := components.Collapsible(c, dep.Name, &open, components.CollapsibleOptions{Trailing: func() { muted(c, dep.Version) }}, func() {
 								muted(c, a.t(i18n.DependencyDescriptionKey(dep.ID)))
-								components.Text(c, a.t("包名")).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
-								components.Text(c, dep.Module).Wrap().FontSize(scaledFontSize(c, 12))
-								ui.Row(c).FillWidth().Gap(12).Wrap().Children(func() {
-									muted(c, a.t("许可证"))
+								// Label/value pairs share one label column so the values line up.
+								ui.Row(c).FillWidth().MinWidth(0).Gap(12).AlignItems(ui.Center).Children(func() {
+									components.Text(c, a.t("包名")).Width(56).Shrink(0).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
+									components.Text(c, dep.Module).Grow(1).MinWidth(0).Wrap().FontSize(scaledFontSize(c, 12))
+								})
+								ui.Row(c).FillWidth().MinWidth(0).Gap(12).AlignItems(ui.Center).Children(func() {
+									components.Text(c, a.t("许可证")).Width(56).Shrink(0).FontSize(scaledFontSize(c, 12)).TextColor(c.Theme().TextMuted)
 									ui.Link(c, dep.License, "https://spdx.org/licenses/"+dep.License+".html")
 								})
 								ui.Row(c).FillWidth().Gap(16).Wrap().Children(func() {

@@ -19,7 +19,7 @@ func (a *application) generatorDialog(c *ui.Context) {
 	components.Dialog(c, &a.generator.open, components.DialogOptions{Label: a.t("密码生成器"), DisableBackdropClose: true, DisableEscapeClose: true}, func(panel ui.Element) {
 		panel.Width(420).Padding(18).Gap(12)
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-			components.Text(c, a.t("密码生成器")).FontSize(scaledFontSize(c, 16)).Bold()
+			components.Text(c, a.t("密码生成器")).Bold()
 			ui.Spacer(c)
 			if iconButton(c, lucide.X(), a.t("关闭密码生成器"), components.ButtonGhost).Size(26, 26).Padding(5).Clicked() {
 				a.closeGenerator()
@@ -208,7 +208,7 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 		}
 	}
 	general := []components.SettingsItem{
-		{ID: "theme-style", Title: a.t("主题风格"), Description: a.themeStyleDescription(), Build: func(c *ui.Context) {
+		{ID: "theme-style", Title: a.t("主题风格"), Build: func(c *ui.Context) {
 			styles, labels := []string{app.ThemeStyleMonochrome, app.ThemeStyleOnevra}, []string{a.t("黑白"), a.t("陶土橙")}
 			if runtime.GOOS == "linux" {
 				styles = append(styles, app.ThemeStyleOmarchy)
@@ -219,7 +219,7 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 		{ID: "theme", Title: a.t("外观"), Build: func(c *ui.Context) {
 			selectValue(c, &a.settings.Theme, a.t("外观"), []string{"system", "light", "dark"}, []string{a.t("跟随系统"), a.t("浅色"), a.t("深色")})
 		}},
-		{ID: "font-size", Title: a.t("文字大小"), Description: a.t("调整客户端、全局搜索和快捷面板的文字大小。"), Build: func(c *ui.Context) {
+		{ID: "font-size", Title: a.t("文字大小"), Build: func(c *ui.Context) {
 			selected := (app.NormalizeFontScale(a.settings.FontScale) - 80) / 10
 			if ui.Segmented(c, &selected, "80%", "90%", "100%", "110%", "120%").Label(a.t("文字大小")).AlignSelf(ui.Center).Changed() {
 				a.settings.FontScale = 80 + selected*10
@@ -231,10 +231,10 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 		{ID: "close", Title: a.t("关闭窗口后继续运行"), Build: func(c *ui.Context) {
 			a.booleanSettingSegments(c, &a.settings.CloseToTray, a.t("关闭后继续运行"))
 		}},
-		{ID: "shortcut", Title: a.t("全局搜索快捷键"), Description: a.t("点击录制后按下组合键，Esc 取消。保存后立即生效。"), Build: a.shortcutControls},
+		{ID: "shortcut", Title: a.t("全局搜索快捷键"), Build: a.shortcutControls},
 	}
 	systemItems := []components.SettingsItem{
-		{ID: "dock", Title: a.t("Dock 图标"), Description: a.t("跟随窗口时，仅在主窗口打开时展示。"), Build: func(c *ui.Context) {
+		{ID: "dock", Title: a.t("Dock 图标"), Build: func(c *ui.Context) {
 			choiceSettingSegments(c, &a.settings.DockIcon, a.t("Dock 图标"), []string{app.DockIconShow, app.DockIconHide, app.DockIconFollowWindow}, []string{a.t("展示"), a.t("隐藏"), a.t("跟随窗口")})
 		}},
 		{ID: "tray-click", Title: a.t("点击托盘图标"), Build: func(c *ui.Context) {
@@ -243,7 +243,7 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 		{ID: "lightweight", Title: a.t("轻量模式"), Description: a.t("窗口和面板全部关闭一分钟后释放界面内存，再次打开时重新加载。"), Build: func(c *ui.Context) {
 			a.booleanSettingSegments(c, &a.settings.LightweightMode, a.t("启用轻量模式"))
 		}},
-		{ID: "launch-at-login", Title: a.t("开机自启"), Description: a.t("登录系统后在后台启动 Passpine。"), Build: func(c *ui.Context) {
+		{ID: "launch-at-login", Title: a.t("开机自启"), Build: func(c *ui.Context) {
 			ui.Column(c).AlignSelf(ui.Center).Disabled(a.state.Preview).Children(func() {
 				a.booleanSettingSegments(c, &a.settings.LaunchAtLogin, a.t("启用开机自启"))
 			})
@@ -269,8 +269,8 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 		}},
 	}
 	vaultItems := []components.SettingsItem{
-		{ID: "name", Title: a.t("密码库名称"), Description: a.t("留空则使用密码库目录作为名称。"), Build: a.vaultNameControls},
-		{ID: "recovery", Title: a.t("恢复中心"), Description: a.t("找回已删除的条目，或继续编辑加密草稿。"), Build: func(c *ui.Context) {
+		{ID: "name", Title: a.t("密码库名称"), Build: a.vaultNameControls},
+		{ID: "recovery", Title: a.t("恢复中心"), Build: func(c *ui.Context) {
 			if components.Button(c, a.t("打开恢复中心"), components.ButtonOutline).AlignSelf(ui.Center).Clicked() {
 				a.navigate("recovery", "")
 			}
@@ -307,7 +307,7 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 	}
 	browserItems := []components.SettingsItem{
 		{ID: "browser-status", Title: a.t("浏览器注册"), Description: a.t("注册状态表示本机连接和扩展身份是否匹配，不代表浏览器已安装扩展。"), Build: a.browserRegistrationView},
-		{ID: "browser", Title: a.t("连接浏览器扩展"), Description: a.t("仅为此设备上已安装的浏览器配置本机连接。"), Build: func(c *ui.Context) {
+		{ID: "browser", Title: a.t("连接浏览器扩展"), Build: func(c *ui.Context) {
 			if a.state.Preview {
 				muted(c, a.t("预览模式不会注册个人浏览器"))
 				return
@@ -322,29 +322,29 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 		{ID: "activity-count", Title: a.t("最多保留记录"), Build: func(c *ui.Context) {
 			a.durationSegments(c, &a.settings.ActivityMaxEntries, a.t("最多保留记录"), []int{500, 1000, 5000}, a.t("条"))
 		}},
-		{ID: "activity-days", Title: a.t("保留天数"), Description: a.t("超出条数或时间的记录会自动清理。"), Build: func(c *ui.Context) {
+		{ID: "activity-days", Title: a.t("保留天数"), Build: func(c *ui.Context) {
 			a.durationSegments(c, &a.settings.ActivityRetentionDays, a.t("保留天数"), []int{1, 7, 30}, a.t("天"))
 		}},
-		{ID: "history", Title: a.t("查看操作记录"), Description: a.t("查看此设备上的密码库操作。"), Build: func(c *ui.Context) {
+		{ID: "history", Title: a.t("查看操作记录"), Build: func(c *ui.Context) {
 			if components.Button(c, a.t("打开操作记录"), components.ButtonOutline).AlignSelf(ui.Center).Clicked() {
 				a.navigate("activity", "")
 			}
 		}},
 	}
 	return []components.SettingsCategory{
-		{ID: "general", Title: a.t("通用"), Icon: lucide.Settings(), Description: a.t("调整外观、窗口、启动、快捷键与本机操作记录。"), Groups: []components.SettingsGroup{{ID: "appearance", Items: general}, {ID: "system", Title: a.t("窗口与启动"), Items: systemItems}, {ID: "activity", Title: a.t("操作记录"), Items: activityItems}}},
-		{ID: "security", Title: a.t("安全"), Icon: lucide.LockKeyhole(), Description: a.t("管理解锁方式和密码的保留时间。"), Groups: []components.SettingsGroup{{ID: "session", Items: security}}},
-		{ID: "vault", Title: a.t("密码库"), Icon: lucide.FolderKey(), Description: a.t("管理恢复备份与 Git 同步。"), Groups: []components.SettingsGroup{{ID: "backup", Items: vaultItems}, {ID: "sync", Title: a.t("Git 同步"), Items: syncItems}}},
-		{ID: "browser", Title: a.t("浏览器"), Icon: lucide.Globe(), Description: a.t("让浏览器扩展安全地访问当前密码库。"), Groups: []components.SettingsGroup{{ID: "integration", Items: browserItems}}},
+		{ID: "general", Title: a.t("通用"), Icon: lucide.Settings(), Groups: []components.SettingsGroup{{ID: "appearance", Items: general}, {ID: "system", Title: a.t("窗口与启动"), Items: systemItems}, {ID: "activity", Title: a.t("操作记录"), Items: activityItems}}},
+		{ID: "security", Title: a.t("安全"), Icon: lucide.LockKeyhole(), Groups: []components.SettingsGroup{{ID: "session", Items: security}}},
+		{ID: "vault", Title: a.t("密码库"), Icon: lucide.FolderKey(), Groups: []components.SettingsGroup{{ID: "backup", Items: vaultItems}, {ID: "sync", Title: a.t("Git 同步"), Items: syncItems}}},
+		{ID: "browser", Title: a.t("浏览器"), Icon: lucide.Globe(), Groups: []components.SettingsGroup{{ID: "integration", Items: browserItems}}},
 		{ID: "config-sync", Title: a.t("配置同步"), Icon: lucide.Cloud(), Groups: []components.SettingsGroup{{ID: "config-sync", Items: []components.SettingsItem{{ID: "config-sync-content", Title: a.t("R2 与 S3 配置同步"), Description: a.t("使用 Cloudflare 授权或手动配置兼容 S3 的对象存储。"), Keywords: []string{a.t("同步选项"), a.t("同步时间间隔"), a.t("修改后自动同步"), a.t("同步内容"), a.t("客户端偏好"), a.t("扩展偏好"), a.t("同步模式"), a.t("仅手动同步"), a.t("启动时同步"), a.t("同步异常提醒"), a.t("主题与外观"), a.t("字号"), a.t("语言"), a.t("导入与导出"), a.t("导入配置…"), a.t("导出配置…")}, Build: a.configSyncView}}}}},
-		{ID: "cli", Title: a.t("命令行"), Icon: lucide.SquareTerminal(), Description: a.t("从终端访问你的密码库。"), Groups: []components.SettingsGroup{{ID: "cli", Items: []components.SettingsItem{{ID: "cli-content", Title: a.t("CLI 安装与状态"), Description: a.t("安装兼容 pass 的命令行，并查看或卸载当前应用的命令链接。"), Build: a.cliSettingsView}}}}},
-		{ID: "updates", Title: a.t("软件更新"), Icon: lucide.Download(), Description: a.t("在后台获取更新，由你决定何时重启安装。"), Groups: []components.SettingsGroup{{ID: "updates", Items: []components.SettingsItem{
+		{ID: "cli", Title: a.t("命令行"), Icon: lucide.SquareTerminal(), Groups: []components.SettingsGroup{{ID: "cli", Items: []components.SettingsItem{{ID: "cli-content", Title: a.t("CLI 安装与状态"), Description: a.t("安装兼容 pass 的命令行，并查看或卸载当前应用的命令链接。"), Build: a.cliSettingsView}}}}},
+		{ID: "updates", Title: a.t("软件更新"), Icon: lucide.Download(), Groups: []components.SettingsGroup{{ID: "updates", Items: []components.SettingsItem{
 			{ID: "updates-content", Title: a.t("当前版本与更新说明"), Description: a.t("检查更新、下载进度、重启安装与失败重试。"), Build: a.updatesView},
-			{ID: "auto-download-updates", Title: a.t("自动下载更新"), Description: a.t("默认开启。关闭后仍会自动检查更新，下载前等待你确认。"), Build: func(c *ui.Context) {
+			{ID: "auto-download-updates", Title: a.t("自动下载更新"), Build: func(c *ui.Context) {
 				a.booleanSettingSegments(c, &a.settings.AutoDownloadUpdates, a.t("自动下载更新"))
 			}},
 		}}}},
-		{ID: "about", Title: a.t("关于"), Icon: lucide.Info(), Description: a.t("项目版本、开源组件与依赖信息。"), Groups: []components.SettingsGroup{{ID: "about", Items: []components.SettingsItem{{ID: "about-content", Title: a.t("主要依赖"), Description: a.t("项目版本、开源组件与依赖信息。"), Build: a.aboutView}}}}},
+		{ID: "about", Title: a.t("关于"), Icon: lucide.Info(), Groups: []components.SettingsGroup{{ID: "about", Items: []components.SettingsItem{{ID: "about-content", Title: a.t("主要依赖"), Description: a.t("项目版本、开源组件与依赖信息。"), Build: a.aboutView}}}}},
 	}
 }
 
@@ -466,8 +466,7 @@ func (a *application) removeRecovery(id string) {
 	}
 }
 func (a *application) activityView(c *ui.Context) {
-	ui.Column(c).Fill().Padding(30).Gap(20).Children(func() {
-		section(c, a.t("操作记录"), "", nil)
+	ui.Column(c).Fill().Padding(24, pageGutter, 28, pageGutter).Gap(20).Children(func() {
 		if len(a.activity) == 0 {
 			muted(c, a.t("暂无操作记录"))
 			return
@@ -485,11 +484,4 @@ func (a *application) activityView(c *ui.Context) {
 			})
 		})
 	})
-}
-
-func (a *application) themeStyleDescription() string {
-	if a.settings.ThemeStyle == app.ThemeStyleOmarchy {
-		return a.t("跟随 Omarchy 系统配色，自动更新主题颜色。")
-	}
-	return a.t("主题配色和应用图标一起切换。")
 }

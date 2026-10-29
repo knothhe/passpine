@@ -149,7 +149,7 @@ func (a *application) updateStatus() (string, string) {
 		}
 		return a.t("此版本暂不支持自动更新"), a.t("请从项目主页获取支持签名更新的正式版本。")
 	default:
-		return a.t("自动检查更新"), a.t("启动时和运行期间会自动检查更新。")
+		return a.t("自动检查更新"), ""
 	}
 }
 
@@ -262,7 +262,9 @@ func (a *application) updatesView(c *ui.Context) {
 				}
 				components.Text(c, title).Bold().Grow(1).MinWidth(0).Wrap()
 			})
-			muted(c, detail)
+			if detail != "" {
+				muted(c, detail)
+			}
 			if s.State == update.StateDownloading {
 				progress := s.Progress
 				if s.Total <= 0 {
@@ -301,7 +303,6 @@ func (a *application) updatesView(c *ui.Context) {
 			}
 		})
 		a.updateReleaseNotesRow(c)
-		muted(c, a.t("安装前会再次校验更新包。"))
 	})
 }
 
@@ -321,16 +322,16 @@ func updateReleaseLink(available, current string) (version, target string) {
 
 func (a *application) updateReleaseNotesRow(c *ui.Context) {
 	version, target := updateReleaseLink(a.updates.snapshot.Version, a.buildVersion)
-	label, detail := a.t("更新说明"), a.t("暂无对应的更新说明")
-	if target != "" {
-		label = a.t("查看版本 %s 的更新说明", version)
-		detail = a.t("v%s · GitHub Release", version)
+	// Without a published release there is nothing to open, so omit the row.
+	if target == "" {
+		return
 	}
+	label, detail := a.t("查看版本 %s 的更新说明", version), a.t("v%s · GitHub Release", version)
 	row := ui.ButtonBase(c).Key("update-release-notes").Role(ui.RoleLink).Label(label).Row().
 		FillWidth().MinWidth(0).Padding(15, 19).Gap(16).AlignItems(ui.Center).
 		Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(8).
-		TextColor(c.Theme().Text).Disabled(target == "")
-	if row.Hovered() && target != "" {
+		TextColor(c.Theme().Text)
+	if row.Hovered() {
 		row.Background(c.Theme().SurfaceHover)
 	}
 	row.Children(func() {
@@ -338,19 +339,17 @@ func (a *application) updateReleaseNotesRow(c *ui.Context) {
 			components.Text(c, a.t("更新说明")).Bold()
 			muted(c, detail)
 		})
-		if target != "" {
-			components.Icon(c, lucide.ExternalLink()).Size(17, 17).Shrink(0).TextColor(c.Theme().TextMuted)
-		}
+		components.Icon(c, lucide.ExternalLink()).Size(17, 17).Shrink(0).TextColor(c.Theme().TextMuted)
 	})
-	if row.Clicked() && target != "" {
+	if row.Clicked() {
 		c.OpenURL(target)
 	}
 }
 
 func (a *application) updateDialog(c *ui.Context) {
 	components.Dialog(c, &a.updates.confirmOpen, components.DialogOptions{Label: a.t("重启并安装更新？"), DisableBackdropClose: true, DisableEscapeClose: a.updates.preparing}, func(panel ui.Element) {
-		panel.Width(450).MaxWidth(500).Padding(24).Gap(18)
-		components.Text(c, a.t("重启并安装更新？")).Bold().FontSize(scaledFontSize(c, 18))
+		panel.Width(450).MaxWidth(500)
+		components.Text(c, a.t("重启并安装更新？")).Bold()
 		muted(c, a.t("将关闭 Passpine，安装版本 %s 后重新打开。密码库和设置会保留。", a.updates.snapshot.Version))
 		if a.updates.preparing {
 			components.ProgressRing(c, -1).Size(20, 20).Label(a.t("正在准备安装"))
@@ -360,7 +359,7 @@ func (a *application) updateDialog(c *ui.Context) {
 			muted(c, a.t("请先保存当前编辑，并等待正在进行的操作完成，再重启安装。"))
 		}
 		ui.Row(c).FillWidth().Wrap().Gap(8).Justify(ui.End).Children(func() {
-			if components.Button(c, a.t("稍后"), components.ButtonOutline).Disabled(a.updates.preparing).Clicked() {
+			if components.Button(c, a.t("稍后"), components.ButtonSecondary).Disabled(a.updates.preparing).Clicked() {
 				a.updates.confirmOpen = false
 			}
 			if components.Button(c, a.t("重启并安装"), components.ButtonPrimary).Disabled(a.updates.preparing || a.updateInstallBlocked()).Clicked() {

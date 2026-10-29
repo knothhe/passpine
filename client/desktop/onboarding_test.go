@@ -26,7 +26,7 @@ func TestCreateKeyAndVaultValidatesNewPassphraseAndClearsSecrets(t *testing.T) {
 		return app.Response{Status: "ok", Data: app.Data{Configured: true, Settings: app.DefaultSettings()}}
 	})
 	view := ui.NewTester(a.setupView, 740, 1000)
-	if !view.HasText(a.t("首次使用？创建密码库时会在本机生成受口令保护的 OpenPGP（GPG）私钥，无需安装 GnuPG 或准备已有密钥。")) || view.HasText(a.t("密钥来源")) {
+	if !view.HasText(a.t("设置私钥口令")) || view.HasText(a.t("密钥来源")) {
 		t.Fatal("new users were not shown the local key creation flow")
 	}
 	if err := view.Click(a.t("创建密钥与密码库")); err != nil {

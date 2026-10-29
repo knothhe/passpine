@@ -46,9 +46,6 @@ func (a *application) setupView(c *ui.Context) {
 				if a.setupMode == 1 && a.setupDirectory == a.defaultVaultDirectory && a.defaultVaultDirectory != "" {
 					muted(c, a.t("已找到默认密码库 ~/.password-store。选择密钥来源后即可导入。"))
 				}
-				if a.setupMode == 0 {
-					muted(c, a.t("首次使用？创建密码库时会在本机生成受口令保护的 OpenPGP（GPG）私钥，无需安装 GnuPG 或准备已有密钥。"))
-				}
 				if previousMode != a.setupMode && a.defaultVaultDirectory != "" {
 					if a.setupMode == 1 && a.setupDirectory == "" {
 						a.setupDirectory = a.defaultVaultDirectory
@@ -68,21 +65,24 @@ func (a *application) setupView(c *ui.Context) {
 							}
 						})
 						muted(c, a.t("目标目录必须不存在。"))
-						if components.Button(c, a.t("下载密码库"), components.ButtonPrimary).Clicked() {
+					})
+					ui.Row(c).FillWidth().Gap(8).Children(func() {
+						if a.state.Configured && !a.busy {
+							if components.Button(c, a.t("返回"), components.ButtonGhost).Clicked() {
+								a.setup = false
+							}
+						}
+						ui.Spacer(c)
+						if a.busy {
+							if components.Button(c, a.t("取消下载"), components.ButtonOutline).Clicked() {
+								a.lock()
+								a.inform(a.t("下载已取消，可以修改后重试。"))
+							}
+						}
+						if components.Button(c, a.t("下载密码库"), components.ButtonPrimary).Disabled(a.busy).Clicked() {
 							a.submitSetup()
 						}
 					})
-					if a.busy {
-						if components.Button(c, a.t("取消下载"), components.ButtonOutline).Clicked() {
-							a.lock()
-							a.inform(a.t("下载已取消，可以修改后重试。"))
-						}
-					}
-					if a.state.Configured && !a.busy {
-						if components.Button(c, a.t("返回密码库"), components.ButtonGhost).Clicked() {
-							a.setup = false
-						}
-					}
 					return
 				}
 				ui.Column(c).FillWidth().Gap(14).Disabled(a.busy).Children(func() {
@@ -105,7 +105,6 @@ func (a *application) setupView(c *ui.Context) {
 						} else {
 							a.setupKeyFileField(c, false)
 							a.setupKeyFileField(c, true)
-							muted(c, a.t("私钥文件通常已包含公钥。多收件人密码库可补充公钥文件，无需安装 GnuPG。"))
 						}
 					}
 					passphraseLabel, passphrasePlaceholder := a.t("私钥口令"), a.t("输入你的私钥口令")
@@ -115,7 +114,6 @@ func (a *application) setupView(c *ui.Context) {
 					input := field(c, passphraseLabel, &a.passphrase, passphrasePlaceholder, true)
 					if a.setupMode == 0 {
 						field(c, a.t("确认口令"), &a.confirmPassphrase, a.t("再次输入口令"), true)
-						muted(c, a.t("口令至少需要 12 个字符。"))
 					}
 					label := a.t("创建密钥与密码库")
 					if a.setupMode == 1 {
@@ -263,12 +261,9 @@ func (a *application) unlockView(c *ui.Context) {
 	ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Padding(40).Children(func() {
 		ui.Column(c).FillWidth().MaxWidth(360).MinWidth(0).Gap(20).Children(func() {
 			components.Icon(c, lucide.LockKeyhole).Size(40, 40).TextColor(c.Theme().Accent)
-			section(c, a.t("解锁密码库"), a.state.VaultName, nil)
+			section(c, a.t("解锁密码库"), "", nil)
 			if a.batch.active && a.batch.pending != "" {
 				muted(c, a.batchUnlockDescription())
-			} else if a.selected != "" && a.state.Settings.BrowseWhileLocked {
-				components.Text(c, entryName(a.selected)).Bold()
-				muted(c, a.selected)
 			}
 			ui.Column(c).FillWidth().Gap(16).Disabled(a.busy).Children(func() {
 				if a.state.DeviceUnlockEnrolled && a.state.Settings.DeviceUnlock {

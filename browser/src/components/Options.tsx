@@ -96,7 +96,7 @@ export function Options({ client: sourceClient, extensionId, firefox = false }: 
       <section id="settings-connection" hidden={page !== 'connection'} aria-labelledby="connection-heading">
         <div className="options-title"><Heading id="connection-heading" as="h1" size="6" tabIndex={-1}>{copy.options.connection}</Heading></div>
         <div className="settings-stack">
-          <SettingsGroup caption={copy.options.connectionStatus}>
+          <SettingsGroup>
             <div className="settings-row"><div className="options-connection">
               <div className="options-connection-summary"><span className={`connection-dot ${checking ? 'disconnected' : !snapshot ? 'disconnected' : snapshot.locked ? 'locked' : ''}`} aria-hidden="true"/><div><Heading as="h2" size="3">{checking ? copy.options.checkingConnection : snapshot ? snapshot.locked ? copy.options.connectedLocked : copy.connection.status.connected : copy.connection.disconnectedTitle}</Heading><Text as="p" size="2" color="gray">{snapshot?.vaultName || (snapshot ? copy.options.openVault : copy.options.connectLocal)}</Text></div></div>
               <Button variant="outline" color="gray" aria-busy={checking || undefined} disabled={checking} onClick={() => void refresh(true)}><RefreshCw size={14} className={checking ? 'connection-checking' : undefined}/>{checking ? copy.options.checking : copy.options.checkConnection}</Button>
@@ -109,8 +109,7 @@ export function Options({ client: sourceClient, extensionId, firefox = false }: 
           {!snapshot && !checking && <SettingsGroup caption={copy.options.setupTitle}><ol className="setup-steps">{copy.options.setupSteps.map((step, index) => <SetupStep key={index} number={String(index + 1)}>{step}</SetupStep>)}</ol></SettingsGroup>}
           <details className="settings-details" open><summary>{copy.options.diagnostics}</summary><SettingsGroup>
             <SettingsRow label={copy.options.nativeHost} control={<code className="settings-code">{hostForTarget(clientTarget.target)}</code>}/>
-            <SettingsRow label={copy.options.extensionID} control={<code className="settings-code">{extensionId}</code>}/>
-            <div className="settings-group-actions"><Button variant="ghost" color="gray" size="1" onClick={() => void copyId()}>{copied ? <Check size={14}/> : <ClipboardCopy size={14}/>} {copied ? copy.common.copied : copy.options.copyExtensionID}</Button></div>
+            <SettingsRow label={copy.options.extensionID} control={<div className="settings-code-copy"><code className="settings-code">{extensionId}</code><Button variant="ghost" color="gray" size="1" onClick={() => void copyId()}>{copied ? <Check size={14}/> : <ClipboardCopy size={14}/>} {copied ? copy.common.copied : copy.options.copyExtensionID}</Button></div>}/>
           </SettingsGroup></details>
         </div>
       </section>

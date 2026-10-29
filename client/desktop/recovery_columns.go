@@ -42,68 +42,71 @@ func (a *application) recoveryColumnsView(c *ui.Context, listWidth float32) {
 		return
 	}
 	selected, hasSelection := a.selectedRecovery()
-	ui.Row(c).Key("recovery-columns").Fill().MinWidth(0).MinHeight(0).Children(func() {
-		list := ui.Column(c).Key("recovery-list-pane").Width(listWidth).MinWidth(managerListMinWidth).Shrink(1).FillHeight().MinHeight(0).Background(c.Theme().Surface).
-			BorderWidth(0, 1, 0, 0).BorderColor(c.Theme().Border)
-		list.Children(func() {
-			ui.Column(c).FillWidth().Padding(24, 16, 14, 16).Children(func() {
-				title := a.t("回收站")
-				if a.recoveryKind == 1 {
-					title = a.t("加密草稿")
-				}
-				ui.Row(c).FillWidth().MinHeight(34).AlignItems(ui.Center).Children(func() {
-					components.Text(c, title).FontSize(scaledFontSize(c, 18)).Bold()
+	// Share the entry manager's inset frame so both pages keep the same columns.
+	ui.Column(c).Key("recovery-frame-inset").Fill().MinWidth(0).MinHeight(0).Padding(managerFrameInset).Background(c.Theme().Background).Children(func() {
+		ui.Row(c).Key("recovery-columns").Fill().MinWidth(0).MinHeight(0).Radius(12).Border(1, c.Theme().Border).Background(c.Theme().Surface).Clip().Children(func() {
+			list := ui.Column(c).Key("recovery-list-pane").Width(listWidth).MinWidth(managerListMinWidth).Shrink(1).FillHeight().MinHeight(0).Background(c.Theme().Surface).
+				BorderWidth(0, 1, 0, 0).BorderColor(c.Theme().Border)
+			list.Children(func() {
+				ui.Column(c).FillWidth().Padding(24, 16, 14, 16).Children(func() {
+					title := a.t("回收站")
+					if a.recoveryKind == 1 {
+						title = a.t("加密草稿")
+					}
+					ui.Row(c).FillWidth().MinHeight(34).AlignItems(ui.Center).Children(func() {
+						components.Text(c, title).FontSize(scaledFontSize(c, 18)).Bold()
+					})
 				})
-			})
-			components.ScrollView(c, components.ScrollViewOptions{}).Key("recovery-list-scroll").Grow(1).FillWidth().MinHeight(0).Children(func() {
-				ui.Column(c).FillWidth().Padding(0, 8, 12, 8).Gap(3).Children(func() {
-					for _, item := range a.recovery {
-						item := item
-						active := item.ID == selected.ID
-						row := components.Button(c, "", components.ButtonGhost).Key(item.ID).
-							Label(a.t("恢复副本 %s", item.Path)).FillWidth().MinWidth(0).MinHeight(66).
-							Padding(10, 9).Radius(c.Theme().Radius).Disabled(a.busy)
-						if active {
-							background := c.Theme().Accent.Alpha(.10)
-							if isMonochromePalette(c.Theme()) {
-								background = c.Theme().Selection
+				components.ScrollView(c, components.ScrollViewOptions{}).Key("recovery-list-scroll").Grow(1).FillWidth().MinHeight(0).Children(func() {
+					ui.Column(c).FillWidth().Padding(0, 16, 12, 16).Gap(3).Children(func() {
+						for _, item := range a.recovery {
+							item := item
+							active := item.ID == selected.ID
+							row := components.Button(c, "", components.ButtonGhost).Key(item.ID).
+								Label(a.t("恢复副本 %s", item.Path)).FillWidth().MinWidth(0).MinHeight(66).
+								Padding(10, 9).Radius(c.Theme().Radius).Disabled(a.busy)
+							if active {
+								background := c.Theme().Accent.Alpha(.10)
+								if isMonochromePalette(c.Theme()) {
+									background = c.Theme().Selection
+								}
+								row.Background(background)
 							}
-							row.Background(background)
-						}
-						row.Children(func() {
-							ui.Row(c).FillWidth().MinWidth(0).Gap(10).AlignItems(ui.Center).Children(func() {
-								ui.Box(c).Size(34, 34).Shrink(0).Radius(8).Background(c.Theme().Text.Alpha(.05)).
-									AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-									components.Icon(c, lucide.FileKey()).Size(16, 16).TextColor(c.Theme().TextMuted)
-								})
-								ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-									components.Text(c, item.Path).SingleLine().Bold().FontSize(scaledFontSize(c, 13)).TextColor(c.Theme().Text)
-									components.Text(c, item.CreatedAt).SingleLine().FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+							row.Children(func() {
+								ui.Row(c).FillWidth().MinWidth(0).Gap(10).AlignItems(ui.Center).Children(func() {
+									ui.Box(c).Size(34, 34).Shrink(0).Radius(8).Background(c.Theme().Text.Alpha(.05)).
+										AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+										components.Icon(c, lucide.FileKey()).Size(16, 16).TextColor(c.Theme().TextMuted)
+									})
+									ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+										components.Text(c, item.Path).SingleLine().Bold().FontSize(scaledFontSize(c, 13)).TextColor(c.Theme().Text)
+										components.Text(c, item.CreatedAt).SingleLine().FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+									})
 								})
 							})
-						})
-						if row.Clicked() {
-							a.selectRecovery(item.ID)
+							if row.Clicked() {
+								a.selectRecovery(item.ID)
+							}
 						}
-					}
+					})
+				})
+				ui.Row(c).FillWidth().MinHeight(39).Padding(10, 16).Label(a.t("条目数量")).AlignItems(ui.Center).Children(func() {
+					components.Text(c, a.countLabel(len(a.recovery))).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 				})
 			})
-			ui.Row(c).FillWidth().MinHeight(39).Padding(10, 16).Label(a.t("条目数量")).AlignItems(ui.Center).Children(func() {
-				components.Text(c, a.countLabel(len(a.recovery))).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+			ui.Column(c).Key("recovery-detail-pane").Grow(1).MinWidth(managerDetailMinWidth).FillHeight().MinHeight(0).Background(c.Theme().Surface).Children(func() {
+				ui.Column(c).Key("recovery-detail-body").Fill().MinWidth(0).MinHeight(0).Clip().Children(func() {
+					if !hasSelection {
+						ui.Column(c).Fill().Padding(24).AlignItems(ui.Center).Justify(ui.Center).Gap(14).Children(func() {
+							components.Icon(c, lucide.ArchiveRestore()).Size(36, 36).TextColor(c.Theme().TextMuted)
+							muted(c, a.t("目前没有可恢复的内容"))
+						})
+						return
+					}
+					a.recoveryDetailView(c, selected)
+				})
+				a.managerResizeHandle(c, list)
 			})
-		})
-		ui.Column(c).Key("recovery-detail-pane").Grow(1).MinWidth(managerDetailMinWidth).FillHeight().MinHeight(0).Background(c.Theme().Surface).Children(func() {
-			ui.Column(c).Key("recovery-detail-body").Fill().MinWidth(0).MinHeight(0).Clip().Children(func() {
-				if !hasSelection {
-					ui.Column(c).Fill().Padding(24).AlignItems(ui.Center).Justify(ui.Center).Gap(14).Children(func() {
-						components.Icon(c, lucide.ArchiveRestore()).Size(36, 36).TextColor(c.Theme().TextMuted)
-						muted(c, a.t("目前没有可恢复的内容"))
-					})
-					return
-				}
-				a.recoveryDetailView(c, selected)
-			})
-			a.managerResizeHandle(c, list)
 		})
 	})
 }

@@ -363,7 +363,7 @@ func (a *application) configSyncError(code string) string {
 }
 
 func (a *application) configSyncView(c *ui.Context) {
-	ui.Column(c).Key("config-sync-settings").FillWidth().MaxWidth(720).MinWidth(0).Gap(16).Children(func() {
+	ui.Column(c).Key("config-sync-settings").FillWidth().MinWidth(0).Gap(16).Children(func() {
 		a.configSyncCard(c, "config-sync-connection", a.t("同步连接"), lucide.Cloud, a.configSyncConnectionBadges, func() {
 			if a.state.Preview {
 				muted(c, a.t("预览模式不会连接对象存储或读取系统凭据。"))

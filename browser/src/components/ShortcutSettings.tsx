@@ -117,7 +117,6 @@ export function ShortcutSettings({ firefox, demo = false }: { firefox: boolean; 
         {!editable && <SettingsRow label={access ? copy.shortcuts.pageEnabled : copy.shortcuts.siteAccess} description={access ? undefined : copy.shortcuts.accessDescription} control={<Button size="1" variant="outline" color="gray" disabled={!loaded || saving} onClick={changeAccess}>{access ? copy.shortcuts.disablePageShortcuts : copy.shortcuts.enablePageShortcuts}</Button>}/>}
         <div className="settings-group-actions"><Button size="1" variant="ghost" color="gray" aria-label={editable ? copy.shortcuts.restoreBrowserDefaults : copy.shortcuts.restorePageDefaults} disabled={!loaded || saving} onClick={resetBrowser}><RotateCcw size={13}/>{copy.shortcuts.restoreDefaults}</Button></div>
       </SettingsGroup>
-      <Text as="p" size="1" color="gray" className="settings-hint">{editable ? copy.shortcuts.browserEditable : copy.shortcuts.pageDescription}</Text>
     </div>
     <div className="shortcut-section">
       <SettingsGroup caption={copy.shortcuts.popupShortcuts}>
@@ -135,7 +134,6 @@ export function ShortcutSettings({ firefox, demo = false }: { firefox: boolean; 
           <Button size="1" variant="ghost" color="gray" aria-label={copy.shortcuts.restorePopupDefaults} disabled={!loaded || saving} onClick={resetPopup}><RotateCcw size={13}/>{copy.shortcuts.restoreDefaults}</Button>
         </div>
       </SettingsGroup>
-      <Text as="p" size="1" color="gray" className="settings-hint">{copy.shortcuts.popupDescription}</Text>
     </div>
     <details className="settings-details shortcut-help"><summary>{copy.shortcuts.helpTitle}</summary><div className="shortcut-help-content">
       <Text as="p" size="1" color="gray">{copy.shortcuts.recordingHelp}</Text><Text as="p" size="1" color="gray">{copy.shortcuts.platformHelp}</Text><Text as="p" size="1" color="gray">{copy.shortcuts.contextHelp}</Text>

@@ -40,18 +40,10 @@ var booleanSettingsCases = []struct {
 
 func TestBooleanSettingsSegmentsPreserveSavedValuesAndAutosave(t *testing.T) {
 	for _, setting := range booleanSettingsCases {
-		if setting.title == "本机操作记录" {
-			// This phrase occurs in the category description, so searching it
-			// includes every general setting. Its builder is covered separately.
-			continue
-		}
 		for _, initial := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/%t", setting.title, initial), func(t *testing.T) {
 				a := fixture()
 				a.page, a.settingsState.Query = "settings", setting.title
-				if setting.title == "开机自启" {
-					a.settingsState.Query = "登录系统后在后台启动 Passpine。"
-				}
 				a.state.Preview, a.state.DeviceUnlockAvailable = false, true
 				*setting.value(&a.state.Settings) = initial
 				callbacks, requests := make(chan func(), 1), make(chan app.Request, 1)
@@ -135,9 +127,6 @@ func TestBooleanSettingsSegmentsRespectNativeAvailabilityAndKeyboardNavigation(t
 		t.Run(test.title, func(t *testing.T) {
 			a := fixture()
 			a.page, a.settingsState.Query = "settings", test.title
-			if test.title == "开机自启" {
-				a.settingsState.Query = "登录系统后在后台启动 Passpine。"
-			}
 			a.state.Preview = test.preview
 			a.state.DeviceUnlockAvailable, a.state.DeviceUnlockEnrolled = false, false
 			initial := *test.value(&a.state.Settings)

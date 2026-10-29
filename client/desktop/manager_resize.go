@@ -7,8 +7,10 @@ import (
 )
 
 const (
-	managerFrameInset     float32 = 8
-	managerFrameBorder    float32 = 1
+	managerFrameInset  float32 = 8
+	managerFrameBorder float32 = 1
+	// Pages without the framed columns use the same text edge as the list.
+	pageGutter            float32 = managerFrameInset + managerFrameBorder + 16
 	managerListMinWidth   float32 = 240
 	managerListMaxWidth   float32 = 480
 	managerDetailMinWidth float32 = 360

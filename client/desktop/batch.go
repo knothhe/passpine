@@ -563,10 +563,7 @@ func (a *application) batchView(c *ui.Context) {
 	if len(chosen) == 0 && progress == nil {
 		ui.Column(c).Fill().Padding(24).Children(func() {
 			ui.Box(c).MinHeight(32)
-			ui.Column(c).Margin(20, 0, 0, 0).Gap(6).Children(func() {
-				components.Text(c, a.t("选择条目")).FontSize(scaledFontSize(c, 24)).Bold()
-				muted(c, a.t("勾选左侧条目后，可以移动到其他文件夹，或移到回收站。"))
-			})
+			components.Text(c, a.t("选择条目")).Margin(20, 0, 0, 0).FontSize(scaledFontSize(c, 24)).Bold()
 		})
 		return
 	}

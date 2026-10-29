@@ -973,11 +973,13 @@ func (a *application) header(c *ui.Context) {
 		return
 	}
 	title := map[string]string{"entries": a.t("密码库"), "recovery": a.t("恢复中心"), "settings": a.t("设置"), "activity": a.t("操作记录")}[a.page]
+	// Setup carries its own heading. Repeating it in the toolbar adds no context.
 	if (a.setup || !a.state.Configured) && !a.settingsAvailableWithoutVault() {
-		title = a.t("打开密码库")
+		title = ""
 	}
-	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-		if a.page != "entries" || a.setup || a.mainContentWidth(c) >= 540 {
+	// The shell insets titles to the content edge; continue to the text edge.
+	ui.Row(c).FillWidth().Padding(0, 0, 0, managerFrameInset+managerFrameBorder).AlignItems(ui.Center).Gap(8).Children(func() {
+		if title != "" && (a.page != "entries" || a.setup || a.mainContentWidth(c) >= 540) {
 			components.Text(c, title).Bold().SingleLine()
 		}
 		ui.Spacer(c)

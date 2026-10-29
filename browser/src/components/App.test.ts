@@ -65,7 +65,7 @@ describe('account list keyboard navigation', () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'no such account');
       search.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    expect(container.querySelector('.no-results')?.textContent).toContain('换个关键词，或清除搜索查看全部账号。');
+    expect(container.querySelector('.no-results')?.textContent).toContain('没有找到匹配的账号');
     await act(async () => container.querySelector<HTMLButtonElement>('.no-results button')!.click());
     expect(search.value).toBe(''); expect(document.activeElement).toBe(search);
     expect(container.querySelectorAll('button[data-entry-path]')).toHaveLength(3);

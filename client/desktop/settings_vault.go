@@ -65,10 +65,13 @@ func (a *application) browserRegistrationView(c *ui.Context) {
 				}
 				components.Icon(c, icon).Size(16, 16).TextColor(color)
 				ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
-					components.Text(c, registration.Name).FontSize(scaledFontSize(c, 13))
+					// Status follows the name so actions keep one right-aligned column.
+					ui.Row(c).FillWidth().MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
+						components.Text(c, registration.Name).FontSize(scaledFontSize(c, 13))
+						components.Text(c, status).FontSize(scaledFontSize(c, 11)).TextColor(color)
+					})
 					components.Text(c, registration.ExtensionID).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).Wrap()
 				})
-				components.Text(c, status).FontSize(scaledFontSize(c, 12)).TextColor(color)
 				if !registration.Registered {
 					label := a.t("注册")
 					if registration.Status == "invalid" || registration.Status == "helper_missing" {
