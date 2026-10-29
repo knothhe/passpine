@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 
 // Exercise the actual acceptance entry point while stopping at external command
@@ -16,7 +16,8 @@ function fixture(t, { platform, failBuild = false }) {
   const runner = path.join(root, 'runner temp');
   const runnerHome = path.join(root, 'runner home');
   const eventsFile = path.join(root, 'command events.jsonl');
-  const preload = path.join(root, 'command boundaries.mjs');
+  // URL delimiters expose unencoded --import paths even on Unix runners.
+  const preload = path.join(root, 'command #100% boundaries.mjs');
   fs.mkdirSync(source); fs.mkdirSync(runner); fs.mkdirSync(runnerHome);
   // Keep every script dependency available; only process creation is replaced.
   fs.cpSync(fileURLToPath(new URL('./', import.meta.url)), path.join(source, 'scripts'), { recursive: true });
@@ -73,7 +74,7 @@ syncBuiltinESMExports();
     PASSPINE_TEST_FAIL_BUILD: failBuild ? '1' : '0',
     PASSPINE_TEST_EVENTS: eventsFile,
   };
-  const result = spawnSync(process.execPath, ['--import', preload, path.join(source, 'scripts/verify-dev-installation.mjs'), '--run'], {
+  const result = spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, path.join(source, 'scripts/verify-dev-installation.mjs'), '--run'], {
     cwd: source, env, encoding: 'utf8', timeout: 30000,
   });
   const events = fs.existsSync(eventsFile) ? fs.readFileSync(eventsFile, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
