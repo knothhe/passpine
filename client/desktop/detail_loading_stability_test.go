@@ -14,6 +14,10 @@ func TestDetailReadReplacesTheReadOnlyPresentationOnce(t *testing.T) {
 	for _, width := range []int{860, 1120} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			a := fixture()
+			a.clipboardWriter = func(string, bool) error {
+				t.Fatal("a pending presentation copied the previous entry's path")
+				return nil
+			}
 			a.detail.Username = strings.Repeat("long-account-", 8) + "@example.test"
 			a.detail.Notes = strings.Repeat("previous note ", 20)
 			a.detail.OTP = "123456"
@@ -63,7 +67,7 @@ func TestDetailReadReplacesTheReadOnlyPresentationOnce(t *testing.T) {
 			if !view.HasText(a.t("正在读取账号…")) {
 				t.Fatal("a slow read did not show its local feedback")
 			}
-			for _, label := range []string{"显示全部字段", "编辑条目", "移到回收站", "复制密码", "复制用户名", "打开网站"} {
+			for _, label := range []string{"显示全部字段", "编辑条目", "移到回收站", "复制密码", "复制用户名", "打开网站", "复制条目完整路径"} {
 				if err := view.Click(a.t(label)); err != nil {
 					t.Fatal(err)
 				}

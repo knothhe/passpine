@@ -56,6 +56,14 @@ func (a *application) detailBreadcrumb(c *ui.Context, path string, pending bool)
 		}
 		components.Icon(c, lucide.ChevronRight()).Size(12, 12).Shrink(0).TextColor(c.Theme().TextMuted)
 		components.Text(c, entryName(path)).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
+		c.Key("copy-entry-path")
+		if iconButton(c, lucide.Copy(), a.t("复制条目完整路径"), components.ButtonGhost).Shrink(0).Tooltip(a.t("复制条目完整路径")).Clicked() && !pending && !a.state.Locked && !a.closing {
+			if err := a.writeClipboard(path, 0, false); err != nil {
+				a.errorText = a.t(err.Error())
+			} else {
+				a.notice = a.t("条目完整路径已复制")
+			}
+		}
 	})
 }
 

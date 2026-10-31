@@ -237,6 +237,8 @@ var english = map[string]string{
 	"已复制":         "Copied",
 	"已复制%s":       "Copied %s",
 	"复制%s":        "Copy %s",
+	"复制条目完整路径":    "Copy full entry path",
+	"条目完整路径已复制":   "Full entry path copied",
 	"显示或隐藏%s":     "Show or hide %s",
 	"设置":          "Settings",
 	"条目数量":        "Entry count",
