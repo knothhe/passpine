@@ -22,25 +22,23 @@ permissions:
 
 jobs:
   sync:
-    name: Update knothhe/tap and the compatibility tap
+    name: Update knothhe/tap
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
-      # The built-in token updates only the compatibility cask in passpine.
-      contents: write
+      contents: read
     concurrency:
       group: homebrew-tap-passpine-main
       cancel-in-progress: false
       # Keep pending release updates instead of replacing the previous pending job.
       queue: max
     steps:
-      - name: Check out the synchronization script and compatibility tap
+      - name: Check out the synchronization script
         uses: actions/checkout@v7
         with:
           ref: main
           path: source
-          fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
       - name: Check out the public Homebrew tap
         uses: actions/checkout@v7
         with:
@@ -61,8 +59,3 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
           GH_TOKEN: ${{ github.token }}
         run: node source/scripts/sync-homebrew.mjs --publish "$RELEASE_TAG" --tap-root "$GITHUB_WORKSPACE/tap"
-      - name: Keep the previous installation command working
-        env:
-          RELEASE_TAG: ${{ inputs.tag }}
-          GH_TOKEN: ${{ github.token }}
-        run: node source/scripts/sync-homebrew.mjs --publish "$RELEASE_TAG"

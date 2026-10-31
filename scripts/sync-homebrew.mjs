@@ -2,13 +2,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { validateVersion } from './version.mjs';
 
 const repository = 'knothhe/passpine';
-const projectRoot = fileURLToPath(new URL('../', import.meta.url));
 const caskPath = 'Casks/passpine.rb';
-const destinationPath = path.join(projectRoot, caskPath);
 
 function tagVersion(tag) {
   if (typeof tag !== 'string' || !tag.startsWith('v')) throw new Error('Expected a stable vMAJOR.MINOR.PATCH release tag.');
@@ -62,13 +60,14 @@ end
 }
 
 export async function syncHomebrew({
-  destination = destinationPath,
+  destination,
   tag,
   loadRelease = requestedTag => JSON.parse(execFileSync('gh', ['api', `repos/${repository}/releases/${requestedTag ? `tags/${requestedTag}` : 'latest'}`], {
     encoding: 'utf8', timeout: 30_000,
   })),
   fetchImpl = fetch,
 } = {}) {
+  if (typeof destination !== 'string' || !destination) throw new Error('Homebrew synchronization requires an explicit cask destination.');
   if (tag !== undefined) tagVersion(tag);
   const release = homebrewRelease(await loadRelease(tag), tag);
   let previous;
@@ -103,8 +102,9 @@ export async function syncHomebrew({
   return release.version;
 }
 
-export async function publishHomebrew({ tag, root = projectRoot, gitEnv = process.env, ...options } = {}) {
+export async function publishHomebrew({ tag, root, gitEnv = process.env, ...options } = {}) {
   tagVersion(tag);
+  if (typeof root !== 'string' || !root) throw new Error('Homebrew publication requires an explicit tap checkout root.');
   const git = (...args) => execFileSync('git', args, {
     cwd: root, env: gitEnv, encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'pipe'],
   }).trim();
@@ -134,15 +134,13 @@ export async function publishHomebrew({ tag, root = projectRoot, gitEnv = proces
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
   try {
     const args = process.argv.slice(2);
-    if (args[0] === '--publish' && (args.length === 2 || (args.length === 4 && args[2] === '--tap-root'))) {
+    if (args.length === 4 && args[0] === '--publish' && args[2] === '--tap-root' && args[3]) {
       if (process.env.GITHUB_ACTIONS !== 'true' || process.env.GITHUB_REPOSITORY !== repository) {
         throw new Error('Automatic cask publication is reserved for this repository\'s GitHub Actions.');
       }
-      console.log(JSON.stringify(await publishHomebrew({ tag: args[1], ...(args[3] && { root: path.resolve(args[3]) }) })));
-    } else if (args.length) {
-      throw new Error('Usage: sync-homebrew.mjs [--publish vMAJOR.MINOR.PATCH [--tap-root CHECKOUT]]');
+      console.log(JSON.stringify(await publishHomebrew({ tag: args[1], root: path.resolve(args[3]) })));
     } else {
-      console.log(`Casks/passpine.rb is synchronized at ${await syncHomebrew()}.`);
+      throw new Error('Usage: sync-homebrew.mjs --publish vMAJOR.MINOR.PATCH --tap-root CHECKOUT');
     }
   } catch (error) {
     console.error(`Homebrew synchronization failed: ${error.message}`);

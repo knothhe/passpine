@@ -107,4 +107,4 @@ jobs:
     secrets:
       HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
     permissions:
-      contents: write
+      contents: read

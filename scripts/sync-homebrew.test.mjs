@@ -20,6 +20,16 @@ function release(version = '0.1.7') {
   };
 }
 
+test('synchronization and publication require explicit targets instead of defaulting to the source repository', async () => {
+  await assert.rejects(syncHomebrew(), /explicit cask destination/);
+  await assert.rejects(publishHomebrew({ tag: 'v0.1.7' }), /explicit tap checkout root/);
+  for (const args of [[], ['--publish', 'v0.1.7']]) {
+    assert.throws(() => execFileSync(process.execPath, [path.resolve('scripts/sync-homebrew.mjs'), ...args], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    }), error => error.status === 1 && /Usage: .*--tap-root CHECKOUT/.test(error.stderr));
+  }
+});
+
 test('casks accept only stable published releases with the exact arm64 asset and digest', () => {
   assert.equal(homebrewRelease(release()).sha256, digest);
   for (const change of [
