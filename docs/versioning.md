@@ -146,6 +146,8 @@ make release VERSION_BUMP=patch RELEASE_FLAGS="--apply --no-push"
 
 ## Dev 与正式版
 
+Dev 客户端保留 MyGo 原生 UI 检查器，可通过 F12 打开。正式客户端在编译时使用 `mygo_noinspector` 移除检查器，并注入 `github.com/egoist/mygo.production=1`，关闭 MyGo 默认的开发工具；macOS、Linux 与 Windows 使用同一份构建通道配置。
+
 `make build` / `make install` 默认构建 Dev 客户端和统一扩展。Dev 客户端使用 `Passpine Dev` 应用名、独立的应用标识、数据目录和 Native Messaging Host；不迁移正式数据，不扫描 `~/.password-store`，不启用正式更新。客户端产物位于 `dist/dev/`，扩展始终使用 `browser/.output/`。扩展不再按构建通道切换身份；商店安装固定连接正式客户端，本地解包加载可在设置中选择 Dev 客户端。具体安装位置见 [本地安装](install-local.md)。
 
 正式客户端只由 GitHub Actions 在匹配版本的发布 tag 上设置 `PASSPINE_BUILD_CHANNEL=release` 后构建。脚本校验 Actions 环境、仓库、tag/HEAD 和源码状态，发布步骤再次检查制品身份。仅在本地设置 `PASSPINE_BUILD_CHANNEL=release` 不会生成正式客户端；客户端本地安装入口也拒绝正式通道，正式客户端请下载 Release 安装包。统一扩展可在本地构建与安装，无需设置客户端发布通道。

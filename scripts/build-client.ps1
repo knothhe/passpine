@@ -40,7 +40,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $resourceDir "rsrc_windows_$arch.syso") -Destination $resource
     Push-Location (Join-Path $root 'client')
     try {
-        Invoke-Checked go @('build', '-trimpath', "-ldflags=-s -w -H windowsgui $($configuration.ldflags)", '-o', "$output\passpine.exe", './cmd/passpine')
+        Invoke-Checked go @('build', '-trimpath', "-tags=$($configuration.buildTags)", "-ldflags=-s -w -H windowsgui $($configuration.ldflags)", '-o', "$output\passpine.exe", './cmd/passpine')
         Invoke-Checked go @('build', '-trimpath', "-ldflags=-s -w $($configuration.hostLdflags)", '-o', "$output\passpine-host.exe", './cmd/passpine-host')
     } finally {
         Pop-Location

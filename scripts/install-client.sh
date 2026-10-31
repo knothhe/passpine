@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root_dir="$(cd "$(dirname "$0")/.." && pwd -P)"
-IFS=$'\t' read -r channel version base_version output_dir app_name bundle_id package_name client_flags host_flags < <(node "$root_dir/scripts/build-channel.mjs" shell)
+IFS=$'\t' read -r channel version base_version output_dir app_name bundle_id package_name client_flags host_flags build_tags < <(node "$root_dir/scripts/build-channel.mjs" shell)
 [[ "$channel" == "dev" ]] || { echo "Local installation accepts development builds only. Install formal releases from GitHub Releases." >&2; exit 1; }
 
 case "$(uname -s)" in

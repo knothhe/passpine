@@ -49,6 +49,7 @@ export function clientBuildConfig(env = process.env, root = projectRoot) {
     version = `${baseVersion}-dev.${revision}`;
   }
   const development = channel === 'dev';
+  const mygoFlags = development ? '' : ' -X github.com/egoist/mygo.production=1';
   let commit = 'unknown', modified = 'unknown';
   try {
     commit = git(root, 'rev-parse', 'HEAD');
@@ -64,7 +65,8 @@ export function clientBuildConfig(env = process.env, root = projectRoot) {
     packageName: development ? 'Passpine-Dev' : 'Passpine',
     linuxBinary: development ? 'passpine-dev' : 'passpine',
     linuxHost: development ? 'passpine-dev-host' : 'passpine-host',
-    ldflags: `-X main.version=${version} -X ${moduleName}.Channel=${channel}${metadataFlags}${updaterFlags}`,
+    buildTags: development ? '' : 'mygo_noinspector',
+    ldflags: `-X main.version=${version} -X ${moduleName}.Channel=${channel}${metadataFlags}${updaterFlags}${mygoFlags}`,
     hostLdflags: `-X main.version=${version} -X ${moduleName}.Channel=${channel}${metadataFlags}`,
   };
 }
@@ -75,7 +77,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (rest.length) throw new Error('Unexpected build-channel arguments.');
     const config = clientBuildConfig();
     if (command === 'json') console.log(JSON.stringify(config));
-    else if (command === 'shell') console.log(['channel', 'version', 'baseVersion', 'outputDirectory', 'appName', 'bundleID', 'packageName', 'ldflags', 'hostLdflags'].map(key => config[key]).join('\t'));
+    else if (command === 'shell') console.log(['channel', 'version', 'baseVersion', 'outputDirectory', 'appName', 'bundleID', 'packageName', 'ldflags', 'hostLdflags', 'buildTags'].map(key => config[key]).join('\t'));
     else if (command === 'write') {
       fs.mkdirSync(config.outputDirectory, { recursive: true });
       fs.writeFileSync(path.join(config.outputDirectory, 'build-channel.json'), `${JSON.stringify(config, null, 2)}\n`);

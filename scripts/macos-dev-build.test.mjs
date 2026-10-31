@@ -53,7 +53,7 @@ if (tool === 'node') {
   const script = path.basename(args[0] ?? '');
   if (script === 'build-channel.mjs') {
     event('channel-' + args[1]);
-    if (args[1] === 'shell') console.log(['dev', '0.1.13-dev.isolated', '0.1.13', output, 'Passpine Dev', 'com.knothhe.passpine.dev', 'Passpine-Dev', '-X main.version=isolated', '-X main.version=isolated'].join('\\t'));
+    if (args[1] === 'shell') console.log(['dev', '0.1.13-dev.isolated', '0.1.13', output, 'Passpine Dev', 'com.knothhe.passpine.dev', 'Passpine-Dev', '-X main.version=isolated', '-X main.version=isolated', ''].join('\\t'));
     else if (args[1] === 'write') fs.writeFileSync(path.join(output, 'build-channel.json'), '{}');
   } else if (script === 'macos-dev-signing.mjs') {
     event('resolve');
@@ -134,6 +134,9 @@ test('successful Dev build signs exact program identities and verifies before ar
   const f = fixture(t), result = f.run();
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   const events = f.events(), signatures = events.filter(event => event.name === 'codesign' && event.args.includes('--force'));
+  const clientBuild = events.find(event => event.name === 'go' && event.args.at(-1) === './cmd/passpine');
+  assert.ok(clientBuild.args.includes('-tags='), 'Dev builds must retain the native inspector');
+  assert.ok(!clientBuild.args.some(arg => arg.includes('mygo.production=1')));
   assert.equal(signatures.length, 3);
   assert.deepEqual(signatures.map(event => event.args[event.args.indexOf('--identifier') + 1]), [
     'com.knothhe.passpine.dev.host', 'com.knothhe.passpine.dev.device-unlock', 'com.knothhe.passpine.dev',

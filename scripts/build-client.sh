@@ -10,7 +10,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   # implicit per-user go env setting so local and release packages agree.
   export CGO_ENABLED=1
 fi
-IFS=$'\t' read -r channel version base_version output_dir app_name bundle_id package_name client_flags host_flags < <(node "$root_dir/scripts/build-channel.mjs" shell)
+IFS=$'\t' read -r channel version base_version output_dir app_name bundle_id package_name client_flags host_flags build_tags < <(node "$root_dir/scripts/build-channel.mjs" shell)
 if [[ "$(uname -s)" == "Darwin" ]]; then
   if [[ -n "${PASSPINE_MACOS_SIGNING_KEYCHAIN:-}" ]]; then
     # Resolve before entering client/ so discovery and codesign use the same
@@ -48,7 +48,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     native/macos/DeviceUnlockEnvelope.swift native/macos/DeviceUnlockMain.swift \
     -o "$output_dir/passpine-device-unlock"
 fi
-go build -trimpath -ldflags="-s -w $client_flags" -o "$output_dir/passpine" ./cmd/passpine
+go build -trimpath -tags="$build_tags" -ldflags="-s -w $client_flags" -o "$output_dir/passpine" ./cmd/passpine
 go build -trimpath -ldflags="-s -w $host_flags" -o "$output_dir/passpine-host" ./cmd/passpine-host
 if [[ "$(uname -s)" == "Darwin" ]]; then
   bundle="$output_dir/$app_name.app"

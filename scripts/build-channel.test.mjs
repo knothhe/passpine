@@ -61,6 +61,8 @@ test('source builds default to a distinct development identity and never embed p
   assert.equal(config.linuxBinary, 'passpine-dev');
   assert.equal(config.linuxHost, 'passpine-dev-host');
   assert.match(config.ldflags, /buildinfo\.Channel=dev/);
+  assert.equal(config.buildTags, '');
+  assert.doesNotMatch(config.ldflags, /github\.com\/egoist\/mygo\.production=/);
   assert.equal(config.commit,git('rev-parse','HEAD'));
   assert.equal(config.modified,'false'); assert.equal(config.executor,'local');
   fs.writeFileSync(path.join(root,'package.json'), JSON.stringify({version:'1.2.3',description:'uncommitted'}));
@@ -79,6 +81,9 @@ test('formal builds require the GitHub repository, existing matching tag, clean 
   assert.ok(config.ldflags.includes(`main.updatePublicKey=${pinned.publicKey}`));
   assert.ok(config.ldflags.includes(`main.updateFeedURL=${pinned.feedURL}`));
   assert.match(config.hostLdflags, /buildinfo\.Channel=release/);
+  assert.equal(config.buildTags, 'mygo_noinspector');
+  assert.match(config.ldflags, /(?:^| )-X github\.com\/egoist\/mygo\.production=1(?: |$)/);
+  assert.doesNotMatch(config.hostLdflags, /github\.com\/egoist\/mygo\.production=/);
   assert.equal(config.executor,'github-actions'); assert.equal(config.modified,'false');
   for (const overrides of [{ GITHUB_ACTIONS: '' }, { GITHUB_ACTIONS: 'false' }, { GITHUB_REPOSITORY: 'fork/passpine' }, { PASSPINE_BUILD_CHANNEL: 'dev' }, { RELEASE_TAG: '' }]) {
     assert.throws(() => assertReleaseBuild({ ...env, ...overrides }, root));
@@ -88,6 +93,33 @@ test('formal builds require the GitHub repository, existing matching tag, clean 
   fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '1.2.4' }));
   fs.writeFileSync(path.join(root, 'browser/package.json'), JSON.stringify({ version: '1.2.4' }));
   assert.throws(() => assertReleaseBuild(env, root), /package versions/);
+});
+
+test('channel flags retain the native inspector in Dev and remove it in production', t => {
+  const { root, env } = fixture(t);
+  const cwd = fileURLToPath(new URL('../client/', import.meta.url));
+  const source = path.join(root, 'probe.go');
+  fs.writeFileSync(source, `package main
+import (
+  "fmt"
+  "github.com/egoist/mygo"
+  "github.com/knothhe/passpine/client/buildinfo"
+)
+var version string
+func main() { fmt.Printf("%s %t", buildinfo.ChannelName(), mygo.IsDev()) }
+`);
+  for (const channel of ['dev', 'release']) {
+    const config = clientBuildConfig({ ...env, PASSPINE_BUILD_CHANNEL: channel }, root);
+    const tags = `-tags=${config.buildTags}`;
+    const ui = JSON.parse(execFileSync('go', ['list', '-json', tags, 'github.com/egoist/mygo/ui'], { cwd, encoding: 'utf8' }));
+    assert.equal(ui.GoFiles.includes('inspector.go'), channel === 'dev');
+    assert.equal(ui.GoFiles.includes('inspector_off.go'), channel === 'release');
+    const binary = path.join(root, `probe-${channel}${process.platform === 'win32' ? '.exe' : ''}`);
+    execFileSync('go', ['build', tags, `-ldflags=${config.ldflags}`, '-o', binary, source], { cwd, stdio: 'pipe' });
+    // A release binary must keep developer tools off even in a development environment.
+    const actual = execFileSync(binary, [], { encoding: 'utf8', env: { ...process.env, MYGO_ENV: 'development' } });
+    assert.equal(actual, `${channel} ${channel === 'dev'}`);
+  }
 });
 
 test('moving off the release tag or editing tracked files refuses a formal build', t => {

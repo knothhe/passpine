@@ -15,6 +15,7 @@ export interface ClientBuildConfig {
   packageName: string;
   linuxBinary: string;
   linuxHost: string;
+  buildTags: string;
   ldflags: string;
   hostLdflags: string;
 }
