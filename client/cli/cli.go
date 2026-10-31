@@ -20,6 +20,7 @@ import (
 	"github.com/knothhe/passpine/client/buildinfo"
 	"github.com/knothhe/passpine/client/deviceunlock"
 	"github.com/knothhe/passpine/client/i18n"
+	"github.com/knothhe/passpine/client/internal/clisession"
 	"github.com/knothhe/passpine/client/vault"
 )
 
@@ -40,16 +41,20 @@ var commands = map[string]func(*command, []string) error{
 }
 
 type command struct {
-	program  string
-	release  string
-	locale   string
-	dataDir  string
-	settings app.Settings
-	stdin    *os.File
-	stdout   io.Writer
-	stderr   io.Writer
-	getenv   func(string) string
-	store    *app.CLIVault
+	program        string
+	release        string
+	locale         string
+	dataDir        string
+	settings       app.Settings
+	stdin          *os.File
+	stdout         io.Writer
+	stderr         io.Writer
+	getenv         func(string) string
+	store          *app.CLIVault
+	remote         *desktopVault
+	desktopChecked bool
+	// Tests can supply isolated terminal files without accessing a real TTY.
+	openTerminal func() (*os.File, *os.File, error)
 }
 
 // Invoked reports whether the executable should run the command line instead
@@ -135,6 +140,9 @@ func (e exitError) Error() string { return "exit " + strconv.Itoa(int(e)) }
 func (c *command) t(key string, args ...any) string { return i18n.Text(c.locale, key, args...) }
 
 func (c *command) close() {
+	if c.remote != nil {
+		c.remote.client.Close()
+	}
 	if c.store != nil {
 		c.store.Vault.Close()
 	}
@@ -171,6 +179,16 @@ func (c *command) describe(err error) string {
 		return c.t("目标条目已存在。")
 	case errors.Is(err, vault.ErrPassphrase):
 		return c.t("私钥口令不正确。")
+	case errors.Is(err, vault.ErrCancelled):
+		return c.t("桌面解锁会话已结束，请重新运行命令以解锁密码库。")
+	case errors.Is(err, clisession.ErrUnavailable):
+		return c.t("与桌面客户端的连接已中断。请先检查密码库中的操作结果，再重试。")
+	case errors.Is(err, vault.ErrLocked):
+		return c.t("密码库已锁定，请在客户端解锁")
+	case errors.Is(err, vault.ErrSourceRemains):
+		return c.t("目标已保存，原条目未移除")
+	case errors.Is(err, clisession.ErrOperation):
+		return c.t("无法完成桌面密码库操作，请检查客户端状态后重试。")
 	case errors.Is(err, errNoClipboard):
 		return c.t("找不到可用的剪贴板工具。请安装 wl-clipboard、xclip 或 xsel。")
 	}
@@ -198,14 +216,36 @@ func (c *command) open() (*app.CLIVault, error) {
 	return store, nil
 }
 
-func (c *command) unlock() (*vault.Vault, error) {
+func (c *command) unlock() (vaultOperations, error) {
 	store, err := c.open()
 	if err != nil {
 		return nil, err
 	}
 	v := store.Vault
+	// Once selected, this command stays bound to its desktop generation. A
+	// lock, switch or lost response must never silently replay work locally.
+	if c.remote != nil {
+		if err := c.unlockDesktop(c.remote, store.Info.Name); err != nil {
+			return nil, err
+		}
+		return c.remote, nil
+	}
 	if v.Status().Unlocked {
 		return v, nil
+	}
+	if !c.desktopChecked {
+		c.desktopChecked = true
+		remote, err := c.tryDesktop(store)
+		if err != nil {
+			return nil, err
+		}
+		if remote != nil {
+			c.remote = remote
+			if err := c.unlockDesktop(remote, store.Info.Name); err != nil {
+				return nil, err
+			}
+			return remote, nil
+		}
 	}
 	if store.DeviceFile != "" {
 		if err := c.unlockDevice(store); err == nil {
@@ -213,30 +253,43 @@ func (c *command) unlock() (*vault.Vault, error) {
 		}
 		fmt.Fprintln(c.stderr, c.t("系统解锁未完成，请改用私钥口令。"))
 	}
-	in, out, err := openTerminal()
+	if err := c.unlockPassphrase(store.Info.Name, v.Unlock); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// Read the private-key passphrase from the controlling terminal, keeping entry
+// contents on stdin separate. Both desktop and independent unlock use this flow.
+func (c *command) unlockPassphrase(name string, unlock func(string) error) error {
+	terminal := c.openTerminal
+	if terminal == nil {
+		terminal = openTerminal
+	}
+	in, out, err := terminal()
 	if err != nil {
-		return nil, c.fail("需要在终端中输入私钥口令才能解锁密码库。")
+		return c.fail("需要在终端中输入私钥口令才能解锁密码库。")
 	}
 	defer in.Close()
 	if out != in {
 		defer out.Close()
 	}
 	for attempt := 0; attempt < 3; attempt++ {
-		secret, err := readHidden(in, out, c.t("%s 的 Passpine 私钥口令：", store.Info.Name))
+		secret, err := readHidden(in, out, c.t("%s 的 Passpine 私钥口令：", name))
 		if err != nil {
-			return nil, err
+			return err
 		}
-		err = v.Unlock(string(secret))
+		err = unlock(string(secret))
 		clear(secret)
 		if err == nil {
-			return v, nil
+			return nil
 		}
 		if !errors.Is(err, vault.ErrPassphrase) {
-			return nil, err
+			return err
 		}
 		fmt.Fprintln(out, c.t("私钥口令不正确。"))
 	}
-	return nil, vault.ErrPassphrase
+	return vault.ErrPassphrase
 }
 
 func (c *command) unlockDevice(store *app.CLIVault) error {
@@ -326,7 +379,7 @@ func (c *command) entries() ([]string, error) {
 	if store.Settings.BrowseWhileLocked && !store.Vault.Status().Unlocked {
 		list, err = store.Vault.ListMetadata()
 	} else {
-		var v *vault.Vault
+		var v vaultOperations
 		if v, err = c.unlock(); err == nil {
 			list, err = v.List()
 		}

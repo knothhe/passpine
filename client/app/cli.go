@@ -2,7 +2,6 @@ package app
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -95,7 +94,7 @@ func OpenCLIVault(dataDir, directory string) (*CLIVault, error) {
 }
 
 func sameDirectory(a, b string) bool {
-	left, errA := filepath.EvalSymlinks(a)
-	right, errB := filepath.EvalSymlinks(b)
-	return errors.Join(errA, errB) == nil && left == right
+	left, errA := os.Stat(a)
+	right, errB := os.Stat(b)
+	return errA == nil && errB == nil && left.IsDir() && right.IsDir() && os.SameFile(left, right)
 }

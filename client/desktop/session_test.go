@@ -4,8 +4,60 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
 )
+
+func TestExternalUnlockRefreshUpdatesManagerAndQuickSearch(t *testing.T) {
+	a, _ := quickSearchFixture()
+	unlocked := a.state
+	unlocked.Settings.BrowseWhileLocked = false
+	unlocked.EntriesVersion++
+	a.state.Locked = true
+	a.state.Settings.BrowseWhileLocked = false
+	a.state.Entries = nil
+	a.detail = app.Data{}
+	a.query, a.quick.query = "manager query", "quick query"
+	callbacks, requests := make(chan func(), 1), make(chan app.Request, 1)
+	a.runOnMain = func(callback func()) { callbacks <- callback }
+	a.service = backendFunc(func(request app.Request) app.Response {
+		requests <- request
+		return app.Response{Status: "ok", Data: unlocked}
+	})
+	manager := ui.NewTester(testView(a), 1120, 760)
+	panel := ui.NewTester(a.quickSearchView, 660, 460)
+	if _, ok := manager.Find(a.t("私钥口令")); !ok {
+		t.Fatal("manager did not initially show its locked view")
+	}
+	if _, ok := panel.Find(a.t("快速搜索私钥口令")); !ok {
+		t.Fatal("quick search did not initially show its locked view")
+	}
+
+	// CLI authentication sends the same change notification as a browser
+	// unlock. Refresh its snapshot without issuing another authentication.
+	a.queueMetadataRefresh(true)
+	awaitMain(t, callbacks)
+	if request := <-requests; request.Action != "configure" {
+		t.Fatalf("external unlock requested %q instead of metadata", request.Action)
+	}
+	if a.state.Locked || a.busy || a.state.EntriesVersion != unlocked.EntriesVersion {
+		t.Fatal("external unlock did not update the shared presentation state")
+	}
+	if a.query != "manager query" || a.quick.query != "quick query" || !a.quick.visible {
+		t.Fatal("external unlock discarded search input or closed the panel")
+	}
+	manager.Frame()
+	panel.Frame()
+	if _, ok := manager.Find(a.t("私钥口令")); ok {
+		t.Fatal("manager retained its unlock form after external authentication")
+	}
+	if _, ok := panel.Find(a.t("快速搜索私钥口令")); ok {
+		t.Fatal("quick search retained its unlock form after external authentication")
+	}
+	if len(requests) != 0 {
+		t.Fatal("external unlock restarted authentication")
+	}
+}
 
 type sessionBackend struct {
 	locked   bool

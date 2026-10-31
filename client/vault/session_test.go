@@ -51,3 +51,37 @@ func TestSessionActivityRenewsIdleWithoutExtendingMaximum(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionStateDoesNotRenewIdleAndIdentifiesLockedGeneration(t *testing.T) {
+	v := newFixture(t)
+	start := time.Now()
+	var clock atomic.Int64
+	clock.Store(start.UnixNano())
+	v.session.Lock()
+	v.clock = func() time.Time { return time.Unix(0, clock.Load()) }
+	v.opened, v.touched = start, start
+	v.session.Unlock()
+	v.SetTimeouts(time.Minute, time.Hour)
+	initial, unlocked := v.SessionState()
+	if !unlocked {
+		t.Fatal("new fixture session is locked")
+	}
+	clock.Store(start.Add(55 * time.Second).UnixNano())
+	if generation, unlocked := v.SessionState(); generation != initial || !unlocked {
+		t.Fatal("passive session state changed an active generation")
+	}
+	clock.Store(start.Add(time.Minute).UnixNano())
+	locked, unlocked := v.SessionState()
+	if unlocked || locked == initial {
+		t.Fatal("passive session state renewed idle expiry or retained the unlocked generation")
+	}
+	if repeated, unlocked := v.SessionState(); unlocked || repeated != locked {
+		t.Fatal("passive locked status invalidated an authentication challenge")
+	}
+	if err := v.Unlock(testPassphrase); err != nil {
+		t.Fatal(err)
+	}
+	if generation, unlocked := v.SessionState(); !unlocked || generation == locked {
+		t.Fatal("authentication reused the locked challenge generation")
+	}
+}

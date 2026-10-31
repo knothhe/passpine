@@ -81,6 +81,16 @@ func New(config Config) (*Vault, error) {
 
 func (v *Vault) Config() Config { v.session.Lock(); defer v.session.Unlock(); return v.config }
 
+// SessionState identifies the current locked or unlocked generation without
+// granting access to its keys. Local authentication requests bind to this state
+// so a later lock, unlock or vault replacement invalidates their challenge.
+func (v *Vault) SessionState() (generation uint64, unlocked bool) {
+	v.session.Lock()
+	defer v.session.Unlock()
+	unlocked = v.checkSession()
+	return v.generation, unlocked
+}
+
 func (v *Vault) SetTimeouts(idle, maximum time.Duration) {
 	v.session.Lock()
 	defer v.session.Unlock()

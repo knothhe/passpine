@@ -1,8 +1,9 @@
-// Package app owns the one active vault session shared by the desktop and browser.
+// Package app owns the one active vault session shared by the desktop, browser and CLI.
 package app
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/knothhe/passpine/client/buildinfo"
 	"github.com/knothhe/passpine/client/deviceunlock"
+	"github.com/knothhe/passpine/client/internal/clisession"
 	"github.com/knothhe/passpine/client/nativehost"
 	"github.com/knothhe/passpine/client/vault"
 )
@@ -53,6 +55,8 @@ type Service struct {
 	associationStorageInvalid bool
 	active                    *vault.Vault
 	server                    *nativehost.Server
+	cliServer                 *nativehost.Server
+	cliNonce                  [32]byte
 	onOpen                    func()
 	onLock                    func()
 	clipboard                 func(ClipboardWrite) error
@@ -122,6 +126,9 @@ func New(o Options) (*Service, error) {
 			_ = s.Close()
 		}
 	}()
+	if _, err = rand.Read(s.cliNonce[:]); err != nil {
+		return nil, err
+	}
 	if !o.Preview {
 		s.device = o.DeviceUnlock
 		if s.device == nil {
@@ -199,6 +206,10 @@ func New(o Options) (*Service, error) {
 		if err != nil {
 			return nil, err
 		}
+		s.cliServer, err = nativehost.StartWithFrameLimit(clisession.Directory(dir), clisession.MaxFrame, s.handleCLI)
+		if err != nil {
+			return nil, err
+		}
 	}
 	initialized = true
 	go s.watch()
@@ -245,12 +256,17 @@ func (s *Service) Close() error {
 		s.active.Close()
 	}
 	server := s.server
+	cliServer := s.cliServer
 	s.mu.Unlock()
 	s.closeConfigSync()
-	if server != nil {
-		return server.Close()
+	var err error
+	if cliServer != nil {
+		err = cliServer.Close()
 	}
-	return nil
+	if server != nil {
+		err = errors.Join(err, server.Close())
+	}
+	return err
 }
 func (s *Service) lock() {
 	if s.active != nil {

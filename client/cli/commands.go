@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/knothhe/passpine/client/i18n"
+	"github.com/knothhe/passpine/client/internal/clisession"
 	"github.com/knothhe/passpine/client/vault"
 )
 
@@ -148,6 +149,9 @@ func (c *command) grep(args []string) error {
 	for _, e := range entries {
 		doc, err := v.Read(e.Path)
 		if err != nil {
+			if c.remote != nil && (errors.Is(err, vault.ErrLocked) || errors.Is(err, vault.ErrCancelled) || errors.Is(err, clisession.ErrUnavailable) || errors.Is(err, clisession.ErrOperation)) {
+				return err
+			}
 			fmt.Fprintln(c.stderr, c.t("无法读取 %s：%s", e.Path, c.describe(err)))
 			continue
 		}
@@ -240,7 +244,7 @@ func (c *command) write(name, contents string) error {
 	return err
 }
 
-func (c *command) revision(v *vault.Vault, name string) (string, error) {
+func (c *command) revision(v vaultOperations, name string) (string, error) {
 	doc, err := v.Read(name)
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", nil

@@ -32,6 +32,10 @@ const Protocol = 1
 
 const MaxFrame = 1024 * 1024
 
+// Private endpoints may carry complete CLI entries. Browser endpoints retain
+// MaxFrame; even explicitly configured endpoints remain bounded.
+const maxFrameLimit = 64 << 20
+
 // Native authentication may wait up to two minutes for a user to respond.
 // Keep the relay alive until the client finishes or cancels that interaction.
 const relayTimeout = 130 * time.Second
@@ -53,6 +57,7 @@ type Server struct {
 	listener    net.Listener
 	endpoint    string
 	token       string
+	frameLimit  int
 	once        sync.Once
 	done        chan struct{}
 	mu          sync.Mutex
@@ -63,12 +68,15 @@ func DataDir() (string, error) {
 	return buildinfo.DataDir()
 }
 func ReadFrame(r io.Reader) ([]byte, error) {
+	return readFrame(r, MaxFrame)
+}
+func readFrame(r io.Reader, limit int) ([]byte, error) {
 	var header [4]byte
 	if _, e := io.ReadFull(r, header[:]); e != nil {
 		return nil, e
 	}
 	size := binary.LittleEndian.Uint32(header[:])
-	if size == 0 || size > MaxFrame {
+	if size == 0 || uint64(size) > uint64(limit) {
 		return nil, errors.New("invalid native message size")
 	}
 	data := make([]byte, int(size))
@@ -76,7 +84,10 @@ func ReadFrame(r io.Reader) ([]byte, error) {
 	return data, e
 }
 func WriteFrame(w io.Writer, data []byte) error {
-	if len(data) == 0 || len(data) > MaxFrame {
+	return writeFrame(w, data, MaxFrame)
+}
+func writeFrame(w io.Writer, data []byte, limit int) error {
+	if len(data) == 0 || len(data) > limit {
 		return errors.New("invalid native message size")
 	}
 	var b [4]byte
@@ -114,6 +125,15 @@ func requestFailure(request json.RawMessage, code string) json.RawMessage {
 }
 
 func Start(dir string, handler Handler) (*Server, error) {
+	return StartWithFrameLimit(dir, MaxFrame, handler)
+}
+
+// StartWithFrameLimit starts a separate private endpoint with a larger frame
+// bound. It does not alter browser/native-messaging frame limits.
+func StartWithFrameLimit(dir string, limit int, handler Handler) (*Server, error) {
+	if !validFrameLimit(limit) {
+		return nil, errors.New("invalid native frame limit")
+	}
 	if err := privateDirectory(dir); err != nil {
 		return nil, err
 	}
@@ -139,7 +159,7 @@ func Start(dir string, handler Handler) (*Server, error) {
 		ln.Close()
 		return nil, e
 	}
-	s := &Server{listener: ln, endpoint: endpoint, token: ep.Token, done: make(chan struct{}), connections: map[net.Conn]bool{}}
+	s := &Server{listener: ln, endpoint: endpoint, token: ep.Token, frameLimit: limit, done: make(chan struct{}), connections: map[net.Conn]bool{}}
 	go func() {
 		defer close(s.done)
 		for {
@@ -159,7 +179,7 @@ func (s *Server) serve(c net.Conn, h Handler) {
 	defer func() { c.Close(); s.mu.Lock(); delete(s.connections, c); s.mu.Unlock() }()
 	for {
 		_ = c.SetDeadline(time.Now().Add(relayTimeout))
-		frame, e := ReadFrame(c)
+		frame, e := readFrame(c, s.frameLimit)
 		if e != nil {
 			return
 		}
@@ -167,18 +187,18 @@ func (s *Server) serve(c net.Conn, h Handler) {
 		valid := json.Unmarshal(frame, &v) == nil && subtle.ConstantTimeCompare([]byte(v.Token), []byte(s.token)) == 1
 		clear(frame)
 		if !valid {
-			_ = WriteFrame(c, failure("unauthorized"))
+			_ = writeFrame(c, failure("unauthorized"), s.frameLimit)
 			return
 		}
 		// Time spent idle before reading this request must not consume the
 		// authentication window for the newly received operation.
 		_ = c.SetDeadline(time.Now().Add(relayTimeout))
 		response := h(v.Request)
-		if len(response) > MaxFrame {
+		if len(response) > s.frameLimit {
 			clear(response)
 			response = requestFailure(v.Request, "response_too_large")
 		}
-		e = WriteFrame(c, response)
+		e = writeFrame(c, response, s.frameLimit)
 		clear(v.Request)
 		clear(response)
 		if e != nil {
@@ -233,13 +253,22 @@ func readEndpoint(path string) (Endpoint, error) {
 // RelayClient keeps the authenticated loopback connection alive across browser
 // requests. Failed mutations are never replayed: the next request reconnects.
 type RelayClient struct {
-	lastUsed time.Time
-	dir      string
-	conn     net.Conn
-	endpoint Endpoint
+	lastUsed   time.Time
+	dir        string
+	conn       net.Conn
+	endpoint   Endpoint
+	frameLimit int
 }
 
-func NewRelayClient(dir string) *RelayClient { return &RelayClient{dir: dir} }
+func NewRelayClient(dir string) *RelayClient { return NewRelayClientWithFrameLimit(dir, MaxFrame) }
+
+// NewRelayClientWithFrameLimit uses the bound configured for a private
+// endpoint. An invalid bound is rejected by Send before any connection.
+func NewRelayClientWithFrameLimit(dir string, limit int) *RelayClient {
+	return &RelayClient{dir: dir, frameLimit: limit}
+}
+
+func validFrameLimit(limit int) bool { return limit >= MaxFrame && limit <= maxFrameLimit }
 func (c *RelayClient) Close() {
 	if c.conn != nil {
 		_ = c.conn.Close()
@@ -247,6 +276,9 @@ func (c *RelayClient) Close() {
 	}
 }
 func (c *RelayClient) Send(request []byte) json.RawMessage {
+	if !validFrameLimit(c.frameLimit) {
+		return requestFailure(request, "invalid_request")
+	}
 	var r struct {
 		Protocol  int    `json:"protocol"`
 		RequestID string `json:"requestId"`
@@ -281,13 +313,13 @@ func (c *RelayClient) Send(request []byte) json.RawMessage {
 	}
 	_ = c.conn.SetDeadline(time.Now().Add(relayTimeout))
 	b, _ := json.Marshal(envelope{Token: ep.Token, Request: request})
-	e = WriteFrame(c.conn, b)
+	e = writeFrame(c.conn, b, c.frameLimit)
 	clear(b)
 	if e != nil {
 		c.Close()
 		return fail("transport_error")
 	}
-	response, e := ReadFrame(c.conn)
+	response, e := readFrame(c.conn, c.frameLimit)
 	if e != nil {
 		c.Close()
 		return fail("transport_error")

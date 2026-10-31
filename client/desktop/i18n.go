@@ -60,7 +60,7 @@ var activityLabels = map[string]map[string]string{
 		"config-sync-oauth-buckets": "获取存储桶", "config-sync-oauth-accounts": "刷新账号", "config-sync-oauth-reload": "重新读取配置",
 		"config-sync-cancel": "取消配置同步操作", "config-sync-disconnect": "断开同步连接",
 	},
-	"source":  {"desktop": "客户端", "browser": "浏览器", "automatic": "自动同步"},
+	"source":  {"desktop": "客户端", "browser": "浏览器", "cli": "命令行", "automatic": "自动同步"},
 	"outcome": {"ok": "成功", "error": "失败"},
 }
 
