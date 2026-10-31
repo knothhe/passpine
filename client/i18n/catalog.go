@@ -43,7 +43,9 @@ const CLIHelp = `用法：
 // Chinese source keys keep the original language readable while the English
 // catalog provides the default for unsupported system languages.
 var english = map[string]string{
-	"正在完成退出…":           "Finishing shutdown…",
+	"显示%s":    "Show %s",
+	"隐藏%s":    "Hide %s",
+	"正在完成退出…": "Finishing shutdown…",
 	"仍有操作尚未完成，请稍后重试退出。": "Operations are still running. Try quitting again shortly.",
 	"退出未完成，请重试：%s":      "Could not quit. Please retry: %s",
 	"开发通道":              "Development",

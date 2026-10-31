@@ -627,9 +627,10 @@ func (a *application) configSyncEditor(c *ui.Context) {
 func (a *application) syncTextField(c *ui.Context, key string, value *string, label, placeholder string, password bool) {
 	ui.Column(c).Key(key).FillWidth().MinWidth(0).Gap(5).Children(func() {
 		syncFieldLabel(c, label)
-		input := textBox(c, value, components.TextBoxOptions{}).Label(label).Placeholder(placeholder).FillWidth().MinWidth(0)
 		if password {
-			input.Password()
+			a.passwordInput(c, value, label, placeholder, false)
+		} else {
+			textBox(c, value, components.TextBoxOptions{}).Label(label).Placeholder(placeholder).FillWidth().MinWidth(0)
 		}
 	})
 }

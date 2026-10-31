@@ -482,7 +482,7 @@ func (a *application) preferencesDialogs(c *ui.Context) {
 		panel.Width(460)
 		components.Text(c, a.t("验证恢复私钥")).Bold()
 		muted(c, a.backupPath)
-		input := field(c, a.t("备份私钥口令"), &a.backupPassphrase, a.t("输入口令"), true)
+		input := a.passwordField(c, a.t("备份私钥口令"), &a.backupPassphrase, a.t("输入口令"))
 		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
 			if components.Button(c, a.t("取消"), components.ButtonSecondary).Clicked() {
 				a.backupOpen = false

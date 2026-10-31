@@ -587,8 +587,7 @@ func (a *application) quickSearchUnlockView(c *ui.Context) {
 				muted(c, a.t("系统解锁暂不可用，请打开主窗口检查安全设置"))
 			}
 		} else {
-			input := textBox(c, &a.quick.passphrase, components.TextBoxOptions{}).Ref(&a.quick.passphraseRef).
-				Password().Label(a.t("快速搜索私钥口令")).Placeholder(a.t("私钥口令")).FillWidth().Disabled(a.busy)
+			input := a.passwordInput(c, &a.quick.passphrase, a.t("快速搜索私钥口令"), a.t("私钥口令"), a.busy).Ref(&a.quick.passphraseRef)
 			if a.quick.focusPending {
 				a.quick.passphraseRef.Focus()
 				a.quick.focusPending = false

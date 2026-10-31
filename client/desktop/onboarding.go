@@ -111,9 +111,9 @@ func (a *application) setupView(c *ui.Context) {
 					if a.setupMode == 0 {
 						passphraseLabel, passphrasePlaceholder = a.t("设置私钥口令"), a.t("设置至少 12 个字符的口令")
 					}
-					input := field(c, passphraseLabel, &a.passphrase, passphrasePlaceholder, true)
+					input := a.passwordField(c, passphraseLabel, &a.passphrase, passphrasePlaceholder)
 					if a.setupMode == 0 {
-						field(c, a.t("确认口令"), &a.confirmPassphrase, a.t("再次输入口令"), true)
+						a.passwordField(c, a.t("确认口令"), &a.confirmPassphrase, a.t("再次输入口令"))
 					}
 					label := a.t("创建密钥与密码库")
 					if a.setupMode == 1 {
@@ -278,7 +278,7 @@ func (a *application) unlockView(c *ui.Context) {
 						}
 					}
 				} else {
-					input := field(c, a.t("私钥口令"), &a.passphrase, a.t("输入口令解锁"), true)
+					input := a.passwordField(c, a.t("私钥口令"), &a.passphrase, a.t("输入口令解锁"))
 					input.AutoFocus()
 					if components.Button(c, a.t("解锁密码库"), components.ButtonPrimary).FillWidth().Clicked() || input.Submitted() {
 						a.unlock("")
