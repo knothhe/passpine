@@ -18,7 +18,13 @@ func IconButton(c *ui.Context, icon *ui.SVG, label string) ui.Element {
 func iconButton(c *ui.Context, icon *ui.SVG, label string, iconSize float32) ui.Element {
 	t := c.Theme()
 	size := max(32, t.Rem(2))
-	b := ui.ButtonBase(c).Size(size, size).Radius(t.Radius).
+	// Comfortable title bars use round hover faces, as toolbar items on glass
+	// do; compact ones keep the theme's tighter corners.
+	radius := t.Radius
+	if !Compact(c) {
+		radius = size / 2
+	}
+	b := ui.ButtonBase(c).Size(size, size).Radius(radius).
 		TextColor(t.TextMuted).Label(label)
 	// Paint after properties such as Disabled have been applied by the caller.
 	b.Draw(func(p *ui.Painter, r ui.Rect) {
@@ -26,9 +32,9 @@ func iconButton(c *ui.Context, icon *ui.SVG, label string, iconSize float32) ui.
 			return
 		}
 		if b.Pressed() {
-			p.Fill(r, t.Text.Alpha(0.14), t.Radius)
+			p.Fill(r, t.Text.Alpha(0.14), radius)
 		} else if b.Hovered() {
-			p.Fill(r, t.Text.Alpha(0.08), t.Radius)
+			p.Fill(r, t.Text.Alpha(0.08), radius)
 		}
 	}).Children(func() {
 		components.Icon(c, icon).Size(iconSize, iconSize)

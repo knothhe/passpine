@@ -197,6 +197,7 @@ func (a *application) batchKeepView(c *ui.Context, entries []app.Entry) {
 			components.Text(c, current).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").FontSize(scaledFontSize(c, 12))
 		})
 		sel.Popup(func(panel ui.Element) {
+			a.glassPanel(c, panel)
 			panel.Width(320).MaxWidth(420).Label(a.t("要去掉的公共前缀"))
 			components.ScrollView(c, components.ScrollViewOptions{}).FillWidth().MaxHeight(240).Children(func() {
 				for _, folder := range common {

@@ -952,7 +952,8 @@ func (a *application) sidebarView(c *ui.Context) {
 	if a.closing {
 		return
 	}
-	ui.Column(c).Fill().Padding(sidebar.HeaderHeight(c), 0, 0, 0).Children(func() {
+	// Floating glass panes start inside the window edge; keep rows on them.
+	ui.Column(c).Fill().Padding(sidebar.HeaderHeight(c), 0, 0, a.sidebarInset(c)).Children(func() {
 		if (a.page == "settings" || a.page == "activity") && !a.setup {
 			a.settingsSidebar(c)
 		} else {
@@ -962,7 +963,7 @@ func (a *application) sidebarView(c *ui.Context) {
 }
 
 func (a *application) sidebarToolbar(c *ui.Context) {
-	ui.Column(c).FillWidth().Padding(0, 4).Children(func() {
+	ui.Column(c).FillWidth().Padding(0, max(0, navigationMetricsFor(c).listX-8)).Children(func() {
 		if managerNavigationItem(c, "settings", a.t("设置"), a.t("设置"), lucide.Settings(), a.page == "settings", "", 0).Clicked() {
 			a.navigate("settings", "")
 		}
@@ -979,42 +980,49 @@ func (a *application) header(c *ui.Context) {
 		title = ""
 	}
 	// The shell insets titles to the content edge; continue to the text edge.
-	ui.Row(c).FillWidth().Padding(0, 0, 0, managerFrameInset+managerFrameBorder).AlignItems(ui.Center).Gap(8).Children(func() {
+	compact := compactLayout(c)
+	buttonSize := headerControlSize(c)
+	ui.Row(c).FillWidth().Padding(0, 0, 0, managerFrameInsetFor(c)+managerFrameBorder).AlignItems(ui.Center).Gap(headerGap(c)).Children(func() {
 		if title != "" && (a.page != "entries" || a.setup || a.mainContentWidth(c) >= 540) {
-			components.Text(c, title).Bold().SingleLine()
+			heading := components.Text(c, title).Bold().SingleLine()
+			if !compact {
+				heading.FontSize(scaledFontSize(c, 15))
+			}
 		}
 		ui.Spacer(c)
-		if iconButton(c, lucide.Command(), a.t("打开命令面板"), components.ButtonGhost).Tooltip(a.t("命令面板（Ctrl+Shift+P）")).Disabled(a.commandPaletteBlocked()).Clicked() {
-			a.toggleCommandPalette()
-		}
-		if a.state.Configured {
-			a.vaultSelector(c)
-			a.gitHeaderStatus(c)
-			sync := components.Button(c, "", components.ButtonGhost).Label(a.t("同步密码库")).Tooltip(a.t("同步密码库")).Height(32).Padding(6, 8).Gap(6).
-				Disabled(a.gitActionPending || a.state.GitSyncing || !a.state.GitInitialized)
-			sync.Children(func() {
-				components.Icon(c, lucide.RefreshCw()).Size(16, 16)
-				if a.mainContentWidth(c) >= 540 {
-					components.Text(c, a.t("同步")).FontSize(scaledFontSize(c, 12)).SingleLine()
+		a.headerActionGroup(c, func() {
+			if iconButton(c, lucide.Command(), a.t("打开命令面板"), components.ButtonGhost).Size(buttonSize, buttonSize).Radius(headerControlRadius(c)).Tooltip(a.t("命令面板（Ctrl+Shift+P）")).Disabled(a.commandPaletteBlocked()).Clicked() {
+				a.toggleCommandPalette()
+			}
+			if a.state.Configured {
+				a.vaultSelector(c)
+				a.gitHeaderStatus(c)
+				sync := components.Button(c, "", components.ButtonGhost).Label(a.t("同步密码库")).Tooltip(a.t("同步密码库")).Height(buttonSize).Radius(headerControlRadius(c)).Padding(6, 10).Gap(6).
+					Disabled(a.gitActionPending || a.state.GitSyncing || !a.state.GitInitialized)
+				sync.Children(func() {
+					components.Icon(c, lucide.RefreshCw()).Size(16, 16)
+					if a.mainContentWidth(c) >= 540 {
+						components.Text(c, a.t("同步")).FontSize(scaledFontSize(c, 12)).SingleLine()
+					}
+				})
+				if sync.Clicked() {
+					a.call(app.Request{Action: "git-sync"}, func(app.Data) { a.notice = a.t("同步完成") })
 				}
-			})
-			if sync.Clicked() {
-				a.call(app.Request{Action: "git-sync"}, func(app.Data) { a.notice = a.t("同步完成") })
-			}
-			lockIcon, lockLabel := lucide.LockKeyhole(), a.t("锁定密码库")
-			if a.state.Locked {
-				lockIcon, lockLabel = lucide.LockOpen(), a.t("解锁密码库")
-			}
-			if iconButton(c, lockIcon, lockLabel, components.ButtonGhost).Clicked() {
+				lockIcon, lockLabel := lucide.LockKeyhole(), a.t("锁定密码库")
 				if a.state.Locked {
-					a.navigate("entries", "")
-				} else {
-					a.lock()
+					lockIcon, lockLabel = lucide.LockOpen(), a.t("解锁密码库")
+				}
+				if iconButton(c, lockIcon, lockLabel, components.ButtonGhost).Size(buttonSize, buttonSize).Radius(headerControlRadius(c)).Clicked() {
+					if a.state.Locked {
+						a.navigate("entries", "")
+					} else {
+						a.lock()
+					}
 				}
 			}
-		}
+		})
 		if a.page != "entries" || a.setup || !a.state.Configured {
-			if iconButton(c, lucide.Plus(), a.t("新建条目"), components.ButtonOutline).Clicked() {
+			if iconButton(c, lucide.Plus(), a.t("新建条目"), components.ButtonOutline).Size(buttonSize, buttonSize).Radius(headerControlRadius(c)).Clicked() {
 				a.newEntry()
 			}
 		}
@@ -1043,11 +1051,12 @@ func (a *application) vaultSelector(c *ui.Context) {
 	}
 	// Keep the vault name steady during inspector reads. The menu choices
 	// and the change handler still reject switching while a request is busy.
-	sel.Trigger.Width(width).MinWidth(100).Border(0, c.Theme().Border).Background(c.Theme().Background).Disabled(a.busy && !a.detailReadPending() || a.editor.open).Label(a.t("切换密码库")).Gap(6).Children(func() {
+	sel.Trigger.Width(width).MinWidth(100).Height(headerControlSize(c)).Radius(headerControlRadius(c)).Border(0, c.Theme().Border).Background(ui.Transparent).Disabled(a.busy && !a.detailReadPending() || a.editor.open).Label(a.t("切换密码库")).Gap(6).Children(func() {
 		components.Icon(c, lucide.FolderKey()).Size(14, 14)
 		components.Text(c, a.state.VaultName).SingleLine()
 	})
 	sel.Popup(func(panel ui.Element) {
+		a.glassPanel(c, panel)
 		panel.Width(240).Label(a.t("密码库选项"))
 		components.ScrollView(c, components.ScrollViewOptions{}).FillWidth().MaxHeight(240).Children(func() {
 			found := false
@@ -1100,40 +1109,40 @@ func (a *application) contentView(c *ui.Context) {
 		page := ui.Column(c).Key(a.pagePresentationKey()).Fill().Padding(sidebar.HeaderHeight(c), 0, 0, 0)
 		page.Children(func() {
 			if (!a.state.Configured || a.setup) && !a.settingsAvailableWithoutVault() {
-				a.setupView(c)
+				a.pageFrame(c, "setup", func() { a.setupView(c) })
 				return
 			}
 			if a.state.Locked && a.pendingUnlock.action == "export" {
-				a.unlockView(c)
+				a.pageFrame(c, "unlock", func() { a.unlockView(c) })
 				return
 			}
 			if !a.state.Settings.BrowseWhileLocked && a.detailTransitionPresentation(c.Now()).Unlocking {
 				// Preserve the full-width authentication surface until the selected
 				// detail is ready, rather than moving it into the inspector first.
-				a.detailView(c)
+				a.pageFrame(c, "unlock", func() { a.detailView(c) })
 				return
 			}
 			if a.page != "settings" && a.page != "recovery" && a.page != "activity" {
 				if !a.state.Locked || a.state.Settings.BrowseWhileLocked {
 					a.managerColumnsView(c)
 				} else {
-					a.unlockView(c)
+					a.pageFrame(c, "unlock", func() { a.unlockView(c) })
 				}
 				return
 			}
 			if a.state.Locked && a.page != "settings" && a.page != "activity" {
-				a.unlockView(c)
+				a.pageFrame(c, "unlock", func() { a.unlockView(c) })
 				return
 			}
 			switch a.page {
 			case "recovery":
 				a.recoveryColumnsView(c, a.managerListWidth(c))
 			case "settings":
-				a.settingsView(c)
+				a.pageFrame(c, "settings", func() { a.settingsView(c) })
 			case "activity":
-				a.activityView(c)
+				a.pageFrame(c, "activity", func() { a.activityView(c) })
 			default:
-				a.vaultView(c)
+				a.pageFrame(c, "vault", func() { a.vaultView(c) })
 			}
 		})
 	})

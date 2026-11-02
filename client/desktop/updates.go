@@ -347,7 +347,7 @@ func (a *application) updateReleaseNotesRow(c *ui.Context) {
 }
 
 func (a *application) updateDialog(c *ui.Context) {
-	components.Dialog(c, &a.updates.confirmOpen, components.DialogOptions{Label: a.t("重启并安装更新？"), DisableBackdropClose: true, DisableEscapeClose: a.updates.preparing}, func(panel ui.Element) {
+	a.dialog(c, &a.updates.confirmOpen, components.DialogOptions{Label: a.t("重启并安装更新？"), DisableBackdropClose: true, DisableEscapeClose: a.updates.preparing}, func(panel ui.Element) {
 		panel.Width(450).MaxWidth(500)
 		components.Text(c, a.t("重启并安装更新？")).Bold()
 		muted(c, a.t("将关闭 Passpine，安装版本 %s 后重新打开。密码库和设置会保留。", a.updates.snapshot.Version))

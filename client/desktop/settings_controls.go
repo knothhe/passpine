@@ -18,14 +18,15 @@ func (a *application) settingsSidebar(c *ui.Context) {
 	categories := a.settingsCategories()
 	a.selectedSettingsCategory(categories)
 	ui.Column(c).Fill().Children(func() {
-		ui.Column(c).FillWidth().Padding(24, 16, 18, 16).Children(func() {
+		m := navigationMetricsFor(c)
+		ui.Column(c).FillWidth().Padding(m.sectionTop, m.listX+4, m.sectionBottom+6, m.listX+4).Children(func() {
 			search := textBox(c, &a.settingsState.Query, components.TextBoxOptions{LeadingIcon: lucide.Search()}).Label(a.t("搜索设置")).Placeholder(a.t("搜索设置…")).FillWidth()
 			if search.Changed() && a.preferencesPage() != "settings" {
 				a.navigate("settings", "")
 			}
 		})
 		components.ScrollView(c, components.ScrollViewOptions{}).Fill().Children(func() {
-			ui.Column(c).FillWidth().Padding(0, 12, 12, 12).Gap(4).Children(func() {
+			ui.Column(c).FillWidth().Padding(0, m.listX, m.listX, m.listX).Gap(m.gap).Children(func() {
 				for _, category := range categories {
 					selected := category.ID == a.settingsState.Category
 					if a.preferencesPage() == "recovery" {
@@ -422,9 +423,12 @@ func (a *application) gitHeaderStatus(c *ui.Context) {
 	// The header is the single place for Git status; its details live in the
 	// tooltip and recovery actions in the vault sync settings it opens.
 	status := ui.ButtonBase(c).Key("git-header-status").Label(a.gitStatusLabel()).Tooltip(a.gitStatusDescription()).
-		Shrink(0).Height(32).Padding(6, 8).AlignItems(ui.Center).Gap(6).Radius(c.Theme().Radius)
-	if status.Hovered() {
-		status.Background(c.Theme().Text.Alpha(.04))
+		Shrink(0).Height(headerControlSize(c)).Padding(6, 10).AlignItems(ui.Center).Gap(6).Radius(headerControlRadius(c))
+	// Match the neighbouring ghost buttons' hover and press faces.
+	if status.Pressed() {
+		status.Background(c.Theme().SurfacePressed)
+	} else if status.Hovered() {
+		status.Background(c.Theme().SurfaceHover)
 	}
 	status.Children(func() {
 		if a.state.GitSyncing || a.gitActionPending {

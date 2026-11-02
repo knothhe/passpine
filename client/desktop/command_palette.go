@@ -145,12 +145,17 @@ func (a *application) commandPaletteView(c *ui.Context) {
 	}
 	wasOpen := p.open
 	c.Key("command-palette")
-	components.Dialog(c, &p.open, components.DialogOptions{Label: a.t("命令面板")}, func(panel ui.Element) {
+	a.dialog(c, &p.open, components.DialogOptions{Label: a.t("命令面板")}, func(panel ui.Element) {
 		if !p.open {
 			return
 		}
 		t := c.Theme()
-		panel.Width(620).Height(510).Padding(0).Gap(0).Radius(12).Background(t.Surface).Border(1, t.Border).Clip()
+		panel.Width(620).Height(510).Padding(0).Gap(0).Radius(12).Clip()
+		if !a.glassChrome() {
+			panel.Background(t.Surface).Border(1, t.Border)
+		} else {
+			panel.Radius(18)
+		}
 		c.OnShortcut(ui.Ctrl|ui.Shift, ui.KeyP, a.closeCommandPalette)
 		if runtime.GOOS == "darwin" {
 			c.OnShortcut(ui.Cmd|ui.Shift, ui.KeyP, a.closeCommandPalette)

@@ -44,36 +44,44 @@ func visualBoundsIn(t *testing.T, view *ui.Tester, text string, container ui.Rec
 
 func TestManagerVisualSurfacesShareThemeRoles(t *testing.T) {
 	for _, style := range []string{app.ThemeStyleMonochrome, app.ThemeStyleOnevra} {
-		for _, dark := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/dark=%t", style, dark), func(t *testing.T) {
-				a := fixture()
-				a.state.Settings.ThemeStyle = style
-				view := ui.NewTester(testView(a), 1120, 760)
-				view.SetDark(dark)
-				view.Advance(time.Second)
-				palette := clientPalette(style, dark)
-				if !dark {
-					white := ui.Hex("#ffffff")
-					if themeContrast(white, palette.Surface) >= themeContrast(white, palette.Background) {
-						t.Error("light content panes must be brighter than the navigation background")
+		for _, density := range []string{app.DensityComfortable, app.DensityCompact} {
+			for _, dark := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/dark=%t", style, density, dark), func(t *testing.T) {
+					a := fixture()
+					a.state.Settings.ThemeStyle, a.state.Settings.Density = style, density
+					view := ui.NewTester(testView(a), 1120, 760)
+					view.SetDark(dark)
+					view.Advance(time.Second)
+					palette := clientPalette(style, dark)
+					if !dark {
+						white := ui.Hex("#ffffff")
+						if themeContrast(white, palette.Surface) >= themeContrast(white, palette.Background) {
+							t.Error("light content panes must be brighter than the window background")
+						}
 					}
-				}
-				for _, sample := range []struct {
-					name string
-					x, y int
-					want ui.Color
-				}{
-					{"navigation", 100, 550, palette.Background},
-					{"header", 600, 24, palette.Background},
-					{"list", 300, 550, palette.Surface},
-					{"detail", 1000, 700, palette.Surface},
-				} {
-					pixel := view.Image().RGBAAt(sample.x, sample.y)
-					if pixel.R != sample.want.R || pixel.G != sample.want.G || pixel.B != sample.want.B || pixel.A != 255 {
-						t.Errorf("%s uses a different surface: got %v, want %v", sample.name, pixel, sample.want)
+					// The comfortable sidebar is a raised pane like the content; the
+					// compact one docks on the window background.
+					navigation := palette.Surface
+					if density == app.DensityCompact {
+						navigation = palette.Background
 					}
-				}
-			})
+					for _, sample := range []struct {
+						name string
+						x, y int
+						want ui.Color
+					}{
+						{"navigation", 100, 550, navigation},
+						{"header", 600, 24, palette.Background},
+						{"list", 300, 550, palette.Surface},
+						{"detail", 1000, 700, palette.Surface},
+					} {
+						pixel := view.Image().RGBAAt(sample.x, sample.y)
+						if pixel.R != sample.want.R || pixel.G != sample.want.G || pixel.B != sample.want.B || pixel.A != 255 {
+							t.Errorf("%s uses a different surface: got %v, want %v", sample.name, pixel, sample.want)
+						}
+					}
+				})
+			}
 		}
 	}
 }

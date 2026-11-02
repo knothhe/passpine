@@ -527,7 +527,7 @@ func (a *application) batchEntryRow(c *ui.Context, entry app.Entry) {
 	t := c.Theme()
 	checked := a.batch.selected[entry.Path]
 	c.Key(entry.Path)
-	row := ui.CheckboxBase(c, &checked).Label(a.t("选择条目 %s", entry.Path)).FillWidth().MinHeight(60).
+	row := ui.CheckboxBase(c, &checked).Label(a.t("选择条目 %s", entry.Path)).FillWidth().MinHeight(entryListMetricsFor(c).rowHeight).
 		Padding(8, 9).Gap(12).AlignItems(ui.Center).Radius(t.Radius).Disabled(a.busy)
 	if a.batch.selected[entry.Path] {
 		row.Background(t.Selection)

@@ -25,7 +25,7 @@ func managerListDefaultWidth(c *ui.Context) float32 {
 }
 
 func (a *application) managerListWidthLimits(c *ui.Context) (float32, float32) {
-	available := a.mainContentWidth(c) - 2*(managerFrameInset+managerFrameBorder)
+	available := a.mainContentWidth(c) - 2*(managerFrameInsetFor(c)+managerFrameBorder)
 	if a.page == "recovery" {
 		available = a.mainContentWidth(c)
 	}

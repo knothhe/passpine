@@ -666,6 +666,7 @@ func (s *Service) saveSyncConnection(ctx context.Context, r *SyncConnectionReque
 		return context.Canceled
 	}
 	previousSettings, previousBrowser, previousAssociations := s.prefs.Settings, s.prefs.BrowserPreferences, s.prefs.BrowserAssociations
+	previousFallbacks := s.prefs.ThemeStyleFallbacks
 	if e = s.applySyncValues(result.Values, started); e != nil {
 		s.mu.Unlock()
 		return e
@@ -712,6 +713,7 @@ func (s *Service) saveSyncConnection(ctx context.Context, r *SyncConnectionReque
 		// captured after the network request, including any intervening edits.
 		s.prefs.Settings, s.prefs.BrowserPreferences = previousSettings, previousBrowser
 		s.prefs.BrowserAssociations = previousAssociations
+		s.prefs.ThemeStyleFallbacks = previousFallbacks
 		s.configSync.browser = previousBrowser
 		if rollback := s.savePreferences(); rollback != nil {
 			s.configSync.invalid = true
@@ -797,8 +799,9 @@ func (s *Service) localSyncValues(base cloudsync.Values) cloudsync.Values {
 		"desktop.theme": jsonValue(s.prefs.Settings.Theme), "desktop.themeStyle": jsonValue(s.prefs.Settings.ThemeStyle),
 		"desktop.fontScale": jsonValue(s.prefs.Settings.FontScale), "desktop.language": jsonValue(s.prefs.Settings.Language),
 	}
-	if string(base["desktop.themeStyle"]) == `"omarchy"` && NormalizeThemeStyle(ThemeStyleOmarchy) != ThemeStyleOmarchy && s.prefs.Settings.ThemeStyle == NormalizeThemeStyle(ThemeStyleOmarchy) {
-		local["desktop.themeStyle"] = jsonValue(ThemeStyleOmarchy)
+	fallbacks := s.prefs.ThemeStyleFallbacks
+	if style, ok := fallbacks.keep("desktop.themeStyle", s.prefs.Settings.ThemeStyle, NormalizeThemeStyle, base); ok {
+		local["desktop.themeStyle"] = jsonValue(style)
 	}
 	if p := s.configSync.browser; p != nil {
 		if p.Theme != nil {
@@ -806,6 +809,9 @@ func (s *Service) localSyncValues(base cloudsync.Values) cloudsync.Values {
 		}
 		if p.ThemeStyle != nil {
 			local["browser.themeStyle"] = jsonValue(*p.ThemeStyle)
+			if style, ok := fallbacks.keep("browser.themeStyle", *p.ThemeStyle, NormalizeBrowserThemeStyle, base); ok {
+				local["browser.themeStyle"] = jsonValue(style)
+			}
 		}
 		if p.FontScale != nil {
 			local["browser.fontScale"] = jsonValue(*p.FontScale)
@@ -964,7 +970,12 @@ func (s *Service) applySyncValues(values, started cloudsync.Values) error {
 			}
 		}
 	}
+	fallbacks := s.prefs.ThemeStyleFallbacks.clone()
+	if _, present := values["desktop.themeStyle"]; present && configSyncKeyEnabled(options, "desktop.themeStyle") && string(current["desktop.themeStyle"]) == string(started["desktop.themeStyle"]) {
+		fallbacks.record("desktop.themeStyle", settings.ThemeStyle, NormalizeThemeStyle)
+	}
 	settings.ThemeStyle = NormalizeThemeStyle(settings.ThemeStyle)
+	settings.Density = NormalizeDensity(settings.Density)
 	if validateSettings(settings) != nil {
 		return &cloudsync.Error{Code: "invalid_document"}
 	}
@@ -983,13 +994,25 @@ func (s *Service) applySyncValues(values, started cloudsync.Values) error {
 			if !present || !configSyncKeyEnabled(options, item.k) {
 				continue
 			}
+			edited := false
 			if old, ok := current[item.k]; ok && string(old) != string(started[item.k]) {
-				b = old
+				b, edited = old, true
 			}
 			if len(b) == 0 || json.Unmarshal(b, item.dst) != nil {
 				return &cloudsync.Error{Code: "invalid_document"}
 			}
+			if item.k == "browser.themeStyle" {
+				if edited {
+					fallbacks.clear(item.k)
+				} else {
+					fallbacks.record(item.k, *candidate.ThemeStyle, NormalizeBrowserThemeStyle)
+				}
+			}
 			applied = true
+		}
+		if candidate.ThemeStyle != nil {
+			style := NormalizeBrowserThemeStyle(*candidate.ThemeStyle)
+			candidate.ThemeStyle = &style
 		}
 		if applied {
 			browser = candidate
@@ -1001,12 +1024,14 @@ func (s *Service) applySyncValues(values, started cloudsync.Values) error {
 	previous := s.prefs.Settings
 	previousBrowser := s.prefs.BrowserPreferences
 	previousAssociations := s.prefs.BrowserAssociations
+	previousFallbacks := s.prefs.ThemeStyleFallbacks
 	associations, err := s.mergedAssociationSyncValues(values, current, started)
 	if err != nil {
 		return err
 	}
 	s.prefs.Settings = settings
 	s.prefs.BrowserAssociations = associations
+	s.prefs.ThemeStyleFallbacks = fallbacks
 	if browser != nil {
 		s.prefs.BrowserPreferences = browser
 	}
@@ -1014,6 +1039,7 @@ func (s *Service) applySyncValues(values, started cloudsync.Values) error {
 		s.prefs.Settings = previous
 		s.prefs.BrowserPreferences = previousBrowser
 		s.prefs.BrowserAssociations = previousAssociations
+		s.prefs.ThemeStyleFallbacks = previousFallbacks
 		return e
 	}
 	if browser != nil {
@@ -1032,7 +1058,7 @@ func validBrowserPreferences(p *BrowserSyncPreferences, complete bool) bool {
 	if p.Theme != nil && *p.Theme != "system" && *p.Theme != "light" && *p.Theme != "dark" {
 		return false
 	}
-	if p.ThemeStyle != nil && *p.ThemeStyle != "monochrome" && *p.ThemeStyle != "onevra" {
+	if p.ThemeStyle != nil && NormalizeBrowserThemeStyle(*p.ThemeStyle) != *p.ThemeStyle {
 		return false
 	}
 	if p.Language != nil && *p.Language != "system" && *p.Language != "en" && *p.Language != "zh-CN" {
@@ -1067,9 +1093,14 @@ func (s *Service) mergeBrowserPreferences(p *BrowserSyncPreferences) error {
 		return nil
 	}
 	old := s.prefs.BrowserPreferences
+	oldFallbacks := s.prefs.ThemeStyleFallbacks
+	if s.configSync.browser == nil || s.configSync.browser.ThemeStyle == nil || next.ThemeStyle == nil || *s.configSync.browser.ThemeStyle != *next.ThemeStyle {
+		s.clearThemeStyleFallback("browser.themeStyle")
+	}
 	s.prefs.BrowserPreferences = &next
 	if e := s.savePreferences(); e != nil {
 		s.prefs.BrowserPreferences = old
+		s.prefs.ThemeStyleFallbacks = oldFallbacks
 		return e
 	}
 	s.configSync.browser = cloneBrowserSync(&next)
@@ -1107,8 +1138,18 @@ func validateSyncedValues(values cloudsync.Values) error {
 		return err
 	}
 	stringsAllowed := map[string][]string{
-		"desktop.theme": {"system", "light", "dark"}, "desktop.themeStyle": {"monochrome", "onevra", "omarchy"}, "desktop.language": {"system", "en", "zh-CN"},
-		"browser.theme": {"system", "light", "dark"}, "browser.themeStyle": {"monochrome", "onevra"}, "browser.language": {"system", "en", "zh-CN"},
+		"desktop.theme": {"system", "light", "dark"}, "desktop.language": {"system", "en", "zh-CN"},
+		"browser.theme": {"system", "light", "dark"}, "browser.language": {"system", "en", "zh-CN"},
+	}
+	// Theme styles grow over time: accept any well-formed name and let each
+	// client fall back to a style it supports when applying it.
+	for _, key := range []string{"desktop.themeStyle", "browser.themeStyle"} {
+		if value, ok := values[key]; ok {
+			var style string
+			if json.Unmarshal(value, &style) != nil || !validThemeStyleName(style) {
+				return &cloudsync.Error{Code: "invalid_document"}
+			}
+		}
 	}
 	for key, allowed := range stringsAllowed {
 		if value, ok := values[key]; ok {

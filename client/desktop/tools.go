@@ -16,7 +16,7 @@ func (a *application) generatorDialog(c *ui.Context) {
 	if a.generator.open {
 		c.Key("password-generator")
 	}
-	components.Dialog(c, &a.generator.open, components.DialogOptions{Label: a.t("密码生成器"), DisableBackdropClose: true, DisableEscapeClose: true}, func(panel ui.Element) {
+	a.dialog(c, &a.generator.open, components.DialogOptions{Label: a.t("密码生成器"), DisableBackdropClose: true, DisableEscapeClose: true}, func(panel ui.Element) {
 		panel.Width(420).Padding(18).Gap(12)
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 			components.Text(c, a.t("密码生成器")).Bold()
@@ -191,7 +191,8 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 			}
 		}
 		selectBox.Trigger.Label(label).MinWidth(155).AlignSelf(ui.Center).Children(func() { components.Text(c, display) })
-		selectBox.Popup(func(ui.Element) {
+		selectBox.Popup(func(panel ui.Element) {
+			a.glassPanel(c, panel)
 			for i, v := range values {
 				v, label := v, labels[i]
 				selectBox.Item(v).Label(label).Children(func() { components.Text(c, label) })
@@ -209,7 +210,7 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 	}
 	general := []components.SettingsItem{
 		{ID: "theme-style", Title: a.t("主题风格"), Build: func(c *ui.Context) {
-			styles, labels := []string{app.ThemeStyleMonochrome, app.ThemeStyleOnevra}, []string{a.t("黑白"), a.t("陶土橙")}
+			styles, labels := []string{app.ThemeStyleMonochrome, app.ThemeStyleOnevra, app.ThemeStyleGlass}, []string{a.t("黑白"), a.t("陶土橙"), a.t("液态玻璃")}
 			if runtime.GOOS == "linux" {
 				styles = append(styles, app.ThemeStyleOmarchy)
 				labels = append(labels, a.t("Omarchy 系统配色"))
@@ -218,6 +219,9 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 		}},
 		{ID: "theme", Title: a.t("外观"), Build: func(c *ui.Context) {
 			selectValue(c, &a.settings.Theme, a.t("外观"), []string{"system", "light", "dark"}, []string{a.t("跟随系统"), a.t("浅色"), a.t("深色")})
+		}},
+		{ID: "density", Title: a.t("页面排版"), Build: func(c *ui.Context) {
+			choiceSettingSegments(c, &a.settings.Density, a.t("页面排版"), []string{app.DensityComfortable, app.DensityCompact}, []string{a.t("舒适"), a.t("紧凑")})
 		}},
 		{ID: "font-size", Title: a.t("文字大小"), Build: func(c *ui.Context) {
 			selected := (app.NormalizeFontScale(a.settings.FontScale) - 80) / 10
