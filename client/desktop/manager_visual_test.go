@@ -65,13 +65,24 @@ func TestManagerVisualSurfacesShareThemeRoles(t *testing.T) {
 					if density == app.DensityCompact {
 						navigation = palette.Background
 					}
+					// Sample the header between the title and the first action. Its
+					// controls move with the platform: Windows adds caption buttons
+					// at the right edge, which shifts the action group left.
+					actions, found := view.Find(a.t("打开命令面板"))
+					if !found {
+						t.Fatal("header actions are missing")
+					}
+					headerX := int(actions.X) - 24
+					if headerX <= 500 {
+						t.Fatalf("header actions %v leave no free header space to sample", actions)
+					}
 					for _, sample := range []struct {
 						name string
 						x, y int
 						want ui.Color
 					}{
 						{"navigation", 100, 550, navigation},
-						{"header", 600, 24, palette.Background},
+						{"header", headerX, 24, palette.Background},
 						{"list", 300, 550, palette.Surface},
 						{"detail", 1000, 700, palette.Surface},
 					} {
