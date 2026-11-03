@@ -88,13 +88,13 @@ DOM 组件支持同源 iframe 和显式允许的 portal。旋转或斜切元素�
 
 [浏览器设置页](../browser/src/components/options.css)采用更宽松的结构：侧栏基准宽 228、列间距 48、标题字号 25、分组间距 26、分组标题到卡片 10、卡片内边距 18、正文 13、说明 11。其密度与小弹窗不同，有明确的场景理由。
 
-原生 UI 使用逻辑布局单位，不能直接当作截图物理像素或网页 CSS px。以下为源码基准值，字体还会受设置及系统缩放影响：
+原生 UI 使用逻辑布局单位，不能直接当作截图物理像素或网页 CSS px。以下为舒适密度（comfortable）、非 Liquid Glass 主题下的源码基准值，字体还会受设置及系统缩放影响。紧凑密度使用不同的间距与行高，Liquid Glass 卡片也不采用相同的实色边框：
 
 | 对象 | 当前值 | 来源 |
 | --- | --- | --- |
-| 主内容框 | 外围 inset 8、边框 1；列表最小宽 240、详情最小宽 360 | [manager_resize.go](../client/desktop/manager_resize.go) |
-| 列表区域 | 上右下左内边距 24/16/12/16，分区间距 16，标题 18、计数 11 | [vault.go](../client/desktop/vault.go) |
-| 条目行 | 最小高度 60，上下内边距 8、左右 9，主次字号 13/11，文字间距 3 | [vault.go](../client/desktop/vault.go) |
+| 主内容框 | 外围 inset 8、边框 1；列表最小宽 240、详情最小宽 360 | [manager_resize.go](../client/desktop/manager_resize.go)、[density.go](../client/desktop/density.go) |
+| 列表区域 | 上右下左内边距 24/16/12/16，分区间距 16，标题 18、计数 11 | [vault.go](../client/desktop/vault.go)、[density.go](../client/desktop/density.go) |
+| 条目行 | 最小高度 60，上下内边距 8、左右 9，主次字号 13/11，文字间距 3 | [vault.go](../client/desktop/vault.go)、[density.go](../client/desktop/density.go) |
 | 详情区域 | 最大宽度 808，内边距 24，工具栏最小高度 32 | [vault.go](../client/desktop/vault.go) |
 | 凭证字段 | 最小高度 76，上下内边距 12，标签与值间距 6，字号 11/13 | [vault.go](../client/desktop/vault.go) |
 

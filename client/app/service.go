@@ -30,6 +30,9 @@ type preferences struct {
 	Vaults             []VaultInfo             `json:"vaults"`
 	Settings           Settings                `json:"settings"`
 	BrowserPreferences *BrowserSyncPreferences `json:"browserPreferences,omitempty"`
+	// ThemeStyleFallbacks records, by sync key, synced theme styles this
+	// device shows a fallback for; see themeStyleFallbacks.
+	ThemeStyleFallbacks *themeStyleFallbacks `json:"themeStyleFallbacks,omitempty"`
 	// Kept in memory with the preference transaction, but stored separately so
 	// older clients cannot erase associations while rewriting preferences.json.
 	BrowserAssociations *browserAssociationStore `json:"-"`
@@ -86,7 +89,7 @@ type Service struct {
 }
 
 func DefaultSettings() Settings {
-	return Settings{Theme: "system", ThemeStyle: ThemeStyleMonochrome, FontScale: DefaultFontScale, Language: "system", IdleMinutes: 1, MaxSessionMinutes: 60, ClipboardSeconds: 30, CloseToTray: true, DockIcon: DockIconShow, TrayClickAction: TrayClickQuickPanel, BrowseWhileLocked: true, DeviceUnlock: true, AutoDownloadUpdates: true, AutoSync: false, SyncMinutes: 0, RecordActivity: true, ActivityMaxEntries: 1000, ActivityRetentionDays: 7, GlobalShortcut: DefaultGlobalShortcut}
+	return Settings{Theme: "system", ThemeStyle: ThemeStyleMonochrome, FontScale: DefaultFontScale, Density: DensityComfortable, Language: "system", IdleMinutes: 1, MaxSessionMinutes: 60, ClipboardSeconds: 30, CloseToTray: true, DockIcon: DockIconShow, TrayClickAction: TrayClickQuickPanel, BrowseWhileLocked: true, DeviceUnlock: true, AutoDownloadUpdates: true, AutoSync: false, SyncMinutes: 0, RecordActivity: true, ActivityMaxEntries: 1000, ActivityRetentionDays: 7, GlobalShortcut: DefaultGlobalShortcut}
 }
 func New(o Options) (*Service, error) {
 	var err error
@@ -160,6 +163,7 @@ func New(o Options) (*Service, error) {
 		s.prefs.Settings.ThemeStyle = defaultThemeStyle()
 	}
 	s.prefs.Settings.ThemeStyle = NormalizeThemeStyle(s.prefs.Settings.ThemeStyle)
+	s.prefs.Settings.Density = NormalizeDensity(s.prefs.Settings.Density)
 	normalizeLifecycleSettings(&s.prefs.Settings, DefaultSettings())
 	normalizeTypographySettings(&s.prefs.Settings, DefaultSettings())
 	if e := validateSettings(s.prefs.Settings); e != nil {
@@ -705,6 +709,9 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 		if settings.ThemeStyle == "" {
 			settings.ThemeStyle = NormalizeThemeStyle(s.prefs.Settings.ThemeStyle)
 		}
+		if settings.Density == "" {
+			settings.Density = NormalizeDensity(s.prefs.Settings.Density)
+		}
 		shortcut, err := NormalizeGlobalShortcut(settings.GlobalShortcut)
 		if err != nil {
 			return Data{}, err
@@ -719,9 +726,14 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 				return Data{}, e
 			}
 		}
+		previousFallbacks := s.prefs.ThemeStyleFallbacks
+		if settings.ThemeStyle != previous.ThemeStyle {
+			s.clearThemeStyleFallback("desktop.themeStyle")
+		}
 		s.prefs.Settings = settings
 		if e := s.savePreferences(); e != nil {
 			s.prefs.Settings = previous
+			s.prefs.ThemeStyleFallbacks = previousFallbacks
 			return Data{}, e
 		}
 		if s.active != nil {
@@ -1009,7 +1021,10 @@ func validateSettings(v Settings) error {
 	if v.Theme != "system" && v.Theme != "light" && v.Theme != "dark" {
 		return errors.New("invalid theme")
 	}
-	if v.ThemeStyle != ThemeStyleOnevra && v.ThemeStyle != ThemeStyleMonochrome && (v.ThemeStyle != ThemeStyleOmarchy || NormalizeThemeStyle(v.ThemeStyle) != v.ThemeStyle) {
+	if v.Density != DensityComfortable && v.Density != DensityCompact {
+		return errors.New("invalid layout density")
+	}
+	if v.ThemeStyle != ThemeStyleOnevra && v.ThemeStyle != ThemeStyleMonochrome && v.ThemeStyle != ThemeStyleGlass && (v.ThemeStyle != ThemeStyleOmarchy || NormalizeThemeStyle(v.ThemeStyle) != v.ThemeStyle) {
 		return errors.New("invalid theme style")
 	}
 	if v.Language != "zh-CN" && v.Language != "en" && v.Language != "system" {

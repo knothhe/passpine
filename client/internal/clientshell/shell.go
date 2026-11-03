@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
@@ -91,6 +92,10 @@ type ShellOptions struct {
 	MinimizeLabel, MaximizeLabel, RestoreLabel, CloseLabel string
 	// Toasts places the window's toasts; top placements also clear the header.
 	Toasts components.ToastOptions
+	// Chrome, when set, returns this frame's shell presentation: its density
+	// and whether the sidebar floats as Liquid Glass over a backdrop. It runs
+	// on every frame after Theme, so it can follow application settings.
+	Chrome func(*ui.Context) Chrome
 	// Theme, when set, returns the frame's theme; Shell installs it before
 	// building anything, so its own surfaces and all content use it. It runs
 	// on every frame, so it can follow application state; pass theme.Onevra
@@ -98,6 +103,38 @@ type ShellOptions struct {
 	// belongs to mygo.Theme.SetSource, which also covers native chrome.
 	Theme func(*ui.Context) *ui.Theme
 }
+
+// Chrome describes how the shell draws its header and sidebar in a frame.
+// The zero value is the comfortable, opaque presentation.
+type Chrome struct {
+	// Compact shortens the header and docks the sidebar edge to edge.
+	// Applications should also lower Theme.Spacing below 4 so HeaderHeight
+	// and their own content follow the same density.
+	Compact bool
+	// Floating insets the sidebar from the window's edges as a rounded pane,
+	// filled with LeftBackground and outlined with a hairline, and drops the
+	// header's background and separators so the window reads as one surface.
+	// Glass sidebars float unless Compact.
+	Floating bool
+	// Glass paints Backdrop under the whole window and draws the sidebar as a
+	// pane of Liquid Glass over it. The header, content region and replacement
+	// pages stay transparent; HeaderBackground and LeftBackground are ignored.
+	// Comfortable glass floats the pane inside the window's edges; compact
+	// glass docks it flush against them.
+	Glass bool
+	// Backdrop fills the window's root element beneath glass panes, for
+	// example with a gradient. Nil shows the theme's background color.
+	Backdrop func(c *ui.Context, root ui.Element)
+}
+
+// floating reports whether the sidebar is drawn as an inset pane.
+func (ch Chrome) floating() bool { return ch.Floating || ch.Glass && !ch.Compact }
+
+// Floating sidebars keep this inset from the window's edges.
+const (
+	floatingSidebarInset  float32 = 8
+	floatingSidebarRadius float32 = 18
+)
 
 // Shell owns window presentation, sidebar state and the active page.
 // Applications retain ownership of business state and application lifetime.
@@ -320,8 +357,23 @@ func (s *Shell) refresh() {
 // Content or pages.
 // The header remains above content for window dragging and header controls;
 // keep interactive body content below this height.
+//
+// A theme Spacing below 4 selects the compact header. macOS keeps room to
+// center its traffic lights, which the window places 16 DIPs from the top.
 func HeaderHeight(c *ui.Context) float32 {
+	if Compact(c) {
+		minimum := float32(40)
+		if runtime.GOOS == "darwin" {
+			minimum = 44
+		}
+		return max(minimum, c.TitleBar().Height, c.Theme().Rem(2.5))
+	}
 	return max(48, c.TitleBar().Height, c.Theme().Rem(3))
+}
+
+// Compact reports whether the frame's theme asks for the compact density.
+func Compact(c *ui.Context) bool {
+	return c.Theme().Space(1) < 4
 }
 
 const sidebarDuration = 220 * time.Millisecond
@@ -363,14 +415,29 @@ func (s *Shell) SetToasts(options components.ToastOptions) {
 	s.refresh()
 }
 
+func (s *Shell) chrome(c *ui.Context) Chrome {
+	if s.options.Chrome == nil {
+		return Chrome{}
+	}
+	return s.options.Chrome(c)
+}
+
 func (s *Shell) build(c *ui.Context) {
-	vibrant := c.Vibrancy()
-	if vibrant {
+	chrome := s.chrome(c)
+	vibrant := c.Vibrancy() && !chrome.Glass
+	if vibrant || chrome.Glass {
 		c.Root().Background(ui.Transparent)
 	}
 	background := c.Theme().Background.Alpha(1)
 	root := ui.Column(c).Fill().Clip()
-	if !vibrant {
+	if chrome.Glass {
+		root.Background(background)
+		if chrome.Backdrop != nil {
+			chrome.Backdrop(c, root)
+		}
+		// Glass shows what was painted beneath it; regions stay transparent.
+		background = ui.Transparent
+	} else if !vibrant {
 		root.Background(background)
 	}
 	// Snapshot the page for this frame; callbacks can change it for the next.
@@ -414,7 +481,7 @@ func (s *Shell) build(c *ui.Context) {
 							s.options.Content(c)
 						}
 					})
-					if leftProgress > 0 && !s.leftOverlay {
+					if leftProgress > 0 && !s.leftOverlay && !chrome.Glass && !chrome.floating() {
 						shellSeparator(c)
 					}
 				})
@@ -428,7 +495,13 @@ func (s *Shell) build(c *ui.Context) {
 				}
 				sidebar := ui.Column(c).Key("left").Absolute().Left(0).Top(0).Bottom(0).
 					Width(leftWidth * leftProgress).Clip()
+				paneFill := c.Theme().Surface.Alpha(1)
 				if s.options.LeftBackground != nil {
+					paneFill = s.options.LeftBackground(c)
+				}
+				if chrome.Glass || chrome.floating() {
+					// The pane is painted inside the fixed-width column below.
+				} else if s.options.LeftBackground != nil {
 					sidebar.Background(s.options.LeftBackground(c))
 				} else if !vibrant || s.leftOverlay {
 					sidebar.Background(c.Theme().Surface.Alpha(1))
@@ -437,19 +510,24 @@ func (s *Shell) build(c *ui.Context) {
 				// the backdrop beneath it.
 				sidebar.Clicked()
 				sidebar.Children(func() {
-					ui.Column(c).Width(leftWidth).Shrink(0).FillHeight().
-						Disabled(!leftOpen).Children(func() {
+					pane := ui.Column(c).Width(leftWidth).Shrink(0).FillHeight().
+						Disabled(!leftOpen)
+					if chrome.Glass || chrome.floating() {
+						sidebarPane(c, pane, chrome, s.leftOverlay, paneFill)
+					}
+					pane.Children(func() {
 						ui.Column(c).FillWidth().Grow(1).MinHeight(0).Clip().Children(func() {
 							if s.options.Left != nil {
 								s.options.Left(c)
 							}
 						})
 						if s.options.LeftToolbar != nil {
+							inset := SidebarPaneInset(chrome)
 							ui.Toolbar(c, func() { s.options.LeftToolbar(c) }).
-								FillWidth().Shrink(0).Padding(8)
+								FillWidth().Shrink(0).Padding(8, 8, 8+inset, 8+inset)
 						}
 					})
-					if s.leftOverlay && leftProgress > 0 {
+					if s.leftOverlay && leftProgress > 0 && !chrome.Glass && !chrome.floating() {
 						ui.Box(c).Absolute().Right(0).Top(0).Bottom(0).Width(1).Background(c.Theme().Border)
 					}
 				})
@@ -464,11 +542,12 @@ func (s *Shell) build(c *ui.Context) {
 		rightInset := max(8, bar.Right)
 		header := ui.Row(c).Key("header").Absolute().Top(0).Left(0).Right(0).Height(headerHeight).
 			AlignItems(ui.Center).Padding(6, rightInset, 6, leftInset).DragWindow()
-		if s.options.HeaderBackground != nil {
+		headerBackground := s.options.HeaderBackground != nil && !chrome.Glass && !chrome.floating()
+		if headerBackground {
 			header.Background(s.options.HeaderBackground(c))
 		}
 		header.Children(func() {
-			if s.options.HeaderBackground != nil {
+			if headerBackground {
 				ui.Box(c).Key("header-separator").Absolute().Left(0).Right(0).Bottom(0).Height(1).Background(c.Theme().Border)
 			}
 			if page == nil {
@@ -541,6 +620,51 @@ func (s *Shell) resizeHandle(c *ui.Context, width, maxWidth float32) {
 		c.Invalidate()
 	}
 	handle.FocusRing(handle.FocusVisible())
+}
+
+// sidebarPane paints the sidebar's surface beneath its content. Floating
+// panes sit inside the window's edges with rounded corners, of Liquid Glass or
+// of fill with a hairline and a soft shadow; a compact glass pane docks flush
+// and ends in a hairline instead.
+func sidebarPane(c *ui.Context, pane ui.Element, chrome Chrome, overlay bool, fill ui.Color) {
+	t := c.Theme()
+	border := t.Border
+	pane.Draw(func(p *ui.Painter, r ui.Rect) {
+		if chrome.Glass && !chrome.floating() {
+			// Compact glass stays flush, also as a narrow-window overlay, so
+			// its rows need no inset (SidebarPaneInset).
+			glass.Paint(p, r, 0, glass.Glass{})
+			p.Fill(ui.Rect{X: r.X + r.W - 1, Y: r.Y, W: 1, H: r.H}, border, 0)
+			return
+		}
+		inset := floatingSidebarInset
+		right := float32(0)
+		if overlay {
+			right = inset
+		}
+		box := ui.Rect{X: r.X + inset, Y: r.Y + inset, W: r.W - inset - right, H: r.H - 2*inset}
+		if chrome.Glass {
+			glass.Paint(p, box, floatingSidebarRadius, glass.Glass{})
+			return
+		}
+		shadow := ui.RGBA(0, 0, 0, .05)
+		if t.Dark || overlay {
+			shadow = ui.RGBA(0, 0, 0, .16)
+		}
+		p.Shadow(box, floatingSidebarRadius, 0, 1, 6, 0, shadow)
+		p.Fill(box, fill, floatingSidebarRadius)
+		p.Stroke(box, border, floatingSidebarRadius, 1)
+	})
+}
+
+// SidebarPaneInset reports how far sidebar content should stay from the
+// sidebar's outer edges so that its rows sit on a floating pane. Docked
+// sidebars need none.
+func SidebarPaneInset(chrome Chrome) float32 {
+	if !chrome.floating() {
+		return 0
+	}
+	return floatingSidebarInset
 }
 
 // Separators overlay the surface; they never reserve layout space.

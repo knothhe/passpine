@@ -454,7 +454,7 @@ func (a *application) dialogs(c *ui.Context) {
 	if a.discardOpen {
 		c.Key("discard-editor")
 	}
-	switch components.AlertDialog(c, &a.discardOpen, components.AlertDialogOptions{Title: a.t("放弃本次修改？"), Message: a.t("尚未保存的修改会丢失。你也可以先保存为加密草稿。"), ConfirmLabel: a.t("放弃修改"), CancelLabel: a.t("继续编辑")}) {
+	switch a.alertDialog(c, &a.discardOpen, components.AlertDialogOptions{Title: a.t("放弃本次修改？"), Message: a.t("尚未保存的修改会丢失。你也可以先保存为加密草稿。"), ConfirmLabel: a.t("放弃修改"), CancelLabel: a.t("继续编辑")}) {
 	case components.DialogConfirmed:
 		intent := a.editor.exit
 		a.closeEditor()
@@ -467,7 +467,7 @@ func (a *application) dialogs(c *ui.Context) {
 	if a.deleteOpen {
 		c.Key("delete-entry")
 	}
-	if components.AlertDialog(c, &a.deleteOpen, components.AlertDialogOptions{Title: a.t("将条目移到回收站？"), Message: a.t("将在本机保存加密恢复副本，之后可从恢复中心还原。"), ConfirmLabel: a.t("移到回收站"), CancelLabel: a.t("取消")}) == components.DialogConfirmed {
+	if a.alertDialog(c, &a.deleteOpen, components.AlertDialogOptions{Title: a.t("将条目移到回收站？"), Message: a.t("将在本机保存加密恢复副本，之后可从恢复中心还原。"), ConfirmLabel: a.t("移到回收站"), CancelLabel: a.t("取消")}) == components.DialogConfirmed {
 		entry := a.detail.Entry
 		a.call(app.Request{Action: "delete", Entry: entry, Revision: a.detail.Revision}, func(app.Data) {
 			a.detail, a.reveal, a.revealedFields = app.Data{}, false, nil
@@ -478,7 +478,7 @@ func (a *application) dialogs(c *ui.Context) {
 }
 
 func (a *application) preferencesDialogs(c *ui.Context) {
-	components.Dialog(c, &a.backupOpen, components.DialogOptions{Label: a.t("验证恢复私钥"), DisableBackdropClose: true}, func(panel ui.Element) {
+	a.dialog(c, &a.backupOpen, components.DialogOptions{Label: a.t("验证恢复私钥"), DisableBackdropClose: true}, func(panel ui.Element) {
 		panel.Width(460)
 		components.Text(c, a.t("验证恢复私钥")).Bold()
 		muted(c, a.backupPath)
@@ -497,7 +497,7 @@ func (a *application) preferencesDialogs(c *ui.Context) {
 			}
 		})
 	})
-	if components.AlertDialog(c, &a.purgeOpen, components.AlertDialogOptions{Title: a.t("永久删除这份恢复副本？"), Message: a.t("此操作无法撤销。密码库中的现有条目不会受影响。"), ConfirmLabel: a.t("永久删除"), CancelLabel: a.t("取消")}) == components.DialogConfirmed {
+	if a.alertDialog(c, &a.purgeOpen, components.AlertDialogOptions{Title: a.t("永久删除这份恢复副本？"), Message: a.t("此操作无法撤销。密码库中的现有条目不会受影响。"), ConfirmLabel: a.t("永久删除"), CancelLabel: a.t("取消")}) == components.DialogConfirmed {
 		id := a.purgeID
 		a.call(app.Request{Action: "purge", ID: id, Kind: a.recoveryType()}, func(d app.Data) { a.removeRecovery(id); a.notice = a.t("恢复副本已永久删除") })
 	}

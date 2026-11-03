@@ -36,6 +36,7 @@ func CLIPreferences(dataDir string) (Settings, string, []VaultInfo, error) {
 		prefs.Settings.ThemeStyle = defaultThemeStyle()
 	}
 	prefs.Settings.ThemeStyle = NormalizeThemeStyle(prefs.Settings.ThemeStyle)
+	prefs.Settings.Density = NormalizeDensity(prefs.Settings.Density)
 	normalizeLifecycleSettings(&prefs.Settings, DefaultSettings())
 	normalizeTypographySettings(&prefs.Settings, DefaultSettings())
 	if shortcut, err := NormalizeGlobalShortcut(prefs.Settings.GlobalShortcut); err == nil {

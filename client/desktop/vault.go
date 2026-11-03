@@ -22,7 +22,8 @@ func (a *application) vaultView(c *ui.Context) {
 }
 func (a *application) listView(c *ui.Context) {
 	a.filtered = a.entries()
-	ui.Column(c).Fill().MinHeight(0).Padding(24, 16, 12, 16).Gap(16).Children(func() {
+	m := entryListMetricsFor(c)
+	ui.Column(c).Fill().MinHeight(0).Padding(m.top, m.side, m.bottom, m.side).Gap(m.gap).Children(func() {
 		ui.Row(c).FillWidth().MinHeight(43).AlignItems(ui.Start).Gap(8).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 				components.Text(c, a.entriesTitle()).FillWidth().SingleLine().Ellipsis("…").FontSize(scaledFontSize(c, 18)).Bold()
@@ -88,7 +89,7 @@ func (a *application) listView(c *ui.Context) {
 		} else {
 			components.List(c, &a.list, len(a.filtered), func(i int) {
 				e := a.filtered[i]
-				row := ui.Row(c).FillWidth().MinHeight(60).Padding(8, 9).AlignItems(ui.Center).Gap(8).Radius(c.Theme().Radius).Label(a.t("账号 %s", e.Path))
+				row := ui.Row(c).FillWidth().MinHeight(m.rowHeight).Padding(m.rowPadY, 9).AlignItems(ui.Center).Gap(8).Radius(c.Theme().Radius).Label(a.t("账号 %s", e.Path))
 				selected := e.Path == a.selected
 				showCopy := row.Hovered() || row.FocusWithin() || i == a.selectedIndex && a.list.Focused(c)
 				if selected {
@@ -101,7 +102,7 @@ func (a *application) listView(c *ui.Context) {
 					row.Background(c.Theme().Text.Alpha(.04))
 				}
 				row.Children(func() {
-					ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
+					ui.Column(c).Grow(1).MinWidth(0).Gap(m.lineGap).Children(func() {
 						components.Text(c, e.Name).SingleLine().Ellipsis("…").FontSize(scaledFontSize(c, 13)).Bold()
 						components.Text(c, a.entrySubtitle(e)).SingleLine().Ellipsis("…").FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted)
 					})

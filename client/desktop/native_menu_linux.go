@@ -10,6 +10,8 @@ import (
 )
 
 func nativeMenuCSS(t *ui.Theme) string {
+	// GTK CSS receives opaque colors; translucent roles are composited over
+	// the surface they tint first.
 	hex := func(c ui.Color) string { return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B) }
 	return fmt.Sprintf(`
 menubar {
@@ -28,7 +30,7 @@ menubar > menuitem:hover, menu menuitem:hover {
 }
 menubar > menuitem:disabled, menu menuitem:disabled { color: %s; }
 menu separator { background-color: %s; min-height: 1px; margin: 4px 8px; }
-`, hex(t.Background), hex(t.Text), hex(t.Border), hex(t.Surface), hex(t.Text), hex(t.Border), hex(t.SurfaceHover), hex(t.Text), hex(t.TextMuted), hex(t.Border))
+`, hex(t.Background), hex(t.Text), hex(t.Border.Over(t.Background)), hex(t.Surface), hex(t.Text), hex(t.Border.Over(t.Surface)), hex(t.SurfaceHover.Over(t.Surface)), hex(t.Text), hex(t.TextMuted), hex(t.Border.Over(t.Surface)))
 }
 
 func (a *application) updateNativeMenuTheme() {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/app"
 	"github.com/knothhe/passpine/client/assets"
@@ -400,7 +401,16 @@ func (a *application) quickSearchView(c *ui.Context) {
 	}
 	c.OnShortcut(ui.Ctrl, ui.KeyN, func() { a.moveQuickSearchSelection(1) })
 	c.OnShortcut(ui.Ctrl, ui.KeyP, func() { a.moveQuickSearchSelection(-1) })
-	ui.Column(c).Fill().Background(c.Theme().Background).Border(1, c.Theme().Border).Radius(14).Clip().Children(func() {
+	glassy := a.glassChrome()
+	panel := ui.Column(c).Fill().Radius(14).Clip()
+	if glassy {
+		// The panel paints its own backdrop for the body's glass to refract.
+		glassBackdrop(c, panel)
+		panel.Border(1, glassRim(c.Theme()))
+	} else {
+		panel.Background(c.Theme().Background).Border(1, c.Theme().Border)
+	}
+	panel.Children(func() {
 		header := ui.Row(c).FillWidth().Height(38).Padding(6, 16).AlignItems(ui.Center).Gap(7)
 		if !tray {
 			header = header.DragWindow()
@@ -415,49 +425,22 @@ func (a *application) quickSearchView(c *ui.Context) {
 			components.Text(c, a.state.VaultName).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).SingleLine().MinWidth(0).MaxWidth(110).Tooltip(a.state.VaultName)
 			a.quickSearchHeaderActions(c)
 		})
-		if !a.state.Configured {
-			a.quickSearchEmptyView(c, a.t("先设置一个密码库"), a.t("打开主窗口创建或选择密码库"))
-		} else if a.quickSearchNeedsUnlock() {
-			a.quickSearchUnlockView(c)
-		} else {
-			a.quickSearchResultsView(c)
+		inset := float32(0)
+		if glassy {
+			inset = 8
 		}
-		ui.Box(c).FillWidth().Height(1).Background(c.Theme().Border)
-		ui.Row(c).FillWidth().Height(48).Padding(8, 16).AlignItems(ui.Center).Gap(10).Children(func() {
-			if a.state.Configured && !a.quickSearchNeedsUnlock() {
-				ui.Row(c).AlignItems(ui.Center).Gap(8).Shrink(0).Children(func() {
-					ui.Row(c).Gap(3).Children(func() {
-						quickSearchKeycap(c, "↑", false)
-						quickSearchKeycap(c, "↓", false)
-					})
-					if !tray {
-						ui.Row(c).Gap(3).Tooltip("Ctrl+N / Ctrl+P").Children(func() {
-							quickSearchKeycap(c, quickSearchControlShortcut("N"), false)
-							quickSearchKeycap(c, quickSearchControlShortcut("P"), false)
-						})
-					}
-					components.Text(c, a.t("选择")).FontSize(scaledFontSize(c, 11)).SingleLine().TextColor(c.Theme().TextMuted)
+		ui.Column(c).Key("quick-search-body-inset").FillWidth().Grow(1).MinHeight(0).Padding(0, inset, inset, inset).Gap(inset).Children(func() {
+			if glassy && a.state.Configured && !a.quickSearchNeedsUnlock() {
+				a.quickSearchGlassField(c)
+			}
+			body := ui.Column(c).Key("quick-search-body").Fill().MinWidth(0).MinHeight(0)
+			if glassy {
+				radius, tint := float32(12), glassContentTint(c.Theme())
+				body.Radius(radius).Clip().Material(glass.Glass{}).Draw(func(p *ui.Painter, r ui.Rect) {
+					p.Fill(r, tint, radius)
 				})
 			}
-			ui.Spacer(c)
-			if !tray && components.Button(c, "", components.ButtonGhost).Label(a.t("打开主窗口")).Height(30).Padding(5, 9).Gap(9).Shrink(0).Children(func() {
-				components.Text(c, a.t("打开主窗口")).FontSize(scaledFontSize(c, 12)).SingleLine()
-				quickSearchKeycap(c, quickSearchOpenShortcut(), false)
-			}).Clicked() {
-				a.openQuickSearchInManager()
-			}
-			if a.state.Configured && !a.quickSearchNeedsUnlock() {
-				label := a.t("复制密码")
-				if a.quick.operation == "copy" {
-					label = a.t("正在复制…")
-				}
-				if components.Button(c, "", components.ButtonPrimary).Label(label).Height(30).Padding(5, 12).Gap(10).Shrink(0).Disabled(a.busy || len(a.quick.results) == 0).Children(func() {
-					components.Text(c, label).FontSize(scaledFontSize(c, 12)).SingleLine()
-					quickSearchKeycap(c, "↵", true)
-				}).Clicked() {
-					a.copyQuickSearchResult()
-				}
-			}
+			body.Children(func() { a.quickSearchBody(c, tray) })
 		})
 	})
 	if a.quick.clearFeedback {
@@ -471,39 +454,124 @@ func (a *application) quickSearchView(c *ui.Context) {
 	components.Toasts(c, components.ToastOptions{Inset: 48})
 }
 
+// quickSearchBody holds the results or state view and the action footer.
+func (a *application) quickSearchBody(c *ui.Context, tray bool) {
+	if !a.state.Configured {
+		a.quickSearchEmptyView(c, a.t("先设置一个密码库"), a.t("打开主窗口创建或选择密码库"))
+	} else if a.quickSearchNeedsUnlock() {
+		a.quickSearchUnlockView(c)
+	} else {
+		a.quickSearchResultsView(c)
+	}
+	ui.Box(c).FillWidth().Height(1).Background(c.Theme().Border)
+	ui.Row(c).FillWidth().Height(48).Padding(8, 16).AlignItems(ui.Center).Gap(10).Children(func() {
+		if a.state.Configured && !a.quickSearchNeedsUnlock() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Shrink(0).Children(func() {
+				ui.Row(c).Gap(3).Children(func() {
+					quickSearchKeycap(c, "↑", false)
+					quickSearchKeycap(c, "↓", false)
+				})
+				if !tray {
+					ui.Row(c).Gap(3).Tooltip("Ctrl+N / Ctrl+P").Children(func() {
+						quickSearchKeycap(c, quickSearchControlShortcut("N"), false)
+						quickSearchKeycap(c, quickSearchControlShortcut("P"), false)
+					})
+				}
+				components.Text(c, a.t("选择")).FontSize(scaledFontSize(c, 11)).SingleLine().TextColor(c.Theme().TextMuted)
+			})
+		}
+		ui.Spacer(c)
+		if !tray && components.Button(c, "", components.ButtonGhost).Label(a.t("打开主窗口")).Height(30).Padding(5, 9).Gap(9).Shrink(0).Children(func() {
+			components.Text(c, a.t("打开主窗口")).FontSize(scaledFontSize(c, 12)).SingleLine()
+			quickSearchKeycap(c, quickSearchOpenShortcut(), false)
+		}).Clicked() {
+			a.openQuickSearchInManager()
+		}
+		if a.state.Configured && !a.quickSearchNeedsUnlock() {
+			label := a.t("复制密码")
+			if a.quick.operation == "copy" {
+				label = a.t("正在复制…")
+			}
+			if components.Button(c, "", components.ButtonPrimary).Label(label).Height(30).Padding(5, 12).Gap(10).Shrink(0).Disabled(a.busy || len(a.quick.results) == 0).Children(func() {
+				components.Text(c, label).FontSize(scaledFontSize(c, 12)).SingleLine()
+				quickSearchKeycap(c, "↵", true)
+			}).Clicked() {
+				a.copyQuickSearchResult()
+			}
+		}
+	})
+}
+
+// quickSearchInput binds the search field's keys, focus and results.
+func (a *application) quickSearchInput(c *ui.Context, input ui.Element) {
+	q := &a.quick
+	input.Ref(&q.searchRef).Label(a.t("快速搜索条目")).Placeholder(a.t("搜索名称或路径…"))
+	input.OnShortcut(0, ui.KeyDown, func() { a.moveQuickSearchSelection(1) })
+	input.OnShortcut(0, ui.KeyUp, func() { a.moveQuickSearchSelection(-1) })
+	// macOS text fields consume Control N/P as caret navigation before
+	// ordinary shortcuts. Handle these keys before the native text editor.
+	input.OnTextKey(func(key ui.TextKey) bool {
+		if key.Mods == ui.Ctrl && (key.Key == ui.KeyN || key.Key == ui.KeyP) {
+			delta := 1
+			if key.Key == ui.KeyP {
+				delta = -1
+			}
+			a.moveQuickSearchSelection(delta)
+			return true
+		}
+		return false
+	})
+	if q.focusPending {
+		q.searchRef.Focus()
+		q.focusPending = false
+	}
+	if input.Changed() {
+		q.selected = 0
+		a.lastInput = time.Now()
+		q.results = a.quickSearchEntries()
+		q.list.ScrollTo(0, ui.Start)
+	}
+	if input.Submitted() {
+		a.copyQuickSearchResult()
+	}
+}
+
+// quickSearchGlassField is the glass style's Spotlight-like search capsule:
+// a pane of Liquid Glass with a borderless field, whose rim warms to the
+// accent while it has focus instead of drawing an opaque, outlined input.
+func (a *application) quickSearchGlassField(c *ui.Context) {
+	t := c.Theme()
+	const height = 36
+	capsule := ui.Row(c).Key("quick-search-field").FillWidth().Height(height).Shrink(0).
+		Padding(0, 12).Gap(8).AlignItems(ui.Center).Radius(height / 2).
+		Material(glass.Glass{Tint: glassPanelTint(t)})
+	focused := c.Resolve(a.quick.searchRef).Focused()
+	if focused {
+		capsule.Border(1, t.Accent.Alpha(.45))
+	} else {
+		capsule.Border(1, glassRim(t))
+	}
+	capsule.Children(func() {
+		components.Icon(c, lucide.Search()).Size(15, 15).Shrink(0).TextColor(t.TextMuted)
+		input := ui.TextInputBase(c, &a.quick.query).Grow(1).MinWidth(0).FillHeight().
+			Background(ui.Transparent).Border(0, ui.Transparent).Padding(0).
+			FontSize(scaledFontSize(c, 14))
+		a.quickSearchInput(c, input)
+	})
+}
+
 func (a *application) quickSearchResultsView(c *ui.Context) {
 	q := &a.quick
 	entryTextScale := c.Theme().FontSize / 12
-	ui.Column(c).FillWidth().Grow(1).MinHeight(0).Padding(0, 14, 10, 14).Gap(10).Children(func() {
-		input := textBox(c, &q.query, components.TextBoxOptions{LeadingIcon: lucide.Search()}).
-			Ref(&q.searchRef).Label(a.t("快速搜索条目")).Placeholder(a.t("搜索名称或路径…")).FillWidth().Height(36).FontSize(scaledFontSize(c, 14))
-		input.OnShortcut(0, ui.KeyDown, func() { a.moveQuickSearchSelection(1) })
-		input.OnShortcut(0, ui.KeyUp, func() { a.moveQuickSearchSelection(-1) })
-		// macOS text fields consume Control N/P as caret navigation before
-		// ordinary shortcuts. Handle these keys before the native text editor.
-		input.OnTextKey(func(key ui.TextKey) bool {
-			if key.Mods == ui.Ctrl && (key.Key == ui.KeyN || key.Key == ui.KeyP) {
-				delta := 1
-				if key.Key == ui.KeyP {
-					delta = -1
-				}
-				a.moveQuickSearchSelection(delta)
-				return true
-			}
-			return false
-		})
-		if q.focusPending {
-			q.searchRef.Focus()
-			q.focusPending = false
-		}
-		if input.Changed() {
-			q.selected = 0
-			a.lastInput = time.Now()
-			q.results = a.quickSearchEntries()
-			q.list.ScrollTo(0, ui.Start)
-		}
-		if input.Submitted() {
-			a.copyQuickSearchResult()
+	top := float32(0)
+	if a.glassChrome() {
+		// The search field floats in its own capsule above this card.
+		top = 10
+	}
+	ui.Column(c).FillWidth().Grow(1).MinHeight(0).Padding(top, 14, 10, 14).Gap(10).Children(func() {
+		if !a.glassChrome() {
+			a.quickSearchInput(c, textBox(c, &q.query, components.TextBoxOptions{LeadingIcon: lucide.Search()}).
+				FillWidth().Height(36).FontSize(scaledFontSize(c, 14)))
 		}
 		ui.Row(c).FillWidth().Padding(0, 6).Children(func() {
 			label := a.countLabel(len(q.results))
@@ -525,7 +593,7 @@ func (a *application) quickSearchResultsView(c *ui.Context) {
 		components.List(c, &q.list, len(q.results), func(i int) {
 			entry := q.results[i]
 			row := ui.Row(c).FillWidth().MinHeight(50).Padding(0, 5, 0, 0).Gap(3).AlignItems(ui.Center).Radius(c.Theme().Radius)
-			if i == q.selected && isMonochromePalette(c.Theme()) {
+			if i == q.selected && (isMonochromePalette(c.Theme()) || a.glassChrome()) {
 				row.Background(c.Theme().Selection)
 			}
 			row.Children(func() {

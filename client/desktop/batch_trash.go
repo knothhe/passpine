@@ -48,7 +48,7 @@ func (a *application) batchTrashDialog(c *ui.Context) {
 		return
 	}
 	c.Key("batch-trash-confirmation")
-	switch components.AlertDialog(c, &confirmation.open, components.AlertDialogOptions{
+	switch a.alertDialog(c, &confirmation.open, components.AlertDialogOptions{
 		Title:        a.t("将 %d 项移到回收站？", len(confirmation.entries)),
 		Message:      a.t("将在本机保存加密恢复副本，之后可从恢复中心还原。"),
 		ConfirmLabel: a.t("移到回收站"), CancelLabel: a.t("取消"),

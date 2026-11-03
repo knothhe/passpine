@@ -126,6 +126,7 @@ func (a *application) folderSelect(c *ui.Context, selected, query *string, label
 		components.Text(c, display).SingleLine()
 	})
 	sel.Popup(func(panel ui.Element) {
+		a.glassPanel(c, panel)
 		panel.Width(280).MaxWidth(360).Label(a.t("%s选项", label))
 		if sel.SearchField(query).Label(a.t("搜索文件夹")).Placeholder(a.t("搜索文件夹…")).Changed() {
 			a.lastInput = time.Now()

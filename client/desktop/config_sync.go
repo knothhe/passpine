@@ -716,6 +716,7 @@ func (a *application) syncChoice(c *ui.Context, key string, value *string, label
 	}
 	box.Trigger.Label(label).FillWidth().MinWidth(0).Children(func() { components.Text(c, display).SingleLine() })
 	box.Popup(func(panel ui.Element) {
+		a.glassPanel(c, panel)
 		panel.MinWidth(200).MaxWidth(400)
 		for i, v := range values {
 			v, label := v, labels[i]
