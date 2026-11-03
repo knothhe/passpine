@@ -1,3 +1,5 @@
+//go:build !mygo_noinspector
+
 package desktop
 
 import (
@@ -10,7 +12,6 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/knothhe/passpine/client/i18n"
-	"github.com/knothhe/passpine/client/layoutaudit"
 )
 
 func TestLayoutAuditOptInAndLiveLocalization(t *testing.T) {
@@ -24,13 +25,8 @@ func TestLayoutAuditOptInAndLiveLocalization(t *testing.T) {
 	if !view.HasText(a.t(i18n.LayoutAuditTitle)) || !a.mainShellOptions().DevTools {
 		t.Fatal("audit did not cover existing main view")
 	}
-	if layoutaudit.InspectorAvailable() {
-		menu := a.auditMenu()
-		if len(menu) != 2 || menu[1].Role != mygo.RoleToggleDevTools {
-			t.Fatal("native inspector menu role missing")
-		}
-	} else if len(a.auditMenu()) != 0 || !view.HasText(a.t(i18n.LayoutAuditInspectorUnavailable)) {
-		t.Fatal("build without inspector did not explain its reduced capabilities")
+	if menu := a.auditMenu(); len(menu) != 2 || menu[1].Role != mygo.RoleToggleDevTools {
+		t.Fatal("native inspector menu role missing")
 	}
 	a.query = "untranslated draft"
 	a.state.Settings.Language = "en"

@@ -114,6 +114,8 @@ func main() { fmt.Printf("%s %t", buildinfo.ChannelName(), mygo.IsDev()) }
     const ui = JSON.parse(execFileSync('go', ['list', '-json', tags, 'github.com/egoist/mygo/ui'], { cwd, encoding: 'utf8' }));
     assert.equal(ui.GoFiles.includes('inspector.go'), channel === 'dev');
     assert.equal(ui.GoFiles.includes('inspector_off.go'), channel === 'release');
+    const linked = execFileSync('go', ['list', '-deps', tags, './cmd/passpine'], { cwd, encoding: 'utf8' }).split(/\r?\n/);
+    assert.equal(linked.includes('github.com/knothhe/mygo-layout-audit'), channel === 'dev', 'Layout audit is a Dev-only module');
     const binary = path.join(root, `probe-${channel}${process.platform === 'win32' ? '.exe' : ''}`);
     execFileSync('go', ['build', tags, `-ldflags=${config.ldflags}`, '-o', binary, source], { cwd, stdio: 'pipe' });
     // A release binary must keep developer tools off even in a development environment.

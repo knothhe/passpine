@@ -7,6 +7,7 @@ require (
 	github.com/ebitengine/purego v0.11.2
 	github.com/egoist/mygo v0.5.5
 	github.com/godbus/dbus/v5 v5.2.2
+	github.com/knothhe/mygo-layout-audit v0.1.0
 	github.com/knothhe/r2connect v0.1.1
 	github.com/oneo-me/onevra/source v0.2026.13
 	golang.org/x/crypto v0.41.0

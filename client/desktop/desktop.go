@@ -20,7 +20,6 @@ import (
 	"github.com/knothhe/passpine/client/i18n"
 	sidebar "github.com/knothhe/passpine/client/internal/clientshell"
 	"github.com/knothhe/passpine/client/internal/secureclipboard"
-	"github.com/knothhe/passpine/client/layoutaudit"
 	"github.com/knothhe/passpine/client/nativehost"
 	"github.com/knothhe/passpine/client/update"
 	"github.com/knothhe/passpine/client/vault"
@@ -35,7 +34,7 @@ type Backend interface {
 const defaultSidebarWidth = 200
 
 type application struct {
-	audit                                                                layoutaudit.State
+	audit                                                                auditState
 	quit                                                                 quitState
 	buildVersion                                                         string
 	updates                                                              updateUI
@@ -144,11 +143,14 @@ func Run(service *app.Service, version string, updateConfigs ...update.Config) e
 	return RunWithOptions(service, version, Options{}, updateConfigs...)
 }
 
+// Options enables tools for an explicitly requested preview session.
+type Options struct{ LayoutAudit bool }
+
 // RunWithOptions starts the client with explicit preview tooling.
 func RunWithOptions(service *app.Service, version string, options Options, updateConfigs ...update.Config) error {
 	configureNativeRendering()
 	a := newApplication(service)
-	a.audit.Enabled, a.audit.Outlines = options.LayoutAudit, options.LayoutAudit
+	a.enableAudit(options.LayoutAudit)
 	a.buildVersion = version
 	var updateConfig update.Config
 	if len(updateConfigs) > 0 {

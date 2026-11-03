@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { generateDependencies, resolveDependencies } from './dependencies.mjs';
+import { developmentOnlyModules, generateDependencies, resolveDependencies } from './dependencies.mjs';
 
 test('only direct client modules are included and stale versions cannot silently reach About', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-dependencies-'));
@@ -27,4 +27,9 @@ test('the project catalog contains only the current direct client dependencies',
   assert.ok(deps.every(dep => dep.group === 'desktop' && dep.license && dep.name && dep.version));
   assert.equal(deps.find(dep => dep.module === 'github.com/knothhe/r2connect')?.license, 'MIT');
   assert.ok(deps.some(dep => dep.module === 'github.com/godbus/dbus/v5'), 'native Linux tray and shortcuts still use godbus directly');
+  const goMod = fs.readFileSync(new URL('../client/go.mod', import.meta.url), 'utf8');
+  for (const module of developmentOnlyModules) {
+    assert.match(goMod, new RegExp(`^\\s*${module.replaceAll('.', '\\.')} v`, 'm'), `${module} is still a direct Dev dependency`);
+    assert.ok(!deps.some(dep => dep.module === module), `${module} is Dev-only and must not appear in About`);
+  }
 });

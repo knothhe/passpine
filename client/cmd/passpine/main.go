@@ -110,6 +110,9 @@ func main() {
 }
 
 func validateLayoutAudit(enabled, preview, seedTestVault bool, dataDirectory string) error {
+	if enabled && !desktop.LayoutAuditAvailable {
+		return errors.New(i18n.Text(i18n.SystemLocale(), i18n.LayoutAuditUnavailable))
+	}
 	if enabled && seedTestVault {
 		return errors.New(i18n.Text(i18n.SystemLocale(), i18n.LayoutAuditNoSeed))
 	}

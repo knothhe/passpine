@@ -21,6 +21,7 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@knothhe/react-layout-audit": "https://github.com/knothhe/react-layout-audit/releases/download/v0.1.0/knothhe-react-layout-audit-0.1.0.tgz",
     "@types/jsdom": "^30.0.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",

@@ -20,6 +20,10 @@ fi
 go build -o "$test_dir/passpine-host-test" ./cmd/passpine-host
 PASSPINE_TEST_HOST="$test_dir/passpine-host-test" go test -race ./...
 go vet ./...
+# Release builds use mygo_noinspector, which swaps in the layout audit no-op and
+# drops the Dev-only module. Exercise that variant as well.
+go vet -tags mygo_noinspector ./desktop ./cmd/passpine
+go test -tags mygo_noinspector ./desktop ./cmd/passpine -run 'LayoutAudit'
 cd "$root_dir/browser"
 pnpm run typecheck
 pnpm test

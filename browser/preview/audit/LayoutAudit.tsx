@@ -4,7 +4,7 @@ import { useCopy, useLanguage } from '../../src/components/LanguageProvider';
 import { useAppearance } from '../../src/components/Provider';
 import { fontScales, type FontScale } from '../../src/lib/appearance';
 import type { LanguagePreference } from '../../src/lib/i18n';
-import { AuditOverlay, useLayoutAudit, type Measurement, type SelectionSlot } from '../../src/layout-audit';
+import { AuditOverlay, useLayoutAudit, type Measurement, type SelectionSlot } from '@knothhe/react-layout-audit';
 import { optionsTargets, popupTargets, portalSelector, scenarios, type Preset, type Scenario, type Surface } from './profiles';
 import './audit.css';
 

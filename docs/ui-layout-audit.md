@@ -29,16 +29,30 @@ go run ./cmd/passpine --preview --layout-audit
 
 这个入口要求临时虚构密码库，拒绝 `--data-dir` 和 `--seed-test-vault`。主窗口的列表、详情、编辑、生成器、设置、回收站、初始化、锁定及确认框共用根视图装饰器；独立快速搜索窗口也接入，并单独保存测距状态。工具栏提供真实布局边界、8 DIP 网格和手动两点测距。F12 打开 MyGo 自带原生检查器，macOS `⌘⇧C` 进入元素选择；其他平台使用 `Ctrl+Shift+C`。
 
-MyGo 自带检查器读取完整渲染树，显示内容、内边距、边框、外边距以及实际字体规格。上游检查器界面目前是 English，Passpine 增加的工具栏有中英文。`mygo_noinspector` 构建保留网格和手动测距，并明确提示自动检查器不可用。
+MyGo 自带检查器读取完整渲染树，显示内容、内边距、边框、外边距以及实际字体规格。上游检查器界面目前是 English，Passpine 增加的工具栏有中英文。正式版使用 `mygo_noinspector` 构建，同时移除 MyGo 检查器和整个布局走查模块；此时 `--layout-audit` 会提示需要开发构建。
+
+不启动原生窗口也能导出确定性的原生渲染截图：
+
+```sh
+PASSPINE_LAYOUT_AUDIT_SCREENSHOTS=/tmp/passpine-audit-images \
+  go test ./desktop -run TestLayoutAuditScreensAndScreenshotExport -count=1
+```
+
+截图覆盖中文/浅色与 English/深色下的条目、设置、回收站、初始化、锁定、编辑器、生成器、确认框和快速搜索，使用虚构测试数据。`ui.NewTester` 不启用 MyGo 检查器，检查器仍需在原生预览中验证；这些截图不替代目标平台的原生验收。
 
 ## 可复用组件边界
 
 | 组件 | 可复用接口 | 应用负责什么 |
 | --- | --- | --- |
-| [TypeScript / React](../browser/src/layout-audit/README.md) | `useLayoutAudit`、`AuditOverlay`、`measureElement`、`compareRects` | 提供检查根节点、控制面板、文案、允许检查的 portal、启用策略。 |
-| [MyGo](../client/layoutaudit/README.md) | `layoutaudit.State.Wrap`、`Options`、`Labels`、`Measurement` | 每个窗口持有状态、提供翻译、启用 MyGo 原生 DevTools、选择启动方式。 |
+| [TypeScript / React](https://github.com/knothhe/react-layout-audit) | `useLayoutAudit`、`AuditOverlay`、`measureElement`、`compareRects` | 提供检查根节点、控制面板、文案、允许检查的 portal、启用策略。 |
+| [MyGo](https://github.com/knothhe/mygo-layout-audit) | `layoutaudit.State.Wrap`、`Options`、`Labels`、`Measurement` | 每个窗口持有状态、提供翻译、启用 MyGo 原生 DevTools、选择启动方式。 |
 
-两套实现不相互调用，也不依赖密码库。TypeScript 包只依赖 React/React DOM；Go 包只依赖 MyGo 的公开 `ui` API 和标准库。它们都可复制到其他项目继续使用，本次没有发布 npm 或独立 Go module。
+两套实现不相互调用，也不依赖密码库。TypeScript 包只依赖 React/React DOM；Go 包只依赖 MyGo 的公开 `ui` API 和标准库。两者已拆成独立仓库，Passpine 只作为开发依赖使用：
+
+- 浏览器端在 `browser/package.json` 的 `devDependencies` 中直接引用组件仓库 GitHub Release 的打包附件（`releases/download/<tag>/knothhe-react-layout-audit-<version>.tgz`）。附件由组件仓库 CI 从对应 tag 的源码构建，并附 `SHA256SUMS`；组件源码仓库不提交 `dist/`，锁文件记录附件完整性哈希，安装时不运行脚本。扩展入口只在 `import.meta.env.DEV` 下动态加载检查器，Chrome/Firefox 生产包不含其代码和样式。
+- 客户端 `client/go.mod` 引用 `github.com/knothhe/mygo-layout-audit`。Go 没有开发依赖的概念，因此接入代码 `desktop/layout_audit.go` 只在不带 `mygo_noinspector` 的开发构建中编译，正式版使用 `layout_audit_off.go` 空实现，二进制不链接该模块。`scripts/dependencies.mjs` 的 `developmentOnlyModules` 把它排除在“关于”页依赖清单之外，`scripts/build-channel.test.mjs` 校验正式构建不链接它。
+
+升级组件时先在组件仓库更新版本并推送 tag，等待 CI 发布 Release，再更新 Passpine 中的附件地址或 Go 版本。
 
 两端共用的是检查方法而非像素数：浏览器测量 CSS px，原生测量逻辑 DIP。原生手动两点尺不自动推断组件间距或字号，自动元素指标交给 MyGo 自带检查器。其渲染树暂未提供公开遍历 API，因此没有通过反射访问私有状态。
 

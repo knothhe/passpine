@@ -1,25 +1,31 @@
+//go:build !mygo_noinspector
+
 package desktop
 
 import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	layoutaudit "github.com/knothhe/mygo-layout-audit"
 	"github.com/knothhe/passpine/client/i18n"
-	"github.com/knothhe/passpine/client/layoutaudit"
 )
 
-// Options enables tools for an explicitly requested preview session.
-type Options struct{ LayoutAudit bool }
+// LayoutAuditAvailable reports whether this build contains the layout audit
+// tools. Release builds use the mygo_noinspector tag, which also removes the
+// mygo-layout-audit module from the binary.
+const LayoutAuditAvailable = true
+
+type auditState = layoutaudit.State
+
+func (a *application) enableAudit(enabled bool) {
+	a.audit.Enabled, a.audit.Outlines = enabled, enabled
+}
 
 func (a *application) auditLabels() layoutaudit.Labels {
-	inspector := i18n.LayoutAuditInspector
-	if !layoutaudit.InspectorAvailable() {
-		inspector = i18n.LayoutAuditInspectorUnavailable
-	}
 	return layoutaudit.Labels{
 		Title: a.t(i18n.LayoutAuditTitle), Outlines: a.t(i18n.LayoutAuditOutlines), Grid: a.t(i18n.LayoutAuditGrid), Ruler: a.t(i18n.LayoutAuditRuler),
 		Clear: a.t(i18n.LayoutAuditClear), Collapse: a.t(i18n.LayoutAuditCollapse), Expand: a.t(i18n.LayoutAuditExpand),
 		PickFirst: a.t(i18n.LayoutAuditPickFirst), PickSecond: a.t(i18n.LayoutAuditPickSecond), Complete: a.t(i18n.LayoutAuditComplete),
-		Legend: a.t(i18n.LayoutAuditLegend), Inspector: a.t(inspector),
+		Legend: a.t(i18n.LayoutAuditLegend), Inspector: a.t(i18n.LayoutAuditInspector),
 		Viewport: func(w, h float32) string { return a.t(i18n.LayoutAuditViewport, w, h) },
 		Distance: func(x, y float32) string { return a.t(i18n.LayoutAuditDistance, x, y) },
 	}
@@ -40,7 +46,7 @@ func (a *application) decorateQuickAudit() func(*ui.Context) {
 }
 
 func (a *application) auditMenu() []*mygo.MenuItem {
-	if !a.audit.Enabled || !layoutaudit.InspectorAvailable() {
+	if !a.audit.Enabled {
 		return nil
 	}
 	return []*mygo.MenuItem{mygo.Separator(), {Label: a.t(i18n.LayoutAuditMenu), Role: mygo.RoleToggleDevTools, Accelerator: "F12"}}

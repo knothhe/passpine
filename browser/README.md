@@ -50,7 +50,7 @@ pnpm run preview
 
 `pnpm run dev` 的开发版扩展弹窗和设置页也支持 `Ctrl / ⌘ + Alt + Shift + L` 打开检查器。面板可折叠、上下停靠，Escape 关闭。检查开关关闭时应用正常接收操作。生产构建通过 `import.meta.env.DEV` 移除检查器的代码与样式。
 
-通用 TypeScript/React 实现位于 [src/layout-audit](src/layout-audit/README.md)，不依赖 Passpine 文案或业务状态；工作台是它的一个接入示例。完整评估方法、原生 MyGo 接入和限制见 [排版与间距调研](../docs/ui-layout-audit.md)。
+通用 TypeScript/React 实现位于独立仓库 [react-layout-audit](https://github.com/knothhe/react-layout-audit)，作为开发依赖引入，不依赖 Passpine 文案或业务状态；工作台和开发版检查器是它的接入示例。完整评估方法、原生 MyGo 接入和限制见 [排版与间距调研](../docs/ui-layout-audit.md)。
 
 ## 组件边界
 

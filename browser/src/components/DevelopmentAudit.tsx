@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowDownUp, ChevronDown, ChevronUp, Crosshair, Grid2X2, Ruler, X } from 'lucide-react';
 import { useCopy } from './LanguageProvider';
-import { AuditOverlay, useLayoutAudit, type Insets, type SelectionSlot } from '../layout-audit';
+import { AuditOverlay, useLayoutAudit, type Insets, type SelectionSlot } from '@knothhe/react-layout-audit';
 import './DevelopmentAudit.css';
 
 const portalSelector = '[data-radix-popper-content-wrapper], [role="dialog"], [role="alertdialog"], [role="menu"]';

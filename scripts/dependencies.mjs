@@ -5,9 +5,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const projectRoot = fileURLToPath(new URL('../', import.meta.url));
 
+// Development tooling compiled only into Dev builds. Release builds use the
+// mygo_noinspector tag, which excludes these modules, so About does not list them.
+export const developmentOnlyModules = new Set(['github.com/knothhe/mygo-layout-audit']);
+
 export function resolveDependencies(root, catalog) {
   const go = new Map([...fs.readFileSync(path.join(root, 'client/go.mod'), 'utf8').matchAll(/^\s*(?:require\s+)?([\w.!/-]+)\s+(v\S+)([^\n]*)$/gm)]
-    .filter(([, , , suffix]) => !suffix.includes('// indirect')).map(([, name, version]) => [name, version]));
+    .filter(([, name, , suffix]) => !suffix.includes('// indirect') && !developmentOnlyModules.has(name)).map(([, name, version]) => [name, version]));
   const expected = new Map([...go.keys()].map(name => [name, 'desktop']));
   if (catalog.length !== expected.size || new Set(catalog.map(dep => dep.module)).size !== catalog.length || new Set(catalog.map(dep => dep.id)).size !== catalog.length) {
     throw new Error('Dependency catalog must cover every direct runtime dependency exactly once.');
