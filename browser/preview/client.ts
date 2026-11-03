@@ -25,6 +25,15 @@ const examples: Record<string, string> = english ? {
 let locked = false;
 let revision = 1;
 const initialFixture = new URLSearchParams(location.search).get('fixture');
+if (initialFixture === 'long') {
+  for (let index = 1; index <= 24; index++) {
+    const path = english
+      ? `Work/Developer tools/Sample ${index}/Long account name for truncation and scrolling ${index}`
+      : `工作/开发工具/示例 ${index}/用于检查省略与滚动的较长账号名称 ${index}`;
+    const note = english ? 'Fictional account for checking nested folders and long content.' : '用于检查嵌套目录与长内容的虚构账号。';
+    examples[path] = `preview-only-long-${index}\nusername: layout-demo-${index}@example.test\nurl: https://example.test/organizations/layout/sample-${index}\n\n${note}`;
+  }
+}
 const matches = new Set(initialFixture === 'rich' ? [] : Object.keys(examples).filter(path => path.startsWith('github.com/')));
 export function setPreviewState(state: 'connected' | 'locked' | 'disconnected') { locked = state === 'locked'; disconnected = state === 'disconnected'; }
 let disconnected = false;
@@ -33,7 +42,6 @@ const snapshot = (): Snapshot => {
   const configured = fixture !== 'unconfigured';
   const hostname = fixture === 'rich' ? 'accounts.very-long-organization-name.example.test' : 'github.com';
   const paths = configured && fixture !== 'empty' ? Object.keys(examples) : [];
-  if (fixture === 'long') for (let index = 1; index <= 24; index++) paths.push(`工作/开发工具/示例 ${index}/用于检查省略与滚动的较长账号名称 ${index}`);
   return { configured, vaultId: 'demo-vault', vaultName: configured ? vaultName : '', locked, entriesVersion: revision, capabilities: ['fetch', 'save', 'delete', 'copy', 'generate', 'copy-generated'], entries: paths.map(path => ({ path, name: path.split('/').at(-1)!, folder: path.split('/').slice(0, -1).join('/') })), tab: { id: 1, url: `https://${hostname}/login`, hostname, secure: true }, matches: paths.filter(path => matches.has(path)) };
 };
 

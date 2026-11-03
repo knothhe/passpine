@@ -13,6 +13,7 @@ import (
 	"github.com/knothhe/passpine/client/cli"
 	"github.com/knothhe/passpine/client/desktop"
 	"github.com/knothhe/passpine/client/deviceunlock"
+	"github.com/knothhe/passpine/client/i18n"
 	"github.com/knothhe/passpine/client/nativehost"
 	"github.com/knothhe/passpine/client/update"
 )
@@ -56,9 +57,13 @@ func main() {
 	}
 	showVersion := flag.Bool("version", false, "Print the application version and exit")
 	preview := flag.Bool("preview", false, "Create and open an isolated vault with fictional entries")
+	layoutAudit := flag.Bool("layout-audit", false, i18n.Text(i18n.SystemLocale(), i18n.LayoutAuditFlag))
 	dataDir := flag.String("data-dir", "", "Override the application data directory")
 	seedTestVault := flag.Bool("seed-test-vault", false, "Development builds: create a fictional test vault if it does not exist")
 	flag.Parse()
+	if err := validateLayoutAudit(*layoutAudit, *preview, *seedTestVault, *dataDir); err != nil {
+		log.Fatal(err)
+	}
 	if *showVersion {
 		fmt.Println(buildinfo.Name() + " " + version)
 		return
@@ -99,7 +104,20 @@ func main() {
 	if buildinfo.IsRelease() {
 		updates = update.Config{FeedURL: updateFeedURL, PublicKey: updatePublicKey}
 	}
-	if err := desktop.Run(service, version, updates); err != nil {
+	if err := desktop.RunWithOptions(service, version, desktop.Options{LayoutAudit: *layoutAudit}, updates); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func validateLayoutAudit(enabled, preview, seedTestVault bool, dataDirectory string) error {
+	if enabled && seedTestVault {
+		return errors.New(i18n.Text(i18n.SystemLocale(), i18n.LayoutAuditNoSeed))
+	}
+	if enabled && !preview {
+		return errors.New(i18n.Text(i18n.SystemLocale(), i18n.LayoutAuditRequiresPreview))
+	}
+	if enabled && dataDirectory != "" {
+		return errors.New(i18n.Text(i18n.SystemLocale(), i18n.LayoutAuditTemporaryData))
+	}
+	return nil
 }

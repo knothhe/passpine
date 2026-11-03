@@ -12,6 +12,7 @@ import (
 	"github.com/knothhe/passpine/client/app"
 	"github.com/knothhe/passpine/client/assets"
 	"github.com/knothhe/passpine/client/buildinfo"
+	"github.com/knothhe/passpine/client/layoutaudit"
 	"github.com/oneo-me/onevra/source/components"
 	"github.com/oneo-me/onevra/source/icons/lucide"
 )
@@ -72,6 +73,7 @@ type quickSearchWindow interface {
 }
 
 type quickSearchState struct {
+	audit                    layoutaudit.State
 	window                   quickSearchWindow
 	mode                     string
 	globalQuery, trayQuery   string
@@ -191,7 +193,10 @@ func (a *application) newQuickSearchWindow() {
 		areas = append(areas, display.WorkArea)
 	}
 	a.restoreQuickSearchPosition(&options, areas, area)
-	options.Content = ui.View(a.quickSearchView)
+	options.Content = ui.View(a.decorateQuickAudit())
+	if a.audit.Enabled {
+		options.Page.DevTools = mygo.DevToolsEnabled
+	}
 	window := mygo.NewWindow(options)
 	a.quick.window = window
 	a.updateNativeIcons()

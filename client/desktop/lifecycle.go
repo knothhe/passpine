@@ -60,6 +60,7 @@ func (a *application) mainShellOptions() sidebar.ShellOptions {
 		width = int(a.lifecycle.leftWidth)
 	}
 	return sidebar.ShellOptions{
+		Decorate: a.decorateAudit, DevTools: a.audit.Enabled,
 		Hidden: true, Title: buildinfo.Name(), Width: 1120, Height: 760, MinWidth: 860, MinHeight: 620,
 		StateKey: "passpine-main", LeftWidth: width, LeftMinWidth: 180, LeftMaxWidth: 280,
 		LeftResetWidth: defaultSidebarWidth,

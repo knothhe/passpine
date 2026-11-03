@@ -20,6 +20,7 @@ import (
 	"github.com/knothhe/passpine/client/i18n"
 	sidebar "github.com/knothhe/passpine/client/internal/clientshell"
 	"github.com/knothhe/passpine/client/internal/secureclipboard"
+	"github.com/knothhe/passpine/client/layoutaudit"
 	"github.com/knothhe/passpine/client/nativehost"
 	"github.com/knothhe/passpine/client/update"
 	"github.com/knothhe/passpine/client/vault"
@@ -34,6 +35,7 @@ type Backend interface {
 const defaultSidebarWidth = 200
 
 type application struct {
+	audit                                                                layoutaudit.State
 	quit                                                                 quitState
 	buildVersion                                                         string
 	updates                                                              updateUI
@@ -139,8 +141,14 @@ type application struct {
 // Run starts a native GPU-rendered window, with native menus, file panels,
 // clipboard and system lock/sleep notifications. It does not create a WebView.
 func Run(service *app.Service, version string, updateConfigs ...update.Config) error {
+	return RunWithOptions(service, version, Options{}, updateConfigs...)
+}
+
+// RunWithOptions starts the client with explicit preview tooling.
+func RunWithOptions(service *app.Service, version string, options Options, updateConfigs ...update.Config) error {
 	configureNativeRendering()
 	a := newApplication(service)
+	a.audit.Enabled, a.audit.Outlines = options.LayoutAudit, options.LayoutAudit
 	a.buildVersion = version
 	var updateConfig update.Config
 	if len(updateConfigs) > 0 {
@@ -1171,7 +1179,7 @@ func (a *application) installMenu() {
 		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{action(a.t("关于"), "", func() { a.navigateSettingsCategory("about") }), mygo.Separator(), action(a.t("设置…"), "CmdOrCtrl+,", func() { a.navigate("settings", "") }), mygo.Separator(), action(a.t("退出 %s", buildinfo.Name()), "CmdOrCtrl+Q", mygo.App.Quit)}},
 		{Label: a.t("文件"), Submenu: []*mygo.MenuItem{action(a.t("新建条目"), "CmdOrCtrl+N", a.newEntry), action(a.t("打开密码库…"), "", a.openSetup), mygo.Separator(), action(a.t("锁定密码库"), "CmdOrCtrl+Shift+L", a.lock)}},
 		editMenu,
-		{Label: a.t("显示"), Submenu: []*mygo.MenuItem{
+		{Label: a.t("显示"), Submenu: append([]*mygo.MenuItem{
 			action(a.t("命令面板"), "Ctrl+Shift+P", a.toggleCommandPalette),
 			action(a.t("搜索"), "CmdOrCtrl+F", func() {
 				if a.quick.visible {
@@ -1185,7 +1193,7 @@ func (a *application) installMenu() {
 			action(a.t("快捷面板…"), "", a.trayQuickPanel),
 			action(a.t("恢复中心"), "", func() { a.navigate("recovery", "") }),
 			action(a.t("操作记录"), "", func() { a.navigate("activity", "") }),
-		}},
+		}, a.auditMenu()...)},
 		windowMenu,
 	}))
 }

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { Badge, Button, Flex, Text } from '@radix-ui/themes';
 import { App } from '../src/components/App';
+import { LayoutAudit } from './audit/LayoutAudit';
 import { Options } from '../src/components/Options';
 import { Provider } from '../src/components/Provider';
 import { demoClient, setPreviewState } from './client';
@@ -17,11 +18,12 @@ setPreviewState(initialState);
 function Preview() {
   const copy = useCopy();
   const [state, setState] = useState<'connected' | 'locked' | 'disconnected'>(initialState);
+  if (previewParameters.get('view') === 'audit') return <LayoutAudit/>;
   if (previewParameters.get('view') === 'options') return <Options client={demoClient} extensionId={identity.chromiumID}/>;
   // The bare popup, at its real size, for website screenshots.
   if (previewParameters.get('view') === 'popup') return <main className="preview-capture"><App client={demoClient}/></main>;
   return <main className="preview-page">
-    <header className="preview-toolbar"><Text size="2" weight="medium">{copy.preview.title}</Text><Badge color="gray">{copy.preview.exampleData}</Badge><a href="/?view=options">{copy.preview.settings}</a></header>
+    <header className="preview-toolbar"><Text size="2" weight="medium">{copy.preview.title}</Text><Badge color="gray">{copy.preview.exampleData}</Badge><a href="/?view=options">{copy.preview.settings}</a><a href="/?view=audit">{copy.preview.audit}</a></header>
     <Flex gap="2" justify="center" className="preview-controls">
       {(['connected', 'locked', 'disconnected'] as const).map(value => <Button key={value} size="1" variant={state === value ? 'solid' : 'soft'} color={state === value ? undefined : 'gray'} onClick={() => { setPreviewState(value); setState(value); }}>{({ connected: copy.connection.status.connected, locked: copy.connection.status.locked, disconnected: copy.connection.status.disconnected })[value]}</Button>)}
     </Flex>

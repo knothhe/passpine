@@ -15,7 +15,11 @@ import (
 // ShellOptions describes a window and its default sidebar-and-content page.
 // Content builders run synchronously on the UI thread.
 type ShellOptions struct {
-	Title string
+	// Decorate wraps the full view without changing its own layout or state.
+	Decorate func(func(*ui.Context)) func(*ui.Context)
+	// DevTools explicitly enables the native MyGo inspector.
+	DevTools bool
+	Title    string
 	// Hidden creates the window without showing or focusing it. Applications
 	// can later call Window().Show or Window().ShowInactive.
 	Hidden bool
@@ -135,7 +139,7 @@ func NewShell(options ShellOptions) *Shell {
 // host rendering the returned view owns invalidation after shell state changes.
 func Layout(options ShellOptions) (*Shell, func(*ui.Context)) {
 	s := newShell(options)
-	return s, s.view
+	return s, s.decoratedView()
 }
 
 const (
@@ -183,6 +187,10 @@ func newShell(options ShellOptions) *Shell {
 
 func (s *Shell) nativeOptions() mygo.WindowOptions {
 	o := s.options
+	devTools := mygo.DevToolsAuto
+	if o.DevTools {
+		devTools = mygo.DevToolsEnabled
+	}
 	return mygo.WindowOptions{
 		Hidden: o.Hidden, Title: o.Title, Width: o.Width, Height: o.Height,
 		MinWidth: o.MinWidth, MinHeight: o.MinHeight, StateKey: o.StateKey,
@@ -191,7 +199,8 @@ func (s *Shell) nativeOptions() mygo.WindowOptions {
 		TrafficLightPosition: &mygo.Point{X: 16, Y: 16},
 		Transparent:          runtime.GOOS == "darwin",
 		Vibrancy:             shellVibrancy(),
-		Content:              ui.View(s.view),
+		Content:              ui.View(s.decoratedView()),
+		Page:                 mygo.PageOptions{DevTools: devTools},
 	}
 }
 
@@ -322,6 +331,13 @@ func openFraction(open bool) float32 {
 		return 1
 	}
 	return 0
+}
+
+func (s *Shell) decoratedView() func(*ui.Context) {
+	if s.options.Decorate != nil {
+		return s.options.Decorate(s.view)
+	}
+	return s.view
 }
 
 func (s *Shell) view(c *ui.Context) {

@@ -1,0 +1,34 @@
+/* Development-only sidecar. These rules never resize or restyle the product. */
+.development-audit-launcher,.development-audit { position:fixed; z-index:2147483647; right:8px; bottom:8px; color:var(--pine-text); font:12px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+.development-audit-launcher button,.development-audit button { appearance:none; display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--pine-border); border-radius:5px; background:var(--pine-surface); color:inherit; font:inherit; min-height:28px; padding:4px 8px; }
+.development-audit-launcher button { width:30px; height:30px; padding:0; box-shadow:0 2px 8px #0002; }
+.development-audit { width:min(364px,calc(100vw - 16px)); border:1px solid var(--pine-border); border-radius:8px; background:var(--pine-background); box-shadow:0 8px 28px #0003; }
+.development-audit[data-dock="top"] { top:8px; bottom:auto; }
+.development-audit[data-surface="options"] { width:min(340px,calc(100vw - 16px)); }
+.development-audit header { display:flex; align-items:center; gap:7px; padding:6px 8px; }
+.development-audit header strong { flex:1; font-size:12px; font-weight:600; }
+.development-audit header button { width:28px; padding:0; }
+.development-audit button[aria-pressed="true"] { border-color:var(--pine-accent); color:var(--pine-accent); background:color-mix(in srgb,var(--pine-accent) 10%,var(--pine-background)); }
+.development-audit button:hover,.development-audit-launcher button:hover { background:var(--pine-hover); }
+.development-audit :is(button,select):focus-visible,.development-audit-launcher button:focus-visible { outline:2px solid var(--pine-accent); outline-offset:2px; }
+.development-audit-body { max-height:min(330px,calc(100dvh - 72px)); padding:0 10px 10px; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; }
+.development-audit-help { margin:4px 0 9px; color:var(--pine-muted); font-size:11px; }
+.development-audit-tools { display:flex; gap:5px; margin-bottom:10px; }
+.development-audit-tools button { flex:1; font-size:11px; }
+.development-audit-tools button:last-child { flex:0 0 30px; padding:0; }
+.development-audit-tree { display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--pine-muted); }
+.development-audit-tree select { width:100%; min-width:0; height:28px; padding:0 5px; border:1px solid var(--pine-border); border-radius:4px; background:var(--pine-surface); color:var(--pine-text); font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace; }
+.development-audit code { display:block; overflow-wrap:anywhere; font:10px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace; color:var(--pine-muted); }
+.development-audit-selector { margin:8px 0; }
+.development-audit-clipped { margin:5px 0; color:var(--pine-warning); font-size:11px; }
+.development-audit h3 { font-size:11px; font-weight:600; margin:9px 0 4px; }
+.development-audit dl { margin:0; }
+.development-audit-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+.development-audit dt { color:var(--pine-muted); font-size:10px; }
+.development-audit dd { margin:1px 0 0; font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace; overflow-wrap:anywhere; }
+.development-audit-insets { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+.development-audit-comparison { margin-top:9px; padding-top:2px; border-top:1px solid var(--pine-border); }
+.development-audit-comparison .development-audit-metrics { margin:6px 0; }
+.development-audit-comparison button,.development-audit footer button { min-height:24px; font-size:10px; }
+.development-audit footer { display:flex; align-items:center; justify-content:space-between; gap:8px; border-top:1px solid var(--pine-border); padding-top:9px; margin-top:10px; }
+.development-audit footer small { color:var(--pine-muted); font-size:9px; }
