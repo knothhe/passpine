@@ -746,6 +746,8 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 		return Data{}, s.pruneActivity(time.Now())
 	case "browser-install":
 		return s.installBrowser(r.ID)
+	case "browser-save", "browser-remove":
+		return s.configureBrowser(r)
 	case "activity":
 		if e := s.pruneActivity(time.Now()); e != nil {
 			return Data{}, e
@@ -1159,7 +1161,7 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 	default:
 		return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "unsupported_action"})
 	}
-	if r.Kind != "" || r.Directory != "" || r.KeyFile != "" || r.PublicKeyFile != "" || r.Passphrase != "" || r.Settings != nil || r.ID != "" || r.SyncConnection != nil || r.SyncOptions != nil || (r.SyncPreferences != nil || r.SyncSpaceID != "") && r.Action != "config-sync-browser" {
+	if r.BrowserConfiguration != nil || r.Kind != "" || r.Directory != "" || r.KeyFile != "" || r.PublicKeyFile != "" || r.Passphrase != "" || r.Settings != nil || r.ID != "" || r.SyncConnection != nil || r.SyncOptions != nil || (r.SyncPreferences != nil || r.SyncSpaceID != "") && r.Action != "config-sync-browser" {
 		return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})
 	}
 	if r.Interactive && r.Action != "fetch" && r.Action != "copy" && r.Action != "unlock" {
@@ -1174,6 +1176,7 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 	out.Data.Vaults = nil
 	out.Data.Folders = nil
 	out.Data.BrowserRegistrations = nil
+	out.Data.BrowserConfigurationError = ""
 	if out.Data.ConfigSync != nil {
 		options := out.Data.ConfigSync.Options
 		fields := selectedBrowserSyncFields(options)

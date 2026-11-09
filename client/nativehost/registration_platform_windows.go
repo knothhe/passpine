@@ -12,7 +12,7 @@ import (
 )
 
 func unregisterPlatformHost(target registrationTarget, manifest string) error {
-	name := hostRegistryPath(target.id)
+	name := targetRegistryPath(target)
 	key, err := registry.OpenKey(registry.CURRENT_USER, name, registry.QUERY_VALUE)
 	if errors.Is(err, registry.ErrNotExist) {
 		return nil
@@ -47,7 +47,7 @@ func hostRegistryPath(id string) string {
 }
 
 func registerPlatformHost(target registrationTarget) error {
-	key, _, err := registry.CreateKey(registry.CURRENT_USER, hostRegistryPath(target.id), registry.SET_VALUE)
+	key, _, err := registry.CreateKey(registry.CURRENT_USER, targetRegistryPath(target), registry.SET_VALUE)
 	if err != nil {
 		return err
 	}
@@ -56,7 +56,11 @@ func registerPlatformHost(target registrationTarget) error {
 }
 
 func platformRegistrationMatches(item BrowserRegistration) bool {
-	key, err := registry.OpenKey(registry.CURRENT_USER, hostRegistryPath(item.ID), registry.QUERY_VALUE)
+	name := hostRegistryPath(item.ID)
+	if item.registryPrefix != "" {
+		name = item.registryPrefix + `\NativeMessagingHosts\` + Name
+	}
+	key, err := registry.OpenKey(registry.CURRENT_USER, name, registry.QUERY_VALUE)
 	if err != nil {
 		return false
 	}
@@ -66,6 +70,9 @@ func platformRegistrationMatches(item BrowserRegistration) bool {
 }
 
 func browserInstalled(target registrationTarget) bool {
+	if target.configuration != nil {
+		return configuredBrowserInstalled(*target.configuration)
+	}
 	names := map[string]string{"chrome": "chrome.exe", "edge": "msedge.exe", "brave": "brave.exe", "firefox": "firefox.exe"}
 	name, ok := names[target.id]
 	if !ok {
@@ -95,4 +102,11 @@ func browserInstalled(target registrationTarget) bool {
 		}
 	}
 	return false
+}
+
+func targetRegistryPath(target registrationTarget) string {
+	if target.configuration != nil {
+		return target.configuration.RegistryPrefix + `\NativeMessagingHosts\` + Name
+	}
+	return hostRegistryPath(target.id)
 }

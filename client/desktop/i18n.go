@@ -49,6 +49,7 @@ var activityLabels = map[string]map[string]string{
 	"action": {
 		"lock": "锁定密码库", "unlock": "解锁密码库", "create": "创建密码库", "open": "打开密码库", "switch": "切换密码库",
 		"vault-rename": "重命名密码库", "generate": "生成密码", "settings": "更新设置", "browser-install": "注册浏览器连接",
+		"browser-save": "保存浏览器配置", "browser-remove": "移除浏览器配置",
 		"create-folder":        "新建文件夹",
 		"cleanup-folders":      "清理空文件夹",
 		"undo-cleanup-folders": "撤销空文件夹清理",

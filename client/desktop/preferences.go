@@ -8,6 +8,7 @@ import (
 // Preferences use the manager window and share its navigation. The epoch
 // cancels pending file panels or recovery reads when the destination changes.
 type preferencesState struct {
+	browser     browserConfigurationDraft
 	epoch       uint64
 	pendingRead *preferencesRead
 	saveDialog  func(mygo.SaveDialogOptions) (string, error)

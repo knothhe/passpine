@@ -55,8 +55,8 @@ func registrationFixture(t *testing.T) (string, []registrationTarget) {
 func TestRegistrationsReportEachBrowserWithoutWriting(t *testing.T) {
 	helper, targets := registrationFixture(t)
 	got := inspectRegistrations(helper, targets)
-	if len(got) != 7 {
-		t.Fatalf("expected seven browser registrations, got %d", len(got))
+	if len(got) != 8 {
+		t.Fatalf("expected eight browser registrations, got %d", len(got))
 	}
 	for _, item := range got {
 		if item.Registered || item.Status != "missing" || item.Name == "" || item.ExtensionID == "" {
@@ -75,6 +75,37 @@ func TestRegistrationsReportEachBrowserWithoutWriting(t *testing.T) {
 		}
 		if item.ID == "firefox" && item.ExtensionID != FirefoxID {
 			t.Fatal("Firefox registration uses the wrong extension identity")
+		}
+	}
+}
+
+func TestEgoLiteMacRegistrationUsesOwnDirectoryAndChromiumIdentity(t *testing.T) {
+	helper, _ := registrationFixture(t)
+	home := filepath.Join(t.TempDir(), "Home With Spaces")
+	targets := registrationTargets(home, "darwin")
+	paths, err := registerBrowserTargets(helper, targets, "ego-lite")
+	want := filepath.Join(home, "Library", "Application Support", "Citro Labs", "ego lite", "NativeMessagingHosts", Name+".json")
+	if err != nil || len(paths) != 1 || paths[0] != want {
+		t.Fatalf("ego lite registration: paths=%v, error=%v", paths, err)
+	}
+	data, err := os.ReadFile(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest hostManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Path != helper || manifest.Name != Name || manifest.Type != "stdio" || len(manifest.AllowedExtensions) != 0 || !sameStrings(manifest.AllowedOrigins, []string{"chrome-extension://" + ChromiumID + "/"}) {
+		t.Fatalf("incorrect ego lite manifest: %+v", manifest)
+	}
+	for _, item := range inspectRegistrations(helper, targets) {
+		if item.ID == "ego-lite" {
+			if !item.Registered || item.Name != "ego lite" || item.ExtensionID != ChromiumID {
+				t.Fatalf("ego lite status: %+v", item)
+			}
+		} else if _, err := os.Stat(filepath.Dir(item.ManifestPath)); !os.IsNotExist(err) {
+			t.Fatalf("ego lite registration touched another browser: %s", item.ID)
 		}
 	}
 }

@@ -54,6 +54,66 @@ test('a registration pointing to another installation is preserved', async t => 
   assert.equal(JSON.parse(fs.readFileSync(manifest)).path, '/other/dev-host');
 });
 
+test('macOS ego lite cleanup removes only this Dev registration and preserves browser data and release', async t => {
+  for (const owned of [true, false]) await t.test(owned ? 'owned host' : 'another installation', async t => {
+    const { home, layout, options, write } = fixture(t, 'darwin');
+    const browser = path.join(home, 'Library/Application Support/Citro Labs/ego lite');
+    const manifest = path.join(browser, 'NativeMessagingHosts/com.knothhe.passpine.dev.json');
+    const original = JSON.stringify({ name: 'com.knothhe.passpine.dev', path: owned ? layout.host : path.join(home, 'another installation/host'), type: 'stdio' });
+    write(manifest, original);
+    const release = path.join(browser, 'NativeMessagingHosts/com.knothhe.passpine.json');
+    write(release, 'release registration');
+    const profile = path.join(browser, 'Default/Preferences');
+    write(profile, 'browser preferences');
+    await uninstallInstallation(layout, options);
+    assert.equal(fs.existsSync(manifest), !owned);
+    if (!owned) assert.equal(fs.readFileSync(manifest, 'utf8'), original);
+    assert.equal(fs.readFileSync(release, 'utf8'), 'release registration');
+    assert.equal(fs.readFileSync(profile, 'utf8'), 'browser preferences');
+    assert.equal((await uninstallInstallation(layout, options)).absent, true);
+  });
+});
+
+test('manual browser registrations are cleaned on macOS and Linux without removing configurations or profiles', async t => {
+  for (const platform of ['darwin', 'linux']) await t.test(platform, async t => {
+    const { home, layout, options, write } = fixture(t, platform);
+    const owned = path.join(home, 'Custom Browser Data', 'NativeMessagingHosts');
+    const foreign = path.join(home, 'Another Browser Data', 'native-messaging-hosts');
+    const configurations = JSON.stringify([
+      { kind: 'chromium', directory: owned },
+      { kind: 'firefox', directory: foreign },
+    ]);
+    write(layout.browserConfigFile, configurations);
+    const manifest = path.join(owned, 'com.knothhe.passpine.dev.json');
+    write(manifest, JSON.stringify({ name: 'com.knothhe.passpine.dev', path: layout.host, type: 'stdio' }));
+    const otherManifest = path.join(foreign, 'com.knothhe.passpine.dev.json');
+    const otherData = JSON.stringify({ name: 'com.knothhe.passpine.dev', path: path.join(home, 'Another Installation', 'host'), type: 'stdio' });
+    write(otherManifest, otherData);
+    const release = path.join(owned, 'com.knothhe.passpine.json');
+    write(release, 'release registration');
+    const profile = path.join(home, 'Custom Browser Data', 'Preferences');
+    write(profile, 'browser preferences');
+    await uninstallInstallation(layout, options);
+    assert.equal(fs.existsSync(manifest), false);
+    assert.equal(fs.readFileSync(otherManifest, 'utf8'), otherData);
+    assert.equal(fs.readFileSync(release, 'utf8'), 'release registration');
+    assert.equal(fs.readFileSync(profile, 'utf8'), 'browser preferences');
+    assert.equal(fs.readFileSync(layout.browserConfigFile, 'utf8'), configurations);
+    assert.equal((await uninstallInstallation(layout, options)).absent, true);
+  });
+});
+
+test('invalid manual browser configuration stops uninstall before exit or removal', async t => {
+  const { layout, options, write, calls } = fixture(t);
+  for (const data of ['invalid JSON', JSON.stringify([{ kind: 'chromium', directory: layout.installDirectory }])]) {
+    write(layout.browserConfigFile, data);
+    await assert.rejects(uninstallInstallation(layout, options));
+    assert.equal(fs.existsSync(layout.executable), true);
+    assert.equal(fs.existsSync(layout.record), true);
+    assert.equal(calls.some(([, args]) => args[0] === '--quit-for-uninstall'), false);
+  }
+});
+
 test('Linux login cleanup requires the exact executable and preserves another copy', { skip:process.platform === 'win32' && 'Desktop Entry fixture uses Unix executable paths' }, async t => {
   const { layout,options,write } = fixture(t);
   const owned = path.join(layout.configHome,'autostart/Passpine-Dev.desktop');

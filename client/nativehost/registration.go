@@ -9,23 +9,27 @@ import (
 	"runtime"
 
 	"github.com/knothhe/passpine/client/buildinfo"
+	"github.com/knothhe/passpine/client/i18n"
 )
 
 // BrowserRegistration reports native messaging registration, not whether the
 // browser extension itself has been installed or enabled by the user.
 type BrowserRegistration struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Registered   bool   `json:"registered"`
-	Status       string `json:"status"`
-	ExtensionID  string `json:"extensionId"`
-	ManifestPath string `json:"manifestPath"`
-	HelperPath   string `json:"helperPath"`
+	ID             string                `json:"id"`
+	Name           string                `json:"name"`
+	Registered     bool                  `json:"registered"`
+	Status         string                `json:"status"`
+	ExtensionID    string                `json:"extensionId"`
+	ManifestPath   string                `json:"manifestPath"`
+	HelperPath     string                `json:"helperPath"`
+	Configuration  *BrowserConfiguration `json:"configuration,omitempty"`
+	registryPrefix string
 }
 
 type registrationTarget struct {
 	id, name, directory string
 	firefox             bool
+	configuration       *BrowserConfiguration
 }
 
 // Browser support directories are not installation evidence: registration
@@ -54,30 +58,31 @@ func registrationTargets(home, platform string) []registrationTarget {
 	switch platform {
 	case "windows":
 		targets = []registrationTarget{
-			{"chrome", "Chrome", "chrome", false},
-			{"edge", "Microsoft Edge", "edge", false},
-			{"brave", "Brave", "brave", false},
-			{"firefox", "Firefox", "firefox", true},
+			{"chrome", "Chrome", "chrome", false, nil},
+			{"edge", "Microsoft Edge", "edge", false, nil},
+			{"brave", "Brave", "brave", false, nil},
+			{"firefox", "Firefox", "firefox", true, nil},
 		}
 		home = filepath.Join(home, "AppData", "Local", buildinfo.Name(), "NativeMessagingHosts")
 	case "darwin":
 		targets = []registrationTarget{
-			{"chrome", "Chrome", "Google/Chrome/NativeMessagingHosts", false},
-			{"chrome-beta", "Chrome Beta", "Google/Chrome Beta/NativeMessagingHosts", false},
-			{"chrome-testing", "Chrome for Testing", "Google/ChromeForTesting/NativeMessagingHosts", false},
-			{"chromium", "Chromium", "Chromium/NativeMessagingHosts", false},
-			{"edge", "Microsoft Edge", "Microsoft Edge/NativeMessagingHosts", false},
-			{"brave", "Brave", "BraveSoftware/Brave-Browser/NativeMessagingHosts", false},
-			{"firefox", "Firefox", "Mozilla/NativeMessagingHosts", true},
+			{"chrome", "Chrome", "Google/Chrome/NativeMessagingHosts", false, nil},
+			{"chrome-beta", "Chrome Beta", "Google/Chrome Beta/NativeMessagingHosts", false, nil},
+			{"chrome-testing", "Chrome for Testing", "Google/ChromeForTesting/NativeMessagingHosts", false, nil},
+			{"chromium", "Chromium", "Chromium/NativeMessagingHosts", false, nil},
+			{"edge", "Microsoft Edge", "Microsoft Edge/NativeMessagingHosts", false, nil},
+			{"brave", "Brave", "BraveSoftware/Brave-Browser/NativeMessagingHosts", false, nil},
+			{"ego-lite", "ego lite", "Citro Labs/ego lite/NativeMessagingHosts", false, nil},
+			{"firefox", "Firefox", "Mozilla/NativeMessagingHosts", true, nil},
 		}
 		home = filepath.Join(home, "Library", "Application Support")
 	case "linux":
 		targets = []registrationTarget{
-			{"chrome", "Chrome", ".config/google-chrome/NativeMessagingHosts", false},
-			{"chromium", "Chromium", ".config/chromium/NativeMessagingHosts", false},
-			{"edge", "Microsoft Edge", ".config/microsoft-edge/NativeMessagingHosts", false},
-			{"brave", "Brave", ".config/BraveSoftware/Brave-Browser/NativeMessagingHosts", false},
-			{"firefox", "Firefox", ".mozilla/native-messaging-hosts", true},
+			{"chrome", "Chrome", ".config/google-chrome/NativeMessagingHosts", false, nil},
+			{"chromium", "Chromium", ".config/chromium/NativeMessagingHosts", false, nil},
+			{"edge", "Microsoft Edge", ".config/microsoft-edge/NativeMessagingHosts", false, nil},
+			{"brave", "Brave", ".config/BraveSoftware/Brave-Browser/NativeMessagingHosts", false, nil},
+			{"firefox", "Firefox", ".mozilla/native-messaging-hosts", true, nil},
 		}
 	}
 	for i := range targets {
@@ -107,6 +112,11 @@ func HelperAvailable(executable string) bool {
 // Registrations only reads manifests and executable metadata. A status check
 // must never create browser directories or silently repair a broken manifest.
 func Registrations(executable string) []BrowserRegistration {
+	configurations, _ := defaultBrowserConfigurations()
+	return RegistrationsWithConfigurations(executable, configurations)
+}
+
+func RegistrationsWithConfigurations(executable string, configurations []BrowserConfiguration) []BrowserRegistration {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil
@@ -115,8 +125,15 @@ func Registrations(executable string) []BrowserRegistration {
 	if err != nil || executable == "" {
 		path = ""
 	}
-	items := inspectRegistrations(path, installedTargets(platformRegistrationTargets(home), browserInstalled))
+	targets := configuredTargets(platformRegistrationTargets(home), configurations)
+	// Keep manually configured browsers visible even when their program moved.
+	targets = installedTargets(targets, func(target registrationTarget) bool { return target.configuration != nil || browserInstalled(target) })
+	items := inspectRegistrations(path, targets)
 	for i := range items {
+		if targets[i].configuration != nil && !browserInstalled(targets[i]) {
+			items[i].Registered, items[i].Status = false, "browser_missing"
+			continue
+		}
 		if items[i].Registered && !platformRegistrationMatches(items[i]) {
 			items[i].Registered, items[i].Status = false, "missing"
 		}
@@ -129,6 +146,11 @@ func inspectRegistrations(executable string, targets []registrationTarget) []Bro
 	registrations := make([]BrowserRegistration, 0, len(targets))
 	for _, target := range targets {
 		item := BrowserRegistration{ID: target.id, Name: target.name, ExtensionID: ChromiumID, ManifestPath: filepath.Join(target.directory, Name+".json"), HelperPath: executable, Status: "missing"}
+		if target.configuration != nil {
+			configuration := *target.configuration
+			item.Configuration = &configuration
+			item.registryPrefix = configuration.RegistryPrefix
+		}
 		if target.firefox {
 			item.ExtensionID = FirefoxID
 		}
@@ -178,6 +200,14 @@ func Register(executable string) ([]string, error) {
 // RegisterBrowser registers only the selected installed browser. An empty ID
 // redetects and repairs installed browsers, matching the previous client.
 func RegisterBrowser(executable, browserID string) ([]string, error) {
+	configurations, err := defaultBrowserConfigurations()
+	if err != nil {
+		return nil, err
+	}
+	return RegisterBrowserWithConfigurations(executable, browserID, configurations)
+}
+
+func RegisterBrowserWithConfigurations(executable, browserID string, configurations []BrowserConfiguration) ([]string, error) {
 	path, err := filepath.Abs(executable)
 	if err != nil {
 		return nil, err
@@ -189,7 +219,7 @@ func RegisterBrowser(executable, browserID string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	targets := platformRegistrationTargets(home)
+	targets := configuredTargets(platformRegistrationTargets(home), configurations)
 	if len(targets) == 0 {
 		return nil, errors.New("automatic host registration is unsupported on this platform")
 	}
@@ -224,11 +254,18 @@ func registerTargets(executable string, targets []registrationTarget) ([]string,
 	installed := []string{}
 	var failures []error
 	for i, status := range inspectRegistrations(executable, targets) {
+		target := targets[i]
+		if target.configuration != nil {
+			resolved, err := resolveBrowserDirectory(target.directory)
+			if err != nil || resolved != filepath.Clean(target.directory) {
+				failures = append(failures, errors.New(i18n.BrowserDestinationInvalid))
+				continue
+			}
+		}
 		if status.Registered {
 			installed = append(installed, status.ManifestPath)
 			continue
 		}
-		target := targets[i]
 		b, _ := json.MarshalIndent(manifestFor(executable, target), "", "  ")
 		if err := os.MkdirAll(target.directory, 0700); err != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", target.name, err))

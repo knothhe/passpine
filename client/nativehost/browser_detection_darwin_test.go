@@ -12,20 +12,24 @@ func TestMacBrowserDetectionRejectsWrongBundleIdentityAndMissingExecutable(t *te
 	if !browserDiscovery.available {
 		t.Fatal("macOS browser discovery frameworks are unavailable")
 	}
-	identifier := browserDiscovery.stringCreate(0, browserBundleID("chrome"), 0x08000100)
-	defer browserDiscovery.release(identifier)
 	for _, test := range []struct {
 		name       string
+		browserID  string
 		identifier string
 		executable bool
 		want       bool
 	}{
-		{"installed", "com.google.Chrome", true, true},
-		{"wrong identity", "other.application", true, false},
-		{"missing executable", "com.google.Chrome", false, false},
+		{"installed", "chrome", "com.google.Chrome", true, true},
+		{"wrong identity", "chrome", "other.application", true, false},
+		{"missing executable", "chrome", "com.google.Chrome", false, false},
+		{"ego lite installed", "ego-lite", "com.citrolabs.ego.lite", true, true},
+		{"ego lite wrong identity", "ego-lite", "com.citrolabs.ego", true, false},
+		{"ego lite missing executable", "ego-lite", "com.citrolabs.ego.lite", false, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			appPath := filepath.Join(t.TempDir(), "Chrome.app")
+			identifier := browserDiscovery.stringCreate(0, browserBundleID(test.browserID), 0x08000100)
+			defer browserDiscovery.release(identifier)
+			appPath := filepath.Join(t.TempDir(), "Browser With Spaces.app")
 			executable := filepath.Join(appPath, "Contents", "MacOS", "browser")
 			if err := os.MkdirAll(filepath.Dir(executable), 0700); err != nil {
 				t.Fatal(err)
@@ -60,5 +64,22 @@ func TestMacBrowserDetectionRejectsWrongBundleIdentityAndMissingExecutable(t *te
 	}
 	if browserInstalled(registrationTarget{id: "unsupported"}) {
 		t.Fatal("unsupported application was detected as a browser")
+	}
+}
+
+func TestMacManualBrowserInfersProductDirectoryWithoutRegistration(t *testing.T) {
+	root, _, configuration := manualBrowserFixture(t)
+	t.Setenv("HOME", root)
+	configuration.Name, configuration.Directory = "", ""
+	got, err := NormalizeBrowserConfiguration(configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(root, "Library", "Application Support", "Test Vendor", "Custom Browser", "NativeMessagingHosts")
+	if got.Name != "Custom Browser" || got.Directory != want {
+		t.Fatalf("inferred metadata: %+v", got)
+	}
+	if _, err := os.Stat(want); !os.IsNotExist(err) {
+		t.Fatal("metadata inspection created registration")
 	}
 }

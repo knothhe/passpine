@@ -47,6 +47,9 @@ func (a *application) vaultNameControls(c *ui.Context) {
 
 func (a *application) browserRegistrationView(c *ui.Context) {
 	ui.Column(c).FillWidth().MinWidth(0).Gap(14).Children(func() {
+		if a.state.BrowserConfigurationError != "" {
+			muted(c, a.t(a.state.BrowserConfigurationError))
+		}
 		if len(a.state.BrowserRegistrations) == 0 {
 			if a.state.Preview {
 				muted(c, a.t("预览模式不会注册个人浏览器"))
@@ -62,6 +65,8 @@ func (a *application) browserRegistrationView(c *ui.Context) {
 					icon, color, status = lucide.CircleCheck(), c.Theme().Success, a.t("已注册")
 				} else if registration.Status == "invalid" || registration.Status == "helper_missing" {
 					icon, color, status = lucide.CircleAlert(), c.Theme().Warning, a.t("需要修复")
+				} else if registration.Status == "browser_missing" {
+					icon, color, status = lucide.CircleAlert(), c.Theme().Warning, a.t("浏览器程序不存在")
 				}
 				components.Icon(c, icon).Size(16, 16).TextColor(color)
 				ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
@@ -71,13 +76,30 @@ func (a *application) browserRegistrationView(c *ui.Context) {
 						components.Text(c, status).FontSize(scaledFontSize(c, 11)).TextColor(color)
 					})
 					components.Text(c, registration.ExtensionID).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).Wrap()
+					if registration.Configuration != nil {
+						components.Text(c, registration.Configuration.Path).FontSize(scaledFontSize(c, 11)).TextColor(c.Theme().TextMuted).Wrap()
+					}
 				})
+				if registration.Configuration != nil {
+					if components.Button(c, a.t("编辑"), components.ButtonGhost).Label(a.t("编辑 %s 的浏览器配置", registration.Name)).Disabled(a.busy || a.state.Preview || a.preferences.browser.picking).Clicked() {
+						a.preferences.browser.open = true
+						a.preferences.browser.value = *registration.Configuration
+					}
+					if components.Button(c, a.t("移除"), components.ButtonGhost).Label(a.t("移除 %s 的浏览器配置", registration.Name)).Disabled(a.busy || a.state.Preview || a.preferences.browser.picking).Clicked() {
+						a.call(app.Request{Action: "browser-remove", ID: registration.ID}, func(app.Data) {
+							if a.preferences.browser.value.ID == registration.ID {
+								a.preferences.browser.open = false
+							}
+							a.notice = a.t("浏览器配置已移除。")
+						})
+					}
+				}
 				if !registration.Registered {
 					label := a.t("注册")
 					if registration.Status == "invalid" || registration.Status == "helper_missing" {
 						label = a.t("修复")
 					}
-					if components.Button(c, label, components.ButtonOutline).Label(a.t("注册 %s", registration.Name)).Disabled(a.busy || a.state.Preview || !a.state.BrowserHelperAvailable).Clicked() {
+					if components.Button(c, label, components.ButtonOutline).Label(a.t("注册 %s", registration.Name)).Disabled(a.busy || a.state.Preview || !a.state.BrowserHelperAvailable || registration.Status == "browser_missing").Clicked() {
 						a.call(app.Request{Action: "browser-install", ID: registration.ID}, nil)
 					}
 				}

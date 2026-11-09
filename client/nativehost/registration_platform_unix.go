@@ -11,3 +11,5 @@ func platformRegistrationTargets(home string) []registrationTarget {
 func platformRegistrationMatches(BrowserRegistration) bool    { return true }
 func registerPlatformHost(registrationTarget) error           { return nil }
 func unregisterPlatformHost(registrationTarget, string) error { return nil }
+
+func targetRegistryPath(registrationTarget) string { return "" }

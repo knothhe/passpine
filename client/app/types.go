@@ -8,6 +8,8 @@ import (
 // Request is shared by the native UI and the browser native-messaging boundary.
 // The browser boundary separately restricts which actions and arguments it accepts.
 type Request struct {
+	BrowserConfiguration *nativehost.BrowserConfiguration `json:"browserConfiguration,omitempty"`
+
 	RequestID              string                  `json:"requestId,omitempty"`
 	Protocol               int                     `json:"protocol,omitempty"`
 	Action                 string                  `json:"action"`
@@ -115,6 +117,8 @@ type Settings struct {
 	GlobalShortcut        string `json:"globalShortcut"`
 }
 type Data struct {
+	BrowserConfigurationError string `json:"browserConfigurationError,omitempty"`
+
 	AssociationStoreID       string                           `json:"associationStoreId,omitempty"`
 	AssociationScope         string                           `json:"associationScope,omitempty"`
 	AssociationVaultIDs      []string                         `json:"associationVaultIds,omitempty"`

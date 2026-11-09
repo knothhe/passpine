@@ -311,6 +311,7 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 	}
 	browserItems := []components.SettingsItem{
 		{ID: "browser-status", Title: a.t("浏览器注册"), Description: a.t("注册状态表示本机连接和扩展身份是否匹配，不代表浏览器已安装扩展。"), Build: a.browserRegistrationView},
+		{ID: "browser-manual", Title: a.t("手动配置浏览器"), Build: a.manualBrowserView},
 		{ID: "browser", Title: a.t("连接浏览器扩展"), Build: func(c *ui.Context) {
 			if a.state.Preview {
 				muted(c, a.t("预览模式不会注册个人浏览器"))

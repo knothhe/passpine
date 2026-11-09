@@ -129,6 +129,27 @@ Dev 应用 ID 为 `com.knothhe.passpine.dev`，名称为 `Passpine Dev`。数据
 
 手动移动应用后，在客户端设置 → 浏览器中逐项**修复**，或选择**重新检测并修复**。只为已安装的浏览器注册连接；不要注册临时构建目录里的应用后删除该目录。
 
+macOS 支持本机安装的 **ego lite**（应用标识 `com.citrolabs.ego.lite`）。在客户端设置 → 浏览器中注册或修复 ego lite，连接清单写入 `~/Library/Application Support/Citro Labs/ego lite/NativeMessagingHosts/`。扩展复用 Chrome 产物：使用 `make browser:install BROWSER=chrome`，然后在 ego lite 的 `chrome://extensions` 中开启开发者模式并加载固定插件目录。使用 Dev 客户端时，在解包扩展的设置中选择 Dev 客户端。
+
+### 自动检测与手动配置浏览器
+
+| 系统 | 自动检测的浏览器 |
+| --- | --- |
+| macOS | Chrome、Chrome Beta、Chrome for Testing、Chromium、Edge、Brave、ego lite、Firefox |
+| Linux | Chrome、Chromium、Edge、Brave、Firefox |
+| Windows | Chrome、Edge、Brave、Firefox |
+
+未自动检测到的安装或未列出的 Chromium / Firefox 衍生浏览器，可以在**设置 → 浏览器 → 手动配置浏览器 → 添加浏览器**中添加：
+
+1. 输入或选择浏览器程序的绝对路径。macOS 选择 `.app`，Windows 选择 `.exe`，Linux 选择可执行程序；路径可包含空格。名称可选。
+2. 选择 **Chromium 兼容**或 **Firefox 兼容**，并加载对应的 Passpine 扩展。浏览器本身必须支持 WebExtensions Native Messaging；选择兼容类型不能让不支持该协议的浏览器获得支持。
+3. macOS 的连接目录可留空：对于提供 `CrProductDirName` 的 Chromium 应用，从 `.app` 推导 `~/Library/Application Support/<产品目录>/NativeMessagingHosts`；标准 Firefox 使用 `Mozilla/NativeMessagingHosts`。其他应用、自定义用户数据目录或无法推导时，填写浏览器实际读取的 Native Messaging 目录。
+4. Linux 填写浏览器文档指定的 `NativeMessagingHosts` 或 `native-messaging-hosts` 目录的绝对路径。Flatpak、Snap 等沙箱安装还需满足浏览器访问本机助手的要求，仅写入注册文件不保证连接可用。
+5. Windows 填写浏览器读取的 **HKCU 注册表前缀**，例如 Chrome 的 `Software\Google\Chrome` 或 Firefox 的 `Software\Mozilla`。Passpine 追加 `NativeMessagingHosts\<当前 Host 名称>`，并在客户端自己的本机缓存目录保存清单；不填写 `HKEY_CURRENT_USER` 或 Host 名称。
+6. 点击**保存浏览器配置**，核对列表后点击**注册**。已有注册可修复。浏览器移动或删除后会显示“浏览器程序不存在”，可编辑程序路径；更换兼容类型或连接位置前先移除旧配置。
+
+手动配置保存在当前通道应用数据目录的 `browsers.json` 中，最多 32 项，不参与配置同步，也不会返回给浏览器扩展。相同注册位置只显示一项，手动路径可覆盖该浏览器的自动检测。**移除**会删除配置并清理仍属于当前安装的连接；其他安装的连接、浏览器资料和密码库内容保留。Dev 卸载同样清理手动连接，保留 `browsers.json` 供重新安装使用。
+
 ## 扩展配置
 
 扩展安装通过 `make browser:install` 复用 `h2-browser-extension` skill 的本地安装流程：构建所选浏览器的 MV3 版本，复制到固定的 `<安装父目录>/<插件名称>`。配置文件放在仓库根目录。

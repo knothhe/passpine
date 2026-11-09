@@ -10,6 +10,10 @@ import (
 // Remove only manifests whose complete identity still points to this helper,
 // including browsers that have since been removed from the machine.
 func Unregister(executable string) error {
+	configurations, err := defaultBrowserConfigurations()
+	if err != nil {
+		return err
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -18,7 +22,7 @@ func Unregister(executable string) error {
 	if err != nil {
 		return err
 	}
-	return unregisterTargets(executable, platformRegistrationTargets(home), unregisterPlatformHost)
+	return unregisterTargets(executable, configuredTargets(platformRegistrationTargets(home), configurations), unregisterPlatformHost)
 }
 
 func unregisterTargets(executable string, targets []registrationTarget, detach func(registrationTarget, string) error) error {

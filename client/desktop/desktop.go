@@ -429,6 +429,9 @@ func (a *application) receiveResponse(generation uint64, r app.Response, done fu
 			a.clearDetailTransition()
 		}
 		a.errorText = r.Message
+		if requestAction == "browser-save" || requestAction == "browser-remove" || requestAction == "browser-install" {
+			a.errorText = a.t(r.Message)
+		}
 		if a.errorText == "" {
 			a.errorText = r.Code
 		}

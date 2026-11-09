@@ -8,6 +8,9 @@ import (
 )
 
 func browserInstalled(target registrationTarget) bool {
+	if target.configuration != nil {
+		return configuredBrowserInstalled(*target.configuration)
+	}
 	if runtime.GOOS != "linux" {
 		return false
 	}

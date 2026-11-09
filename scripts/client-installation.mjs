@@ -46,7 +46,8 @@ export function installationLayout(directory, { platform = process.platform, hom
     const normalized = exists(root) ? fs.realpathSync(root) : path.resolve(root);
     if (contains(normalized,file) || contains(file,normalized)) throw new Error('Installation resource overlaps source or application data.');
   }
-  return { platform, home, configHome, installDirectory, target, executable, host, record: path.join(installDirectory, recordName), programs: platform === 'darwin' ? [target] : [target, host], extras };
+  const browserConfigFile = path.join(env.PASSPINE_DEV_HOME || path.join(configHome, 'Passpine Dev'), 'browsers.json');
+  return { platform, home, configHome, browserConfigFile, installDirectory, target, executable, host, record: path.join(installDirectory, recordName), programs: platform === 'darwin' ? [target] : [target, host], extras };
 }
 
 export function treeHash(file) {
@@ -139,9 +140,21 @@ export function recordInstallation(layout, { run = execute } = {}) {
 
 function registrations(layout) {
   const directories = layout.platform === 'darwin'
-    ? ['Google/Chrome', 'Google/Chrome Beta', 'Google/ChromeForTesting', 'Chromium', 'Microsoft Edge', 'BraveSoftware/Brave-Browser', 'Mozilla'].map(name => path.join(layout.home, 'Library/Application Support', name, 'NativeMessagingHosts'))
+    ? ['Google/Chrome', 'Google/Chrome Beta', 'Google/ChromeForTesting', 'Chromium', 'Microsoft Edge', 'BraveSoftware/Brave-Browser', 'Citro Labs/ego lite', 'Mozilla'].map(name => path.join(layout.home, 'Library/Application Support', name, 'NativeMessagingHosts'))
     : ['.config/google-chrome/NativeMessagingHosts', '.config/chromium/NativeMessagingHosts', '.config/microsoft-edge/NativeMessagingHosts', '.config/BraveSoftware/Brave-Browser/NativeMessagingHosts', '.mozilla/native-messaging-hosts'].map(name => path.join(layout.home, name));
-  return directories.map(directory => path.join(directory, `${appID}.json`));
+  if (exists(layout.browserConfigFile)) {
+    realPath(layout.browserConfigFile);
+    const info = fs.statSync(layout.browserConfigFile);
+    if (!info.isFile() || info.size > 65536) throw new Error('Invalid local browser configuration; no files were removed.');
+    const configurations = JSON.parse(fs.readFileSync(layout.browserConfigFile, 'utf8'));
+    if (!Array.isArray(configurations) || configurations.length > 32) throw new Error('Invalid local browser configuration; no files were removed.');
+    for (const configuration of configurations) {
+      const directory = configuration.directory;
+      if (typeof directory !== 'string' || !path.isAbsolute(directory) || !['NativeMessagingHosts', 'native-messaging-hosts'].includes(path.basename(directory)) || !['chromium', 'firefox'].includes(configuration.kind)) throw new Error('Invalid local browser configuration; no files were removed.');
+      directories.push(directory);
+    }
+  }
+  return [...new Set(directories.map(directory => path.join(directory, `${appID}.json`)))];
 }
 
 function loginRegistrations(layout) {
@@ -158,11 +171,12 @@ function ownedLoginRegistration(file, executable) {
 }
 
 export async function uninstallInstallation(layout, { run = execute, running = installedProcesses, pause = ms => new Promise(resolve => setTimeout(resolve, ms)), remove = file => fs.rmSync(file, { recursive: true }) } = {}) {
+  const browserRegistrations = registrations(layout);
   realPath(layout.record);
   if (!exists(layout.record)) {
     if (layout.programs.some(exists)) throw new Error('Installation ownership record is missing. Reinstall this Dev build first; no files were removed.');
     // Without the record, residual registrations cannot be claimed safely.
-    if (registrations(layout).some(file => exists(file) && JSON.parse(fs.readFileSync(file)).path === layout.host) || loginRegistrations(layout).some(file => exists(file) && ownedLoginRegistration(file,layout.executable))) throw new Error('Dev registration remains without an ownership record. Reinstall and retry.');
+    if (browserRegistrations.some(file => exists(file) && JSON.parse(fs.readFileSync(file)).path === layout.host) || loginRegistrations(layout).some(file => exists(file) && ownedLoginRegistration(file,layout.executable))) throw new Error('Dev registration remains without an ownership record. Reinstall and retry.');
     return { removed: [], absent: true };
   }
   const record = JSON.parse(fs.readFileSync(layout.record, 'utf8'));
@@ -194,7 +208,7 @@ export async function uninstallInstallation(layout, { run = execute, running = i
   writeRecord(layout, { ...record,phase:'removing' });
   const ownedRegistrations = [];
   const preserved = [];
-  for (const file of registrations(layout)) {
+  for (const file of browserRegistrations) {
     if (!exists(file)) continue;
     realPath(file);
     const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));

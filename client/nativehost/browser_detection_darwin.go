@@ -1,6 +1,9 @@
 package nativehost
 
 import (
+	"errors"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/ebitengine/purego"
@@ -17,6 +20,10 @@ var browserDiscovery struct {
 	arrayValue            func(uintptr, int) uintptr
 	bundleCreate          func(uintptr, uintptr) uintptr
 	bundleIdentifier      func(uintptr) uintptr
+	bundleValue           func(uintptr, uintptr) uintptr
+	stringGetCString      func(uintptr, *byte, int, uint32) bool
+	getTypeID             func(uintptr) uintptr
+	stringTypeID          func() uintptr
 	bundleExecutableURL   func(uintptr) uintptr
 	urlCreateWithPath     func(uintptr, uintptr, int, bool) uintptr
 	urlFileRepresentation func(uintptr, bool, *byte, int) bool
@@ -38,6 +45,10 @@ func loadBrowserDiscovery() {
 	purego.RegisterLibFunc(&browserDiscovery.arrayValue, cf, "CFArrayGetValueAtIndex")
 	purego.RegisterLibFunc(&browserDiscovery.bundleCreate, cf, "CFBundleCreate")
 	purego.RegisterLibFunc(&browserDiscovery.bundleIdentifier, cf, "CFBundleGetIdentifier")
+	purego.RegisterLibFunc(&browserDiscovery.bundleValue, cf, "CFBundleGetValueForInfoDictionaryKey")
+	purego.RegisterLibFunc(&browserDiscovery.stringGetCString, cf, "CFStringGetCString")
+	purego.RegisterLibFunc(&browserDiscovery.getTypeID, cf, "CFGetTypeID")
+	purego.RegisterLibFunc(&browserDiscovery.stringTypeID, cf, "CFStringGetTypeID")
 	purego.RegisterLibFunc(&browserDiscovery.bundleExecutableURL, cf, "CFBundleCopyExecutableURL")
 	purego.RegisterLibFunc(&browserDiscovery.urlCreateWithPath, cf, "CFURLCreateWithFileSystemPath")
 	purego.RegisterLibFunc(&browserDiscovery.urlFileRepresentation, cf, "CFURLGetFileSystemRepresentation")
@@ -53,6 +64,7 @@ func browserBundleID(id string) string {
 		"chromium":       "org.chromium.Chromium",
 		"edge":           "com.microsoft.edgemac",
 		"brave":          "com.brave.Browser",
+		"ego-lite":       "com.citrolabs.ego.lite",
 		"firefox":        "org.mozilla.firefox",
 	}[id]
 }
@@ -61,6 +73,9 @@ func browserBundleID(id string) string {
 // previous client's NSWorkspace lookup, we then verify the bundle identity and
 // executable; a stale Launch Services URL does not mean a browser is installed.
 func browserInstalled(target registrationTarget) bool {
+	if target.configuration != nil {
+		return configuredBrowserInstalled(*target.configuration)
+	}
 	browserDiscovery.once.Do(loadBrowserDiscovery)
 	bundleID := browserBundleID(target.id)
 	if !browserDiscovery.available || bundleID == "" {
@@ -82,6 +97,59 @@ func browserInstalled(target registrationTarget) bool {
 		}
 	}
 	return false
+}
+
+func browserApplicationMetadata(path string) (browserMetadata, error) {
+	var metadata browserMetadata
+	browserDiscovery.once.Do(loadBrowserDiscovery)
+	if !browserDiscovery.available || !filepath.IsAbs(path) || !strings.EqualFold(filepath.Ext(path), ".app") {
+		return metadata, errors.New("invalid application bundle")
+	}
+	value := browserDiscovery.stringCreate(0, path, 0x08000100)
+	if value == 0 {
+		return metadata, errors.New("invalid bundle path")
+	}
+	defer browserDiscovery.release(value)
+	url := browserDiscovery.urlCreateWithPath(0, value, 0, true)
+	if url == 0 {
+		return metadata, errors.New("invalid bundle URL")
+	}
+	defer browserDiscovery.release(url)
+	bundle := browserDiscovery.bundleCreate(0, url)
+	if bundle == 0 {
+		return metadata, errors.New("invalid application bundle")
+	}
+	defer browserDiscovery.release(bundle)
+	identifier := browserDiscovery.bundleIdentifier(bundle)
+	if identifier == 0 || !applicationBundleInstalled(url, identifier) {
+		return metadata, errors.New("missing application executable")
+	}
+	read := func(key string) string {
+		keyRef := browserDiscovery.stringCreate(0, key, 0x08000100)
+		if keyRef == 0 {
+			return ""
+		}
+		defer browserDiscovery.release(keyRef)
+		value := browserDiscovery.bundleValue(bundle, keyRef)
+		if value == 0 || browserDiscovery.getTypeID(value) != browserDiscovery.stringTypeID() {
+			return ""
+		}
+		var buffer [4096]byte
+		if !browserDiscovery.stringGetCString(value, &buffer[0], len(buffer), 0x08000100) {
+			return ""
+		}
+		for i, b := range buffer {
+			if b == 0 {
+				return string(buffer[:i])
+			}
+		}
+		return ""
+	}
+	metadata = browserMetadata{name: read("CFBundleDisplayName"), bundleID: read("CFBundleIdentifier"), productDirectory: read("CrProductDirName")}
+	if metadata.name == "" {
+		metadata.name = read("CFBundleName")
+	}
+	return metadata, nil
 }
 
 func applicationBundleInstalled(url, expectedID uintptr) bool {
