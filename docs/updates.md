@@ -48,6 +48,8 @@ macOS 普通 ZIP 不携带 AppleDouble、扩展属性和 quarantine 元数据；
 
 更新地址和固定公钥保持不变。为避免旧客户端误下载新格式，签名负载的外层继续提供 v0.1.5 的兼容信息，新客户端优先解析 `installerUpdate`。兼容数据来自仓库公开的 `config/update-legacy-feed.json`，该文件是已发布 v0.1.5 Feed 的原始签名封装；发布时必须重新验签、核对版本、三平台及固定旧版 URL。旧 v0.1.5 会保持在最新兼容版本；更早的已配置客户端仍可通过 v0.1.5 原有附件升级。历史 Release 的附件不会被删除或改写。
 
+因此核对线上 Feed 时，外层 `version` 恒为 `0.1.5` 属正常，应看 `installerUpdate.version`。发布前 CI 会重新验签刚生成的 Feed，要求 `installerUpdate.version` 等于本次 tag，且三个平台的地址、大小和 SHA-256 都对应本次 Release 将上传的附件，否则拒绝发布。
+
 Feed 外层封装仍签署精确原始 JSON 字节：
 
 ```json

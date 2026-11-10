@@ -5,10 +5,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
-import { collectPackages, collectUpdates, packagesFor, stage, updatePublicationConfig, validatePackage, verifyTag } from './ci-release.mjs';
+import { assertFeedMatchesRelease, collectPackages, collectUpdates, packagesFor, stage, updatePublicationConfig, validatePackage, verifyTag } from './ci-release.mjs';
 import { notesForTag } from './release-notes.mjs';
-import { createUpdateFeed, stageUpdate, verifyFeed } from './update-artifacts.mjs';
-import { createInstallerFixtures, createOrdinaryInstaller, installerTest, legacyFeedBytes } from './test-fixtures/update-installer.mjs';
+import { createUpdateFeed, installerPackageFor, stageUpdate, verifyFeed } from './update-artifacts.mjs';
+import { createInstallerFixtures, createOrdinaryInstaller, installerTest, legacyFeedBytes, signingKeys } from './test-fixtures/update-installer.mjs';
 const browserIdentity = JSON.parse(fs.readFileSync(new URL('../config/browser-identities.json', import.meta.url), 'utf8')).release;
 
 // Read the repository's block-style workflow mappings without a runtime YAML dependency.
@@ -307,7 +307,8 @@ test('signed publication reuses all ordinary packages and publishes exactly six 
   const privateKey = signing.privateKey.export({ type: 'pkcs8', format: 'pem' });
   const generated = createUpdateFeed({ version: '0.1.6', repo: 'knothhe/passpine', updates,
     output: path.join(root, 'published-feed'), publicKey, privateKey, legacyFeedBytes: legacyFeedBytes({ privateKey }, updates) });
-  const attachments = [...collectPackages('v0.1.6', directory, root), ...generated];
+  const packages = collectPackages('v0.1.6', directory, root), attachments = [...packages, ...generated];
+  assertFeedMatchesRelease(generated[0].path, { repo: 'knothhe/passpine', version: '0.1.6', key: publicKey, artifacts: packages });
   assert.equal(attachments.length, 6); assert.equal(new Set(attachments.map(item => item.name)).size, 6);
   assert.equal(attachments.filter(item => item.name.includes('-update-')).length, 0);
   assert.deepEqual(attachments.map(item => item.name).sort(), ['Passpine-0.1.6-macos-arm64.zip', 'Passpine-0.1.6-linux-amd64.tar.gz',
@@ -330,6 +331,39 @@ test('signed publication reuses all ordinary packages and publishes exactly six 
   assert.throws(() => collectUpdates('v0.1.6', directory, root), /Installer checksum mismatch/);
 });
 
+
+test('publication refuses a feed that does not announce this tag or points away from its attachments', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-feed-check-'));
+  t.after(() => fs.rmSync(root, { force: true, recursive: true }));
+  const signing = crypto.generateKeyPairSync('ed25519');
+  const key = signing.publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('base64');
+  const platforms = [['darwin', 'arm64', 'client-darwin-arm64', ['Contents/MacOS/passpine', 'Contents/MacOS/passpine-host']],
+    ['linux', 'amd64', 'client-linux-amd64', ['passpine', 'passpine-host']], ['windows', 'amd64', 'client-win32-amd64', ['passpine.exe', 'passpine-host.exe']]];
+  const files = names => names.map(name => ({ path: name, mode: 0o755, size: 1, sha256: 'a'.repeat(64) }));
+  const attachments = version => platforms.map(([, , target], i) => ({ name: installerPackageFor(version, target).name, size: 100 + i, sha256: String(i).repeat(64) }));
+  const write = (name, version, mutate = () => {}) => {
+    const payload = { schema: 1, version: '0.1.5',
+      assets: platforms.map(([os, arch, , names]) => ({ os, arch, full: { url: `https://github.com/knothhe/passpine/releases/download/v0.1.5/Passpine-0.1.5-update-${os}-${arch}.zip`, size: 1, sha256: 'b'.repeat(64) }, files: files(names) })),
+      installerUpdate: { schema: 2, version, assets: platforms.map(([os, arch, target, names], i) => {
+        const { format, name } = installerPackageFor(version, target), { size, sha256 } = attachments(version)[i];
+        return { os, arch, format, full: { url: `https://github.com/knothhe/passpine/releases/download/v${version}/${name}`, size, sha256 }, files: files(names) };
+      }) } };
+    mutate(payload);
+    const bytes = Buffer.from(JSON.stringify(payload)), file = path.join(root, name);
+    fs.writeFileSync(file, JSON.stringify({ payload: bytes.toString('base64'), signature: crypto.sign(null, bytes, signing.privateKey).toString('base64') }));
+    return file;
+  };
+  const check = (file, version) => assertFeedMatchesRelease(file, { repo: 'knothhe/passpine', version, key, artifacts: attachments(version) });
+  check(write('current.json', '0.1.20'), '0.1.20');
+  // The outer v0.1.5 block is the frozen legacy protocol and is not compared with the tag.
+  assert.throws(() => check(write('stale.json', '0.1.19'), '0.1.20'), /announces 0\.1\.19, not v0\.1\.20/);
+  assert.throws(() => check(write('legacy-only.json', '0.1.20', payload => { delete payload.installerUpdate; }), '0.1.20'), /announces no installer update/);
+  assert.throws(() => check(write('changed.json', '0.1.20', payload => { payload.installerUpdate.assets[1].full.sha256 = 'f'.repeat(64); }), '0.1.20'),
+    /not an attachment of v0\.1\.20: .*linux-amd64\.tar\.gz/);
+  assert.throws(() => check(write('resized.json', '0.1.20', payload => { payload.installerUpdate.assets[2].full.size += 1; }), '0.1.20'), /not an attachment/);
+  assert.throws(() => assertFeedMatchesRelease(write('unsigned.json', '0.1.20'), { repo: 'knothhe/passpine', version: '0.1.20', key: signingKeys().publicKey, artifacts: attachments('0.1.20') }),
+    /signature verification failed/);
+});
 
 test('production publication requires the pinned trust root and a matching private key', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'passpine-signing-config-'));

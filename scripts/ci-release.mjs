@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { versionFiles } from './version.mjs';
 import { tagVersion, notesForTag } from './release-notes.mjs';
 import { publishRelease } from './release.mjs';
-import { createUpdateFeed, installerPackageFor, publicKey, readUpdateSigningConfig, stageUpdate, updateBuildConfig, validateUpdate } from './update-artifacts.mjs';
+import { createUpdateFeed, installerPackageFor, publicKey, readUpdateSigningConfig, stageUpdate, updateBuildConfig, validateUpdate, verifyFeed } from './update-artifacts.mjs';
 import { assertReleaseBuild } from './build-channel.mjs';
 
 const targets = ['client-darwin-arm64', 'client-linux-amd64', 'client-win32-amd64', 'browser'];
@@ -157,6 +157,24 @@ export function collectUpdates(tag, directory, root = process.cwd()) {
   return updates;
 }
 
+// The latest Release's update-feed.json is the feed every client polls. Before
+// uploading, prove that the signed installer protocol announces exactly this
+// tag and that each package URL resolves to an attachment of this Release with
+// the same size and checksum. The outer schema-1 block intentionally stays at
+// v0.1.5 for legacy clients and is not compared with the tag.
+export function assertFeedMatchesRelease(feedFile, { repo, version, key, artifacts }) {
+  const installer = verifyFeed(fs.readFileSync(feedFile), key).installerUpdate;
+  if (installer?.version !== version) throw new Error(`Update feed announces ${installer?.version ?? 'no installer update'}, not v${version}.`);
+  const base = `https://github.com/${repo}/releases/download/v${version}/`;
+  for (const asset of installer.assets) {
+    const name = asset.full.url.startsWith(base) ? asset.full.url.slice(base.length) : undefined;
+    const attachment = name && artifacts.find(item => item.name === name);
+    if (!attachment || attachment.size !== asset.full.size || attachment.sha256 !== asset.full.sha256) {
+      throw new Error(`Update feed package is not an attachment of v${version}: ${asset.full.url}`);
+    }
+  }
+}
+
 // Publication uses the trust anchor checked into the same release sources as
 // CI builds. Development overrides cannot redirect or rotate a release.
 // Return only public configuration; never log or persist the private input.
@@ -194,11 +212,13 @@ function main() {
     const artifacts = collectPackages(tag, path.resolve(directory));
     const repo = process.env.GITHUB_REPOSITORY;
     const notes = notesForTag(repo, tag);
-    artifacts.push(...createUpdateFeed({
+    const feed = createUpdateFeed({
       version: metadata.version, repo,
       updates: collectUpdates(tag, path.resolve(directory)), output: path.join('dist', 'updates', metadata.version),
       publicKey: config.key, privateKey: process.env.PASSPINE_UPDATE_PRIVATE_KEY,
-    }));
+    });
+    assertFeedMatchesRelease(feed[0].path, { repo, version: metadata.version, key: config.key, artifacts });
+    artifacts.push(...feed);
     console.log(publishRelease({ repo, tag, notes, artifacts }));
   } else throw new Error(`Unknown CI release action: ${action}`);
 }
