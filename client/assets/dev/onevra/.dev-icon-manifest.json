@@ -1,8 +1,8 @@
 {
   "files": {
-    "app-icon-dev-256.png": "c17f44c99f57cfda7c618bdf90357fd02daa568aed1938a6c6712b46f9bb2f09",
-    "app-icon-dev.icns": "471245eef80d91c1d70bf8c2ed6d77690cdea0442010f2be65a557aa9bcf44ba",
-    "app-icon-dev.png": "c17f44c99f57cfda7c618bdf90357fd02daa568aed1938a6c6712b46f9bb2f09"
+    "app-icon-dev-256.png": "4ae154bc2db259b6f94b4ed7762f48a64014b85d72f509e0d794d7dae79fcc1a",
+    "app-icon-dev.icns": "6b3cc9f7fce59df5a23005fce0330e3345bd31cadb13262eb90ec38fdeebaf8a",
+    "app-icon-dev.png": "4ae154bc2db259b6f94b4ed7762f48a64014b85d72f509e0d794d7dae79fcc1a"
   },
   "formats": [
     "icns",
@@ -14,6 +14,6 @@
   ],
   "schema": 1,
   "source": "Passpine.icns",
-  "source_sha256": "f9e2a5e7397783829a3122cad9838b9e84399dc19363b9ec30c50b465a231edf",
+  "source_sha256": "c54e03b2cd51c8107611cf53a731e5df8dc2b14348fee6e7190da267f0d9cabd",
   "tool": "h2-desktop-client/dev-icon"
 }

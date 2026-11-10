@@ -21,7 +21,7 @@ Dev 构建的两套应用图标均在右下角加 `Dev` 标记；正式资源和
 - `menu-bar-template.png`：32px 黑色前景与透明背景，由 macOS 根据菜单栏外观自动调整前景颜色。
 - `menu-bar-template.svg`：与菜单栏相同的小尺寸松鼠轮廓，用于全局搜索与快捷面板标题栏，前景色跟随界面主题。
 
-两套正式 ICNS 资源包含标准与 Retina 尺寸并保留各尺寸的光学校正。16/32px 使用直通 alpha、按 A/R/G/B 分平面并以 ICNS PackBytes literal packet 编码的原生 `ic04`/`ic05` ARGB，避免手写 `icp4`/`icp5` PNG 在 macOS 27 IconServices 下显示为彩色噪点；Go 资源测试检查正式和 Dev 图标不含这两种 chunk。Dock 在运行时直接加载完整 ICNS，保留小尺寸光学校正与多分辨率表示；窗口与其他平台使用 PNG。图标在运行时跟随主题风格；构建时 Finder 的默认应用包图标使用黑白版。其他平台托盘使用当前风格的完整应用图标。
+两套正式 ICNS 资源包含 128px 以上的标准尺寸与全部 Retina 尺寸，并保留各尺寸的光学校正。不写 16/32px 标准分辨率槽位：macOS 27 IconServices 会把 `icp4`/`icp5` PNG 显示为彩色噪点，把 `ic04`/`ic05` ARGB 放进灰色旧式底板；去掉后系统从 Retina PNG 缩小，各尺寸外形一致。Go 资源测试检查正式和 Dev 图标都不含这四种 chunk。Dock 在运行时直接加载完整 ICNS，保留小尺寸光学校正与多分辨率表示；窗口与其他平台使用 PNG。图标在运行时跟随主题风格；构建时 Finder 的默认应用包图标使用黑白版。其他平台托盘使用当前风格的完整应用图标。
 
 Windows 构建使用 `scripts/windows-resources` 中锁定版本的 Go 工具，从同一张 `app-icon-monochrome.png` 生成 16、20、24、32、40、48、64、128、256px 的 ICO 和对应架构的 COFF 资源。资源以 ID 1 链接进主程序，供 Explorer、开始菜单、任务栏固定项和 MyGo 初始窗口使用；同一 ICO 用作 NSIS 安装及卸载程序图标。生成文件位于 `dist/windows-resources`，主程序目录中的临时 `.syso` 在构建后清理。直接运行 `go run` 不包含这一步，验证程序文件图标请使用 `make client:build` 的产物。
 

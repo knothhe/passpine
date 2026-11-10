@@ -239,34 +239,12 @@ func chunk(_ type: String, payload: Data) -> Data {
     data.append(payload)
     return data
 }
-let representations = [("ic04", 16), ("ic05", 32), ("ic07", 128), ("ic08", 256), ("ic09", 512),
+// No 16/32px standard-resolution slots: macOS 27 IconServices renders hand-written
+// icp4/icp5 PNGs as colored noise and puts ic04/ic05 ARGB artwork on a grey
+// legacy plate. Without them it downsamples the Retina PNGs below, which keeps
+// the same squircle at every size.
+let representations = [("ic07", 128), ("ic08", 256), ("ic09", 512),
                        ("ic11", 32), ("ic12", 64), ("ic13", 256), ("ic14", 512), ("ic10", 1024)]
-// ic04/ic05 require straight-alpha ARGB planes, not a PNG payload.
-// Each plane uses ICNS PackBytes literal packets (1...128 bytes). At these
-// small sizes this adds only 5 KB total and avoids another image-tool dependency.
-func argb(_ image: CGImage) -> Data {
-    precondition(image.bitsPerPixel == 32 && image.alphaInfo == .premultipliedLast)
-    let pixels = Array(image.dataProvider!.data! as Data)
-    var encoded = Data("ARGB".utf8)
-    for channel in [3, 0, 1, 2] {
-        var plane = [UInt8]()
-        for y in 0..<image.height {
-            for x in 0..<image.width {
-                let offset = y * image.bytesPerRow + x * 4
-                let alpha = Int(pixels[offset + 3])
-                let value = Int(pixels[offset + channel])
-                plane.append(channel == 3 ? UInt8(alpha) :
-                    UInt8(alpha == 0 ? 0 : min(255, (value * 255 + alpha / 2) / alpha)))
-            }
-        }
-        for offset in stride(from: 0, to: plane.count, by: 128) {
-            let end = min(offset + 128, plane.count)
-            encoded.append(UInt8(end - offset - 1))
-            encoded.append(contentsOf: plane[offset..<end])
-        }
-    }
-    return encoded
-}
 for (palette, suffix) in [(terracotta, ""), (monochrome, "-monochrome")] {
     let vector = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 256 256\" fill=\"none\"><title>Passpine</title><defs><linearGradient id=\"paper\" x1=\"128\" y1=\"26\" x2=\"128\" y2=\"230\" gradientUnits=\"userSpaceOnUse\"><stop stop-color=\"\(palette.tile)\"/><stop offset=\"1\" stop-color=\"\(palette.bottom)\"/></linearGradient></defs><rect x=\"26\" y=\"26\" width=\"204\" height=\"204\" rx=\"45\" fill=\"url(#paper)\"/>\(sources.master.svg(palette.ink))</svg>\n"
     try vector.write(to: repository.appendingPathComponent("client/assets/app-icon\(suffix).svg"), atomically: true, encoding: .utf8)
@@ -278,10 +256,8 @@ for (palette, suffix) in [(terracotta, ""), (monochrome, "-monochrome")] {
     }
     var payload = Data(), images = [Int: Data]()
     for (type, size) in representations {
-        let data: Data
-        if type == "ic04" || type == "ic05" { data = argb(render(size, palette: palette)) }
-        else { data = images[size] ?? png(render(size, palette: palette)); images[size] = data }
-        payload.append(chunk(type, payload: data))
+        let data = images[size] ?? png(render(size, palette: palette))
+        images[size] = data; payload.append(chunk(type, payload: data))
     }
     try chunk("icns", payload: payload).write(to: repository.appendingPathComponent("client/assets/Passpine\(suffix).icns"), options: .atomic)
 }
