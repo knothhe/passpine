@@ -239,7 +239,11 @@ func chunk(_ type: String, payload: Data) -> Data {
     data.append(payload)
     return data
 }
-let representations = [("icp4", 16), ("icp5", 32), ("ic07", 128), ("ic08", 256), ("ic09", 512),
+// No 16/32px standard-resolution slots: macOS 27 IconServices renders hand-written
+// icp4/icp5 PNGs as colored noise and puts ic04/ic05 ARGB artwork on a grey
+// legacy plate. Without them it downsamples the Retina PNGs below, which keeps
+// the same squircle at every size.
+let representations = [("ic07", 128), ("ic08", 256), ("ic09", 512),
                        ("ic11", 32), ("ic12", 64), ("ic13", 256), ("ic14", 512), ("ic10", 1024)]
 for (palette, suffix) in [(terracotta, ""), (monochrome, "-monochrome")] {
     let vector = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 256 256\" fill=\"none\"><title>Passpine</title><defs><linearGradient id=\"paper\" x1=\"128\" y1=\"26\" x2=\"128\" y2=\"230\" gradientUnits=\"userSpaceOnUse\"><stop stop-color=\"\(palette.tile)\"/><stop offset=\"1\" stop-color=\"\(palette.bottom)\"/></linearGradient></defs><rect x=\"26\" y=\"26\" width=\"204\" height=\"204\" rx=\"45\" fill=\"url(#paper)\"/>\(sources.master.svg(palette.ink))</svg>\n"

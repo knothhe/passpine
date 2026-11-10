@@ -27,7 +27,7 @@ func TestDockArtworkIncludesOpticalAndRetinaRepresentations(t *testing.T) {
 	buildinfo.Channel = "release"
 	t.Cleanup(func() { buildinfo.Channel = prior })
 	expected := map[string]int{
-		"icp4": 16, "icp5": 32, "ic07": 128, "ic08": 256, "ic09": 512,
+		"ic07": 128, "ic08": 256, "ic09": 512,
 		"ic11": 32, "ic12": 64, "ic13": 256, "ic14": 512, "ic10": 1024,
 	}
 	for _, style := range []string{"", "monochrome", "unknown", "onevra"} {
@@ -45,8 +45,17 @@ func TestDockArtworkIncludesOpticalAndRetinaRepresentations(t *testing.T) {
 			if length < 8 || offset+length > len(data) {
 				t.Fatalf("%q: invalid %s representation length", style, kind)
 			}
-			config, err := png.DecodeConfig(bytes.NewReader(data[offset+8 : offset+length]))
-			if size, ok := expected[kind]; !ok || seen[kind] || err != nil || config.Width != size || config.Height != size {
+			payload := data[offset+8 : offset+length]
+			if kind == "info" || kind == "TOC " {
+				offset += length
+				continue
+			}
+			size, ok := expected[kind]
+			if !ok || seen[kind] {
+				t.Fatalf("%q: unexpected or duplicate %s representation", style, kind)
+			}
+			config, err := png.DecodeConfig(bytes.NewReader(payload))
+			if err != nil || config.Width != size || config.Height != size {
 				t.Fatalf("%q: invalid %s representation: %+v (%v)", style, kind, config, err)
 			}
 			seen[kind] = true
@@ -92,6 +101,35 @@ func TestDevelopmentIconsAreDistinctForBothStylesAndHaveRetinaDockResources(t *t
 			if !seen[size] {
 				t.Fatalf("Dev Dock icon missing %dpx", size)
 			}
+		}
+	}
+}
+
+// macOS 27 IconServices renders icp4/icp5 PNG chunks as colored noise and
+// puts ic04/ic05 ARGB artwork on a grey legacy plate. Check every shipped
+// variant, including resources used by Dev builds.
+func TestAllDockIconsOmitStandardResolutionSmallChunks(t *testing.T) {
+	for name, data := range map[string][]byte{
+		"onevra": appIconICNS, "monochrome": monochromeIconICNS,
+		"dev-onevra": devIconICNS, "dev-monochrome": devMonochromeICNS,
+	} {
+		if len(data) < 8 || string(data[:4]) != "icns" || int(binary.BigEndian.Uint32(data[4:8])) != len(data) {
+			t.Fatalf("%s: invalid ICNS container", name)
+		}
+		for offset := 8; offset < len(data); {
+			if offset+8 > len(data) {
+				t.Fatalf("%s: truncated ICNS header", name)
+			}
+			kind := string(data[offset : offset+4])
+			length := int(binary.BigEndian.Uint32(data[offset+4 : offset+8]))
+			if length < 8 || length > len(data)-offset {
+				t.Fatalf("%s: invalid ICNS chunk length", name)
+			}
+			switch kind {
+			case "icp4", "icp5", "ic04", "ic05":
+				t.Fatalf("%s: %s renders incorrectly in macOS IconServices; regenerate with generate.swift", name, kind)
+			}
+			offset += length
 		}
 	}
 }
