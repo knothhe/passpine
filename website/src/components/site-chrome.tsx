@@ -1,7 +1,7 @@
-import { ThemeSelect } from "./theme-select";
+import { DisplaySettings } from "./display-settings";
 import type { ReactNode } from "react";
-import { ArrowDown, ArrowUpRight, GitBranch, Globe2, Sprout } from "lucide-react";
-import type { Copy, LanguagePreference } from "../constants/copy";
+import { ArrowDown, ArrowUpRight, GitBranch, Sprout } from "lucide-react";
+import type { Copy } from "../constants/copy";
 import { routes, sectionHref } from "../constants/routes";
 import { GITHUB_URL, RELEASES_URL } from "../lib/downloads";
 import type { LanguageControl } from "../lib/language";
@@ -44,21 +44,7 @@ function SiteHeader({ c, control }: { c: Copy; control: LanguageControl }) {
         ))}
       </nav>
       <div className="header-actions">
-        <ThemeSelect c={c} />
-        <div className="language-select">
-          <Globe2 size={14} aria-hidden="true" />
-          <select
-            aria-label={c.language.label}
-            value={control.preference}
-            onChange={(event) =>
-              control.setPreference(event.target.value as LanguagePreference)
-            }
-          >
-            <option value="system">{c.language.system}</option>
-            <option value="en">{c.language.en}</option>
-            <option value="zh-CN">{c.language.zh}</option>
-          </select>
-        </div>
+        <DisplaySettings c={c} control={control} />
         <ExternalLink href={GITHUB_URL} className="github-link">
           <GitBranch size={17} />
           <span>{c.nav.source}</span>

@@ -13,8 +13,6 @@
   letter-spacing: -1.2px;
 }
 .home-site .site-header nav a,
-.home-site .language-select,
-.home-site .language-select select,
 .home-site .footer-links a,
 .home-site .site-footer p,
 .home-site .footer-bottom {
@@ -32,22 +30,38 @@
 .home-site .skip-link {
   color: var(--primary-foreground);
 }
+/* Each theme keeps its own lighting and framing at every viewport size. */
+:root {
+  --terrain-light: url("/terrain-light.webp") center right / contain no-repeat;
+  --terrain-dark: url("/terrain.webp") center right / cover no-repeat;
+  --hero-terrain: var(--terrain-light);
+}
+:root[data-theme="dark"] {
+  --hero-terrain: var(--terrain-dark);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --hero-terrain: var(--terrain-dark);
+  }
+}
 .hero {
-  position: relative;
+  display: grid;
   isolation: isolate;
   overflow: hidden;
-  background: var(--background);
+  background: light-dark(var(--background), #1c1c21);
+}
+.hero-terrain,
+.hero-inner {
+  grid-area: 1 / 1;
 }
 .hero-terrain {
-  position: absolute;
-  z-index: -1;
-  inset: 0 0 60px;
-  /* The neutral field stays continuous as the contour lines change polarity. */
-  background: url('/terrain.webp') no-repeat center right / cover;
-  filter: grayscale(1) contrast(1.32);
-  mix-blend-mode: difference;
+  width: 100%;
+  margin-inline: auto;
+  background: var(--hero-terrain);
+  pointer-events: none;
 }
 .hero-inner {
+  z-index: 1;
   display: flex;
   align-items: center;
   min-height: clamp(500px, 43vw, 628px);
@@ -128,6 +142,7 @@
   font: 11px/1.5 ui-monospace, monospace;
 }
 .hero-points {
+  grid-row: 2;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -220,16 +235,23 @@
   font-size: 10px;
 }
 @media (max-width: 760px) {
+  :root {
+    --terrain-light: url("/terrain-light.webp") 78% center / auto 100% no-repeat;
+    --terrain-dark: url("/terrain.webp") 61% bottom / cover no-repeat;
+  }
   .hero-inner {
-    align-items: flex-start;
-    min-height: 540px;
-    padding-block: 45px 110px;
+    min-height: auto;
+    padding-block: 40px 0;
   }
   .hero-copy {
-    max-width: 68%;
+    max-width: 530px;
   }
   .hero-terrain {
-    background-position: 61% bottom;
+    grid-area: 2 / 1;
+    height: clamp(185px, 37vw, 270px);
+  }
+  .hero-points {
+    grid-row: 3;
   }
   .workspace-panel {
     grid-template-columns: 1fr;
@@ -243,6 +265,14 @@
   }
 }
 @media (max-width: 520px) {
+  :root {
+    --terrain-light: url("/terrain-light.webp") 96% 24% / auto 133% no-repeat;
+    --terrain-dark: url("/terrain.webp") 74% 60% / cover no-repeat;
+  }
+  .hero-terrain {
+    mask-image: linear-gradient(to bottom, #000 85%, transparent);
+  }
+
   .home-site .site-header {
     height: auto;
     padding-block: 12px 7px;
@@ -251,19 +281,12 @@
     max-width: 100%;
   }
   .hero-inner {
-    padding-block: 39px 186px;
-    min-height: 0;
+    padding-block: 36px 0;
   }
   .hero h1,
   .hero h1:lang(zh) {
     font-size: clamp(50px, 12vw, 62px);
     margin-block: 16px;
-  }
-  .hero-terrain {
-    inset: auto 0 45px;
-    height: 210px;
-    background-position: 74% 60%;
-    mask-image: linear-gradient(transparent, #000 28%, #000);
   }
   .hero .hero-actions a {
     width: auto;

@@ -24,7 +24,7 @@ describe("website theme", () => {
     const script = head.match(/<script\b[^>]*\bsrc="\/theme\.js"[^>]*>/)?.[0];
     expect(script).toBeDefined();
     expect(script).not.toMatch(/\b(?:async|defer|module)\b/);
-    expect(render(page)).toContain(`aria-label="${zh.theme.label}"`);
+    expect(render(page)).toContain(zh.displaySettings);
   });
 
   it.each(["light", "dark", "system", "invalid", null])("applies the saved %s preference", (saved) => {
@@ -37,12 +37,28 @@ describe("website theme", () => {
     expect(themeBeforePaint(() => { throw new Error("Storage unavailable"); })).toBeUndefined();
   });
 
-  it.each([["en", en], ["zh-CN", zh]] as const)("labels the header theme selector and its choices in %s", (_, c) => {
+  it.each([["en", en], ["zh-CN", zh]] as const)("labels both settings groups and their choices in %s", (_, c) => {
     const html = renderToStaticMarkup(<SiteLayout c={c} control={staticLanguage}>{null}</SiteLayout>);
-    const selects = html.split("</header>")[0].match(/<select\b[^>]*>[\s\S]*?<\/select>/g);
-    const themeSelect = selects?.find((select) => select.includes(`aria-label="${c.theme.label}"`));
+    const header = html.split("</header>")[0];
+    expect(header).toContain('aria-expanded="false" aria-controls="display-settings-panel"');
+    expect(header).toContain(c.displaySettings);
+    expect(header).toMatch(/id="display-settings-panel"[^>]*hidden/);
+    expect(header).toContain(`<legend>${c.theme.label}</legend>`);
+    expect(header).toContain(`<legend>${c.language.label}</legend>`);
+    const labels = header.match(/<label>.*?<\/label>/g) ?? [];
+    function checkChoice(group: string, value: string, text: string) {
+      const label = labels.find((markup) =>
+        markup.includes(`name="${group}"`) && markup.includes(`value="${value}"`),
+      );
+      expect(label).toContain(text);
+      expect(label).toContain('type="radio"');
+      expect(label?.includes('checked=""')).toBe(value === "system");
+    }
     for (const value of ["system", "light", "dark"] as const) {
-      expect(themeSelect).toMatch(new RegExp(`<option value="${value}"[^>]*>${c.theme[value]}</option>`));
+      checkChoice("site-appearance", value, c.theme[value]);
+    }
+    for (const value of ["system", "en", "zh-CN"] as const) {
+      checkChoice("site-language", value, c.language[value === "zh-CN" ? "zh" : value]);
     }
   });
 });
