@@ -10,6 +10,15 @@ describe('extension boundary', () => {
     expect(trustedSender({ id, url: `${root}options.html#shortcuts`, tab: {} }, id, root)).toBe(true);
     for (const sender of [{ id: 'other', url: `${root}popup.html` }, { id, url: 'https://evil.test' }, { id, url: `${root}popup.html`, tab: {} }, { id, url: `${root}popup.html?untrusted` }, { id, url: `${root}background.js` }]) expect(trustedSender(sender, id, root)).toBe(false);
   });
+  it('requires the popup itself as the top-level sender when the browser includes a tab', () => {
+    const popup = root + 'popup.html';
+    const sender = { id, url: popup, frameId: 0, tab: { url: popup } };
+    expect(trustedSender(sender, id, root)).toBe(true);
+    for (const change of [
+      { id: 'other' }, { frameId: 2 }, { frameId: undefined }, { url: 'https://example.org/' },
+      { tab: {} }, { tab: { url: 'https://example.org/' } }, { tab: { url: popup + '?other' } },
+    ]) expect(trustedSender({ ...sender, ...change }, id, root)).toBe(false);
+  });
   it('whitelists protocol arguments and retains the original edit revision', () => {
     const encoded = nativeRequest({ action: 'save', vaultId: 'vault', entry: 'old', destination: 'new', contents: 'secret', mode: 'edit', revision: 'original', directory: '/tmp/attacker' } as UIRequest & { action: 'save' });
     expect(encoded).toEqual({ protocol: 1, action: 'save', vaultId: 'vault', entry: 'old', destination: 'new', contents: 'secret', mode: 'edit', revision: 'original' });

@@ -384,6 +384,16 @@ describe('selected desktop client isolation', () => {
     expect(environment.browser.runtime.connectNative).not.toHaveBeenCalled();
   });
 
+  it('answers a Kaze popup snapshot when Electron supplies the popup WebContents as the sender tab', async () => {
+    const url = environment.browser.runtime.getURL('/') + 'popup.html';
+    const sender = { id: 'test-extension', url, frameId: 0, tab: { id: 25, url } };
+    const reply = vi.fn();
+    expect(listener({ type: 'passpine', clientTarget: 'release', request: { action: 'snapshot' } }, sender, reply)).toBe(true);
+    await vi.waitFor(() => expect(reply).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'ok', data: expect.objectContaining({ tab }),
+    })));
+  });
+
   it('accepts bound UI messages after a background worker restart without requiring a new UI handshake', async () => {
     expect((await request({ action: 'status' }, 'release')).status).toBe('ok');
     vi.resetModules();

@@ -22,7 +22,7 @@ export function unwrap<T>(value: unknown): T {
   return response.data;
 }
 
-export function trustedSender(sender: { id?: string; url?: string; tab?: unknown }, runtimeId: string, rootURL: string): boolean {
+export function trustedSender(sender: { id?: string; url?: string; frameId?: number; tab?: { url?: string } }, runtimeId: string, rootURL: string): boolean {
   if (sender.id !== runtimeId || !sender.url) return false;
   try {
     const page = new URL(sender.url).href;
@@ -31,7 +31,10 @@ export function trustedSender(sender: { id?: string; url?: string; tab?: unknown
     // may include tab metadata. The exact extension URL still excludes scripts
     // injected into arbitrary websites.
     if (options.href === new URL('options.html', rootURL).href) return true;
-    return sender.tab === undefined && page === new URL('popup.html', rootURL).href;
+    if (page !== new URL('popup.html', rootURL).href) return false;
+    // Electron reports the popup's own WebContents as a tab. In that case
+    // both the sending frame and the top-level page must be the popup itself.
+    return sender.tab === undefined || (sender.frameId === 0 && sender.tab.url === page);
   } catch { return false; }
 }
 
