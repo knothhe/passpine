@@ -2,11 +2,13 @@ package nativehost
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/ebitengine/purego"
+	"github.com/knothhe/passpine/client/i18n"
 )
 
 var browserDiscovery struct {
@@ -65,6 +67,7 @@ func browserBundleID(id string) string {
 		"edge":           "com.microsoft.edgemac",
 		"brave":          "com.brave.Browser",
 		"ego-lite":       "com.citrolabs.ego.lite",
+		"kaze":           "dev.kite.browser",
 		"firefox":        "org.mozilla.firefox",
 	}[id]
 }
@@ -97,6 +100,50 @@ func browserInstalled(target registrationTarget) bool {
 		}
 	}
 	return false
+}
+
+type browserMetadata struct{ name, bundleID, productDirectory string }
+
+func configuredBrowserInstalled(c BrowserConfiguration) bool {
+	_, err := browserApplicationMetadata(c.Path)
+	return err == nil
+}
+
+func normalizeBrowserProgram(c *BrowserConfiguration) error {
+	metadata, err := browserApplicationMetadata(c.Path)
+	if err != nil {
+		return errors.New(i18n.BrowserPathInvalid)
+	}
+	if c.Name == "" {
+		c.Name = metadata.name
+	}
+	if c.Directory != "" {
+		return nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	if c.Kind == "chromium" && metadata.productDirectory != "" {
+		product := filepath.Clean(metadata.productDirectory)
+		if filepath.IsAbs(product) || product == "." || product == ".." || strings.HasPrefix(product, ".."+string(filepath.Separator)) {
+			return errors.New(i18n.BrowserDestinationInvalid)
+		}
+		c.Directory = filepath.Join(home, "Library", "Application Support", product, "NativeMessagingHosts")
+		return nil
+	}
+	// Browsers such as Kaze omit CrProductDirName. Match their bundle ID
+	// so that even a renamed .app uses its built-in registration destination.
+	for _, target := range registrationTargets(home, "darwin") {
+		if metadata.bundleID == browserBundleID(target.id) {
+			if target.firefox != (c.Kind == "firefox") {
+				return errors.New(i18n.BrowserDestinationInvalid)
+			}
+			c.Directory = target.directory
+			return nil
+		}
+	}
+	return errors.New(i18n.BrowserDestinationUnknown)
 }
 
 func browserApplicationMetadata(path string) (browserMetadata, error) {

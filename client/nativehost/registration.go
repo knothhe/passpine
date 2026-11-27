@@ -73,6 +73,7 @@ func registrationTargets(home, platform string) []registrationTarget {
 			{"edge", "Microsoft Edge", "Microsoft Edge/NativeMessagingHosts", false, nil},
 			{"brave", "Brave", "BraveSoftware/Brave-Browser/NativeMessagingHosts", false, nil},
 			{"ego-lite", "ego lite", "Citro Labs/ego lite/NativeMessagingHosts", false, nil},
+			{"kaze", "Kaze", "Kite/NativeMessagingHosts", false, nil},
 			{"firefox", "Firefox", "Mozilla/NativeMessagingHosts", true, nil},
 		}
 		home = filepath.Join(home, "Library", "Application Support")

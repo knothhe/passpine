@@ -27,8 +27,6 @@ type BrowserConfiguration struct {
 
 const browserConfigurationFile = "browsers.json"
 
-type browserMetadata struct{ name, bundleID, productDirectory string }
-
 func browserConfigurationID(c BrowserConfiguration) string {
 	destination := filepath.Clean(c.Directory)
 	if runtime.GOOS == "windows" {
@@ -103,31 +101,8 @@ func NormalizeBrowserConfiguration(c BrowserConfiguration) (BrowserConfiguration
 		return c, errors.New(i18n.BrowserPathInvalid)
 	}
 	c.Path = filepath.Clean(c.Path)
-	if runtime.GOOS == "darwin" {
-		metadata, err := browserApplicationMetadata(c.Path)
-		if err != nil {
-			return c, errors.New(i18n.BrowserPathInvalid)
-		}
-		if c.Name == "" {
-			c.Name = metadata.name
-		}
-		if c.Directory == "" {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return c, err
-			}
-			if c.Kind == "chromium" && metadata.productDirectory != "" {
-				product := filepath.Clean(metadata.productDirectory)
-				if filepath.IsAbs(product) || product == ".." || strings.HasPrefix(product, ".."+string(filepath.Separator)) {
-					return c, errors.New(i18n.BrowserDestinationInvalid)
-				}
-				c.Directory = filepath.Join(home, "Library", "Application Support", product, "NativeMessagingHosts")
-			} else if c.Kind == "firefox" && metadata.bundleID == "org.mozilla.firefox" {
-				c.Directory = filepath.Join(home, "Library", "Application Support", "Mozilla", "NativeMessagingHosts")
-			}
-		}
-	} else if !HelperAvailable(c.Path) || runtime.GOOS == "windows" && !strings.EqualFold(filepath.Ext(c.Path), ".exe") {
-		return c, errors.New(i18n.BrowserPathInvalid)
+	if err := normalizeBrowserProgram(&c); err != nil {
+		return c, err
 	}
 	if c.Name == "" {
 		c.Name = strings.TrimSuffix(filepath.Base(c.Path), filepath.Ext(c.Path))
@@ -256,14 +231,6 @@ func configuredTargets(targets []registrationTarget, configurations []BrowserCon
 		}
 	}
 	return targets
-}
-
-func configuredBrowserInstalled(c BrowserConfiguration) bool {
-	if runtime.GOOS == "darwin" {
-		_, err := browserApplicationMetadata(c.Path)
-		return err == nil
-	}
-	return HelperAvailable(c.Path) && (runtime.GOOS != "windows" || strings.EqualFold(filepath.Ext(c.Path), ".exe"))
 }
 
 func resolveBrowserDirectory(directory string) (string, error) {

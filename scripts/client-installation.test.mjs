@@ -54,25 +54,27 @@ test('a registration pointing to another installation is preserved', async t => 
   assert.equal(JSON.parse(fs.readFileSync(manifest)).path, '/other/dev-host');
 });
 
-test('macOS ego lite cleanup removes only this Dev registration and preserves browser data and release', async t => {
-  for (const owned of [true, false]) await t.test(owned ? 'owned host' : 'another installation', async t => {
-    const { home, layout, options, write } = fixture(t, 'darwin');
-    const browser = path.join(home, 'Library/Application Support/Citro Labs/ego lite');
-    const manifest = path.join(browser, 'NativeMessagingHosts/com.knothhe.passpine.dev.json');
-    const original = JSON.stringify({ name: 'com.knothhe.passpine.dev', path: owned ? layout.host : path.join(home, 'another installation/host'), type: 'stdio' });
-    write(manifest, original);
-    const release = path.join(browser, 'NativeMessagingHosts/com.knothhe.passpine.json');
-    write(release, 'release registration');
-    const profile = path.join(browser, 'Default/Preferences');
-    write(profile, 'browser preferences');
-    await uninstallInstallation(layout, options);
-    assert.equal(fs.existsSync(manifest), !owned);
-    if (!owned) assert.equal(fs.readFileSync(manifest, 'utf8'), original);
-    assert.equal(fs.readFileSync(release, 'utf8'), 'release registration');
-    assert.equal(fs.readFileSync(profile, 'utf8'), 'browser preferences');
-    assert.equal((await uninstallInstallation(layout, options)).absent, true);
+for (const browserDirectory of ['Citro Labs/ego lite', 'Kite']) {
+  test(`macOS ${browserDirectory} cleanup removes only this Dev registration and preserves browser data and release`, async t => {
+    for (const owned of [true, false]) await t.test(owned ? 'owned host' : 'another installation', async t => {
+      const { home, layout, options, write } = fixture(t, 'darwin');
+      const browser = path.join(home, 'Library/Application Support', browserDirectory);
+      const manifest = path.join(browser, 'NativeMessagingHosts/com.knothhe.passpine.dev.json');
+      const original = JSON.stringify({ name: 'com.knothhe.passpine.dev', path: owned ? layout.host : path.join(home, 'another installation/host'), type: 'stdio' });
+      write(manifest, original);
+      const release = path.join(browser, 'NativeMessagingHosts/com.knothhe.passpine.json');
+      write(release, 'release registration');
+      const profile = path.join(browser, 'Default/Preferences');
+      write(profile, 'browser preferences');
+      await uninstallInstallation(layout, options);
+      assert.equal(fs.existsSync(manifest), !owned);
+      if (!owned) assert.equal(fs.readFileSync(manifest, 'utf8'), original);
+      assert.equal(fs.readFileSync(release, 'utf8'), 'release registration');
+      assert.equal(fs.readFileSync(profile, 'utf8'), 'browser preferences');
+      assert.equal((await uninstallInstallation(layout, options)).absent, true);
+    });
   });
-});
+}
 
 test('manual browser registrations are cleaned on macOS and Linux without removing configurations or profiles', async t => {
   for (const platform of ['darwin', 'linux']) await t.test(platform, async t => {

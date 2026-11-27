@@ -140,7 +140,7 @@ export function recordInstallation(layout, { run = execute } = {}) {
 
 function registrations(layout) {
   const directories = layout.platform === 'darwin'
-    ? ['Google/Chrome', 'Google/Chrome Beta', 'Google/ChromeForTesting', 'Chromium', 'Microsoft Edge', 'BraveSoftware/Brave-Browser', 'Citro Labs/ego lite', 'Mozilla'].map(name => path.join(layout.home, 'Library/Application Support', name, 'NativeMessagingHosts'))
+    ? ['Google/Chrome', 'Google/Chrome Beta', 'Google/ChromeForTesting', 'Chromium', 'Microsoft Edge', 'BraveSoftware/Brave-Browser', 'Citro Labs/ego lite', 'Kite', 'Mozilla'].map(name => path.join(layout.home, 'Library/Application Support', name, 'NativeMessagingHosts'))
     : ['.config/google-chrome/NativeMessagingHosts', '.config/chromium/NativeMessagingHosts', '.config/microsoft-edge/NativeMessagingHosts', '.config/BraveSoftware/Brave-Browser/NativeMessagingHosts', '.mozilla/native-messaging-hosts'].map(name => path.join(layout.home, name));
   if (exists(layout.browserConfigFile)) {
     realPath(layout.browserConfigFile);

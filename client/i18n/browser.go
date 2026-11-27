@@ -3,6 +3,7 @@ package i18n
 const (
 	BrowserPathInvalid               = "浏览器程序路径无效，请选择存在且可执行的程序；macOS 请选择 .app。"
 	BrowserDestinationInvalid        = "浏览器连接位置无效，请核对兼容类型、Native Messaging 目录或 HKCU 注册表前缀。"
+	BrowserDestinationUnknown        = "无法自动确定此浏览器的连接目录。请启用“自定义连接目录”，选择浏览器使用的 NativeMessagingHosts 文件夹，或粘贴其完整路径。"
 	BrowserConfigurationUnreadable   = "无法读取本机浏览器配置，请检查 browsers.json 的格式和权限。"
 	BrowserConfigurationSaveFailed   = "无法保存浏览器配置，请检查权限及配置数量（最多 32 个）。"
 	BrowserConfigurationRemoveFailed = "无法移除浏览器连接，配置已保留，请检查权限后重试。"
@@ -14,11 +15,16 @@ func init() {
 		"移除":                             "Remove",
 		BrowserPathInvalid:               "Invalid browser path. Select an existing executable, or an .app on macOS.",
 		BrowserDestinationInvalid:        "Invalid browser connection location. Check the compatibility type, Native Messaging directory or HKCU registry prefix.",
+		BrowserDestinationUnknown:        "Passpine couldn’t find this browser’s connection directory. Turn on “Use a custom connection directory”, then choose the browser’s NativeMessagingHosts folder or paste its full path.",
 		BrowserConfigurationUnreadable:   "Could not read local browser configurations. Check the format and permissions of browsers.json.",
 		BrowserConfigurationSaveFailed:   "Could not save browser configurations. Check permissions and the configuration limit (32).",
 		BrowserConfigurationRemoveFailed: "Could not remove the browser connection. The configuration was kept. Check permissions and retry.",
 		BrowserConfigurationMissing:      "Browser configuration not found. Detect browsers again.",
 		"手动配置浏览器":                        "Configure browsers manually",
+		"选择一个 Chromium 或 Firefox 系浏览器。保存时，Passpine 会自动查找它的扩展连接目录。": "Choose a Chromium- or Firefox-based browser. Passpine will look for its extension connection directory when you save.",
+		"自定义连接目录":   "Use a custom connection directory",
+		"选择文件夹…":    "Choose folder…",
+		"选择浏览器连接目录": "Choose browser connection directory",
 		"指定本机浏览器程序及其连接注册位置，支持 Chromium 和 Firefox 衍生浏览器。配置仅保存在本机。": "Specify a local browser program and its connection registration location. Chromium and Firefox derivatives are supported. Configurations stay on this device.",
 		"添加浏览器…":                    "Add browser…",
 		"浏览器名称":                     "Browser name",
@@ -34,7 +40,6 @@ func init() {
 		"填写浏览器文档指定的 HKCU 注册表前缀，程序会追加 NativeMessagingHosts 和当前 Host 名称。": "Enter the HKCU registry prefix specified by the browser documentation. NativeMessagingHosts and the current host name will be appended.",
 		"Native Messaging 目录": "Native Messaging directory",
 		"NativeMessagingHosts 或 native-messaging-hosts 的绝对路径":              "Absolute path to NativeMessagingHosts or native-messaging-hosts",
-		"macOS 可留空以从 .app 推导默认目录；使用自定义用户数据目录时请填写实际连接目录。":                   "On macOS, leave blank to infer the default directory from the .app. For a custom user data directory, enter the actual connection directory.",
 		"填写浏览器文档指定的 Native Messaging 目录；Flatpak、Snap 等沙箱安装还需要浏览器允许访问本机助手。": "Enter the Native Messaging directory specified by the browser documentation. Sandboxed installations such as Flatpak or Snap also need access to the native helper.",
 		"保存后点击注册以连接扩展。修改注册位置或兼容类型前，请先移除旧配置。":                               "After saving, click Register to connect the extension. Remove the old configuration before changing its registration location or compatibility type.",
 		"保存浏览器配置":      "Save browser configuration",

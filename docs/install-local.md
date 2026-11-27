@@ -135,15 +135,17 @@ macOS 支持本机安装的 **ego lite**（应用标识 `com.citrolabs.ego.lite`
 
 | 系统 | 自动检测的浏览器 |
 | --- | --- |
-| macOS | Chrome、Chrome Beta、Chrome for Testing、Chromium、Edge、Brave、ego lite、Firefox |
+| macOS | Chrome、Chrome Beta、Chrome for Testing、Chromium、Edge、Brave、ego lite、Kaze、Firefox |
 | Linux | Chrome、Chromium、Edge、Brave、Firefox |
 | Windows | Chrome、Edge、Brave、Firefox |
+
+macOS 上使用默认配置的 **Kaze** 时，直接在**设置 → 浏览器**列表找到 **Kaze** 并点击**注册**。Kaze 使用的连接目录是 `~/Library/Application Support/Kite/NativeMessagingHosts`。
 
 未自动检测到的安装或未列出的 Chromium / Firefox 衍生浏览器，可以在**设置 → 浏览器 → 手动配置浏览器 → 添加浏览器**中添加：
 
 1. 输入或选择浏览器程序的绝对路径。macOS 选择 `.app`，Windows 选择 `.exe`，Linux 选择可执行程序；路径可包含空格。名称可选。
 2. 选择 **Chromium 兼容**或 **Firefox 兼容**，并加载对应的 Passpine 扩展。浏览器本身必须支持 WebExtensions Native Messaging；选择兼容类型不能让不支持该协议的浏览器获得支持。
-3. macOS 的连接目录可留空：对于提供 `CrProductDirName` 的 Chromium 应用，从 `.app` 推导 `~/Library/Application Support/<产品目录>/NativeMessagingHosts`；标准 Firefox 使用 `Mozilla/NativeMessagingHosts`。其他应用、自定义用户数据目录或无法推导时，填写浏览器实际读取的 Native Messaging 目录。
+3. macOS 默认自动确定连接目录。选好浏览器和兼容类型后即可保存。Passpine 可识别上表中的浏览器，以及在应用包中声明了产品目录的 Chromium 衍生浏览器。若浏览器使用自定义位置，或保存时提示无法确定目录，可开启**自定义连接目录**，选择浏览器指定的 Native Messaging 文件夹，或粘贴其绝对路径。
 4. Linux 填写浏览器文档指定的 `NativeMessagingHosts` 或 `native-messaging-hosts` 目录的绝对路径。Flatpak、Snap 等沙箱安装还需满足浏览器访问本机助手的要求，仅写入注册文件不保证连接可用。
 5. Windows 填写浏览器读取的 **HKCU 注册表前缀**，例如 Chrome 的 `Software\Google\Chrome` 或 Firefox 的 `Software\Mozilla`。Passpine 追加 `NativeMessagingHosts\<当前 Host 名称>`，并在客户端自己的本机缓存目录保存清单；不填写 `HKEY_CURRENT_USER` 或 Host 名称。
 6. 点击**保存浏览器配置**，核对列表后点击**注册**。已有注册可修复。浏览器移动或删除后会显示“浏览器程序不存在”，可编辑程序路径；更换兼容类型或连接位置前先移除旧配置。
