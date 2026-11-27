@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { DownloadSection } from "../pages/home";
 import { chromeWebStoreUrl } from "../constants/routes";
-import { en, linuxInstallCommand, zh } from "../constants/copy";
+import { en, homebrewInstallCommand, linuxInstallCommand, zh } from "../constants/copy";
 import { bundledRelease } from "../lib/release-snapshot";
 import type { Device, Release } from "../lib/downloads";
 
@@ -22,16 +22,38 @@ function render(
 }
 
 describe("available website downloads", () => {
-  it.each([en, zh])("shows the copyable one-step installer on the Linux x64 card", (copy) => {
-    const html = render(bundledRelease, copy);
-    const card = html.split("<article").find((part) => part.includes(">Linux</h3>"))?.split("</article>")[0];
-    expect(card).toContain(`<code>${linuxInstallCommand}</code>`);
-    expect(card).toContain(copy.downloads.copyCommand);
-    expect(card).toContain(copy.downloads.linuxCommand);
-    const otherArchitectures = bundledRelease.assets.filter(
-      (asset) => !(asset.platform === "linux" && asset.architecture === "x64"),
+  it.each([["en", en], ["zh-CN", zh]] as const)("shows copyable install commands on supported cards (%s)", (_, copy) => {
+    const cards = render(bundledRelease, copy).match(/<article\b[\s\S]*?<\/article>/g) ?? [];
+    const heading = `<h4>${copy.downloads.installCommand}</h4>`;
+    const copyButton = `${copy.downloads.copyCommand}</button>`;
+    for (const [platform, command, note] of [
+      ["macos", homebrewInstallCommand, copy.downloads.homebrewNote],
+      ["linux", linuxInstallCommand, copy.downloads.linuxCommandNote],
+      ["windows", null, null],
+    ] as const) {
+      const card = cards.find((part) => part.includes(`>${copy.downloads.platforms[platform]}</h3>`));
+      expect(card).toContain(copy.downloads.notes[platform]);
+      if (command) {
+        expect(card).toContain(heading);
+        expect(card).toContain(`<code>${command}</code>`);
+        expect(card).toContain(copyButton);
+        expect(card).toContain(note);
+        expect(card).not.toContain("<details");
+      } else {
+        expect(card).not.toContain(heading);
+        expect(card).not.toContain(copyButton);
+        expect(card).not.toContain("<code>");
+      }
+    }
+  });
+
+  it("omits the Linux installer command when only another Linux architecture is available", () => {
+    const assets = bundledRelease.assets.map((asset) =>
+      asset.platform === "linux" ? { ...asset, architecture: "arm64" as const } : asset,
     );
-    expect(render({ ...bundledRelease, assets: otherArchitectures }, copy)).not.toContain(linuxInstallCommand);
+    const html = render({ ...bundledRelease, assets });
+    expect(html).toContain(">Linux</h3>");
+    expect(html).not.toContain(linuxInstallCommand);
   });
 
   it("renders only released platforms, architectures, and browser packages", () => {

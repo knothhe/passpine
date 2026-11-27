@@ -55,6 +55,7 @@ export const zh = {
     home: "Passpine 首页",
     label: "主导航",
   },
+  theme: { label: "页面主题", system: "跟随系统", light: "浅色", dark: "深色" },
   language: {
     label: "网站语言",
     system: "跟随系统",
@@ -207,13 +208,13 @@ export const zh = {
         "手动安装需 GTK 3。解压安装包后，运行其中的 install.sh。",
     },
     installGuide: "安装与系统要求",
-    homebrew: "通过 Homebrew 安装",
-    linuxCommand: "一键安装最新版（x64）",
+    installCommand: "一键安装命令",
+    linuxCommandNote: "适用于 Linux x64。脚本会安装依赖和最新正式版。",
     copyCommand: "复制命令",
     commandCopied: "安装命令已复制。",
     copyManually: "无法自动复制，请手动复制上方命令。",
     homebrewNote:
-      "适用于 Apple Silicon · macOS 13 及以上。命令会自动添加 knothhe/tap 并安装正式版。",
+      "适用于 Apple Silicon · macOS 13 及以上。Homebrew 会添加 knothhe/tap 并安装正式版。",
     extensionTitle: "把 Passpine 带进浏览器",
     extensionBody:
       "先安装并运行桌面客户端。Chrome、Edge、Brave 等兼容浏览器可从 Chrome 应用商店安装扩展。",
@@ -435,7 +436,7 @@ export const zh = {
         title: "本网站",
         blocks: [
           list(
-            "本网站不使用 Cookie、广告或第三方分析。你选择的网站语言保存在浏览器本地存储中。",
+            "本网站不使用 Cookie、广告或第三方分析。网站语言和主题偏好保存在浏览器本地存储中。",
             "下载区由你的浏览器直接向 GitHub API 获取最新版本信息；下载安装包时会连接 GitHub。",
             "宣传视频的封面随页面加载，视频只在你播放时加载，两者均来自 oss.knothhe.com。",
             "网站与视频由 Cloudflare 托管。Cloudflare 可能为安全和运营目的处理请求日志，例如 IP 地址和浏览器信息。",
@@ -529,6 +530,7 @@ export const en: Copy = {
     home: "Passpine home",
     label: "Main navigation",
   },
+  theme: { label: "Website theme", system: "System", light: "Light", dark: "Dark" },
   language: {
     label: "Website language",
     system: "System",
@@ -696,13 +698,13 @@ export const en: Copy = {
         "Manual installation requires GTK 3. Extract the archive and run the included install.sh.",
     },
     installGuide: "Installation and system requirements",
-    homebrew: "Install with Homebrew",
-    linuxCommand: "Install the latest release (x64)",
+    installCommand: "One-step install command",
+    linuxCommandNote: "For Linux x64. The script installs dependencies and the latest stable release.",
     copyCommand: "Copy command",
     commandCopied: "Install command copied.",
     copyManually: "Automatic copying is unavailable. Copy the command above manually.",
     homebrewNote:
-      "For Apple Silicon · macOS 13 or later. The command adds knothhe/tap and installs the stable app.",
+      "For Apple Silicon · macOS 13 or later. Homebrew adds knothhe/tap and installs the stable app.",
     extensionTitle: "A companion for your browser",
     extensionBody:
       "Install and run the desktop app first. Get the extension from the Chrome Web Store for Chrome, Edge, Brave, and other compatible browsers.",
@@ -926,7 +928,7 @@ export const en: Copy = {
         title: "This website",
         blocks: [
           list(
-            "This website uses no cookies, ads, or third-party analytics. Your language choice is saved in local browser storage.",
+            "This website uses no cookies, ads, or third-party analytics. Your language and theme preferences are saved in local browser storage.",
             "The download section has your browser fetch the latest release details directly from the GitHub API, and installers download from GitHub.",
             "The promo video’s poster loads with the page and the video loads only when you play it, both from oss.knothhe.com.",
             "The website and video are hosted on Cloudflare, which may process request logs, such as IP addresses and browser details, for security and operations.",

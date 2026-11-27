@@ -175,18 +175,18 @@ function assetArchitecture(c: Copy, asset: ReleaseAsset): string {
     : c.downloads.architectures[asset.architecture];
 }
 
-function LinuxInstallCommand({ c }: { c: Copy }) {
-  const command = useRef<HTMLPreElement>(null);
+function InstallCommand({ c, command, note }: { c: Copy; command: string; note: string }) {
+  const commandBlock = useRef<HTMLPreElement>(null);
   const [status, setStatus] = useState<"commandCopied" | "copyManually" | null>(null);
   async function copyCommand() {
     try {
-      await navigator.clipboard.writeText(linuxInstallCommand);
+      await navigator.clipboard.writeText(command);
       setStatus("commandCopied");
     } catch {
-      if (command.current) {
-        command.current.focus();
+      if (commandBlock.current) {
+        commandBlock.current.focus();
         const range = document.createRange();
-        range.selectNodeContents(command.current);
+        range.selectNodeContents(commandBlock.current);
         const selection = window.getSelection();
         selection?.removeAllRanges();
         selection?.addRange(range);
@@ -195,18 +195,19 @@ function LinuxInstallCommand({ c }: { c: Copy }) {
     }
   }
   return (
-    <div className="linux-install">
-      <div className="linux-command-heading">
-        <h4>{c.downloads.linuxCommand}</h4>
+    <div className="install-command">
+      <div className="install-command-heading">
+        <h4>{c.downloads.installCommand}</h4>
         <button type="button" className="command-copy" onClick={copyCommand}>
           <CopyIcon size={14} aria-hidden="true" />
           {c.downloads.copyCommand}
         </button>
       </div>
-      <pre ref={command} tabIndex={0} aria-label={c.downloads.linuxCommand}>
-        <code>{linuxInstallCommand}</code>
+      <pre ref={commandBlock} tabIndex={0} aria-label={c.downloads.installCommand}>
+        <code>{command}</code>
       </pre>
       <p role="status">{status && c.downloads[status]}</p>
+      <p className="install-note">{note}</p>
     </div>
   );
 }
@@ -316,19 +317,15 @@ export function DownloadSection({
                   </div>
                 ))}
             </div>
-            <p className="install-note">{c.downloads.notes[platform]}</p>
+            {platform === "macos" && (
+              <InstallCommand c={c} command={homebrewInstallCommand} note={c.downloads.homebrewNote} />
+            )}
             {platform === "linux" && release.assets.some(
               (asset) => asset.platform === "linux" && asset.architecture === "x64",
-            ) && <LinuxInstallCommand c={c} />}
-            {platform === "macos" && (
-              <details className="homebrew-install">
-                <summary>{c.downloads.homebrew}</summary>
-                <p>{c.downloads.homebrewNote}</p>
-                <pre tabIndex={0} aria-label={c.downloads.homebrew}>
-                  <code>{homebrewInstallCommand}</code>
-                </pre>
-              </details>
+            ) && (
+              <InstallCommand c={c} command={linuxInstallCommand} note={c.downloads.linuxCommandNote} />
             )}
+            <p className="install-note">{c.downloads.notes[platform]}</p>
           </article>
         ))}
       </div>

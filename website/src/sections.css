@@ -69,8 +69,7 @@
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--background);
-  color-scheme: dark;
-  box-shadow: 0 18px 50px -30px #0007;
+  box-shadow: 0 18px 50px -30px light-dark(#0003, #0007);
 }
 
 .features-section,
@@ -104,7 +103,7 @@
 
 .feature-grid article {
   padding: clamp(22px, 2.6vw, 34px);
-  background: var(--secondary);
+  background: var(--surface);
 }
 
 .feature-top {
@@ -140,7 +139,7 @@
   padding-block: var(--section-space);
   border-block: 1px solid var(--border);
   background-color: var(--secondary);
-  background-image: radial-gradient(ellipse at 72% 40%, #34343c 0, transparent 53%);
+  background-image: radial-gradient(ellipse at 72% 40%, light-dark(#fff, #34343c) 0, transparent 53%);
 }
 
 .security-inner {
@@ -178,10 +177,10 @@
 .vault-illustration {
   min-width: 0;
   padding: clamp(18px, 3vw, 32px);
-  border: 1px solid #56565f;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: var(--background);
-  box-shadow: 0 24px 52px -30px #0007;
+  background: var(--surface);
+  box-shadow: 0 24px 52px -30px light-dark(#0003, #0007);
 }
 
 .vault-caption,
@@ -215,7 +214,7 @@
 .file-tree .tree-branch,
 .file-tree .tree-entries {
   display: grid;
-  border-inline-start: 1px solid #57575e;
+  border-inline-start: 1px solid light-dark(#b7b7c0, #57575e);
   margin-inline-start: 7px;
   padding-inline-start: 17px;
   gap: 7px;
@@ -282,7 +281,7 @@
 }
 
 .security-points article {
-  border-top: 1px solid #53545c;
+  border-top: 1px solid var(--border);
   padding-top: 20px;
 }
 
@@ -365,8 +364,7 @@
 .release-status,
 .detected-system,
 .asset-architecture,
-.install-note,
-.homebrew-install p {
+.install-note {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.7;
@@ -406,7 +404,7 @@
   padding: clamp(18px, 2.5vw, 30px);
   border: 1px solid var(--border);
   border-radius: 16px;
-  background: var(--secondary);
+  background: var(--surface);
 }
 
 .platform-download-heading {
@@ -429,7 +427,6 @@
 .platform-download-links {
   display: grid;
   align-content: start;
-  flex: 1;
   gap: 15px;
   margin-block: 20px;
 }
@@ -440,31 +437,25 @@
   min-height: 44px;
   margin-top: 6px;
   padding: 10px 12px;
-  background: var(--accent);
-  color: var(--background);
+  background: var(--primary);
+  color: var(--primary-foreground);
   white-space: normal;
   overflow-wrap: anywhere;
   text-align: center;
 }
 
-.platform-download .download-button:hover {
-  background: var(--foreground);
-}
-
-.homebrew-install,
-.linux-install {
-  margin-top: 14px;
+.install-command {
+  margin-bottom: 14px;
   font-size: 13px;
   line-height: 1.65;
 }
 
-.homebrew-install p,
-.homebrew-install pre {
+.install-command .install-note {
   margin-top: 9px;
 }
 
-.homebrew-install pre,
-.linux-install pre {
+.install-command pre {
+  user-select: all;
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -474,14 +465,14 @@
   overflow-wrap: anywhere;
 }
 
-.linux-command-heading,
+.install-command-heading,
 .command-copy {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.linux-command-heading {
+.install-command-heading {
   justify-content: space-between;
   flex-wrap: wrap;
   margin-bottom: 6px;
@@ -499,11 +490,7 @@
   background: var(--background);
 }
 
-.linux-install pre {
-  user-select: all;
-}
-
-.linux-install [role="status"]:not(:empty) {
+.install-command [role="status"]:not(:empty) {
   margin-top: 6px;
   color: var(--muted);
 }
@@ -550,14 +537,13 @@
   height: auto;
   min-height: 44px;
   padding: 8px 16px;
-  border: 1px solid #85858e;
+  border: 1px solid light-dark(#777780, #85858e);
   background: transparent;
 }
 
 .extension-actions [data-slot="button"]:hover {
-  background: #32323a;
+  background: light-dark(#e4e4e9, #32323a);
 }
-
 
 .extension-actions .store-install {
   background: var(--primary);
@@ -565,8 +551,9 @@
   border-color: var(--primary);
 }
 
+.platform-download .download-button:hover,
 .extension-actions .store-install:hover {
-  background: var(--accent);
+  background: color-mix(in srgb, var(--primary) 86%, var(--surface));
 }
 
 .extension-actions .text-link {

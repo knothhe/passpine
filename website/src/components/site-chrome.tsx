@@ -1,3 +1,4 @@
+import { ThemeSelect } from "./theme-select";
 import type { ReactNode } from "react";
 import { ArrowDown, ArrowUpRight, GitBranch, Globe2, Sprout } from "lucide-react";
 import type { Copy, LanguagePreference } from "../constants/copy";
@@ -43,6 +44,7 @@ function SiteHeader({ c, control }: { c: Copy; control: LanguageControl }) {
         ))}
       </nav>
       <div className="header-actions">
+        <ThemeSelect c={c} />
         <div className="language-select">
           <Globe2 size={14} aria-hidden="true" />
           <select

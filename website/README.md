@@ -57,7 +57,9 @@ PASSPINE_CAPTURE_BROWSER="$(command -v google-chrome-stable)" node scripts/captu
 
 `/privacy` 是浏览器扩展、桌面客户端和官网共用的公开隐私政策，可直接填入 Chrome Web Store 后台。正文位于 `copy.ts` 的 `privacy`，最后更新日期和核对所依据的版本位于 `routes.ts` 的 `privacyPolicy`。权限、存储、联网或第三方服务发生变化时，同步修改两种语言的正文并更新日期；测试会检查两种语言的章节结构一致，以及权限表与扩展声明的权限相符。
 
-## 语言
+## 语言和主题
+
+官网主题默认随系统外观实时切换。可在任一页面的页眉手动选择浅色或深色，偏好保存在当前浏览器，适用于所有页面。
 
 官网支持 `system`、`en` 和 `zh-CN` 三种语言选项。默认跟随系统，不支持的系统语言回退为 English，与客户端和扩展保持一致；手动选择会保存在浏览器中。文案集中管理在 `src/constants/copy.ts`，新增用户可见内容需同步补齐中英文。
 
@@ -79,7 +81,7 @@ PASSPINE_CAPTURE_BROWSER="$(command -v google-chrome-stable)" node scripts/captu
 
 同步脚本优先使用环境变量 `GH_TOKEN`，其次使用 `GITHUB_TOKEN`；未设置 Token 时尝试通过本机已登录的 GitHub CLI（`gh api --hostname github.com`）请求，CLI 不可用或请求失败才使用匿名 API。匿名请求容易受到共享出口 IP 的限流，遇到 HTTP 403/429 时可先执行 `gh auth login --hostname github.com`，或在部署环境中配置仅有公开仓库读取权限的 Token。错误会显示 HTTP 状态码，以及 GitHub 提供的限流重置时间和重试间隔；显式配置的 Token 无效时直接报错。Token 仅用于 Node 同步进程，不写入快照或前端构建产物。
 
-Linux 下载卡片同时提供可复制的一键安装命令。Chrome、Edge、Brave 等兼容浏览器可从官网的 Chrome 应用商店入口安装扩展。手动加载的 ZIP 继续按 Release 实际附件显示。
+macOS 与 Linux x64 下载卡片均直接展示一键安装命令，支持复制。Chrome、Edge、Brave 等兼容浏览器可从官网的 Chrome 应用商店入口安装扩展。手动加载的 ZIP 继续按 Release 实际附件显示。
 
 安装后的平台依赖、签名限制和扩展加载步骤以[本地安装文档](../docs/install-local.md)为准。
 

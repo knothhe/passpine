@@ -1,15 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fafafa;
-  --foreground: #171717;
-  --primary: #171717;
-  --primary-foreground: #fff;
-  --secondary: #f4f4f5;
-  --border: #e4e4e7;
-  --ring: #a1a1aa;
-  --muted: #666666;
-  --accent: #525252;
+  color-scheme: light dark;
+  --background: light-dark(#f2f2f5, #2b2c30);
+  --foreground: light-dark(#1c1c21, #ededf1);
+  --surface: light-dark(#fff, #25262c);
+  --primary: light-dark(#1c1c21, #c4c4cc);
+  --primary-foreground: light-dark(#fff, #1c1c21);
+  --secondary: light-dark(#f4f4f7, #323338);
+  --border: light-dark(#e3e3e8, #404145);
+  --ring: light-dark(#63636b, #c4c4cc);
+  --muted: light-dark(#63636b, #a1a1aa);
+  --body-text: light-dark(#404047, #d2d2da);
+  --accent: var(--primary);
+  --selection: light-dark(#d6d6de, #505058);
   font-family:
     Inter,
     -apple-system,
@@ -23,6 +27,12 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+html[data-theme="light"] {
+  color-scheme: light;
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
 }
 @theme inline {
   --color-background: var(--background);
@@ -68,7 +78,8 @@ button:disabled {
   cursor: default;
 }
 ::selection {
-  background: #e4e4e7;
+  color: var(--foreground);
+  background: var(--selection);
 }
 svg {
   flex-shrink: 0;
@@ -119,7 +130,7 @@ p {
     Consolas,
     monospace;
   letter-spacing: 1.8px;
-  color: #666666;
+  color: var(--muted);
 }
 .skip-link {
   position: fixed;
@@ -128,7 +139,7 @@ p {
   z-index: 20;
   padding: 12px 22px;
   background: var(--primary);
-  color: white;
+  color: var(--primary-foreground);
   transform: translateY(-180%);
   border-radius: 6px;
 }
@@ -161,11 +172,11 @@ p {
 }
 .site-header nav a {
   font-size: 12px;
-  color: #595959;
+  color: var(--muted);
   transition: color 0.2s;
 }
 .site-header nav a:hover {
-  color: #171717;
+  color: var(--foreground);
 }
 .header-actions {
   display: flex;
@@ -182,7 +193,7 @@ p {
   display: flex;
   align-items: center;
   gap: 5px;
-  color: #666666;
+  color: var(--muted);
 }
 .language-select select {
   font-size: 11px;
@@ -190,8 +201,15 @@ p {
   border: 0;
   background: transparent;
   max-width: 94px;
-  min-height: 36px;
-  color: #595959;
+  min-height: 40px;
+  color: var(--body-text);
+}
+.language-select:focus-within {
+  color: var(--foreground);
+}
+.language-select option {
+  color: var(--foreground);
+  background: var(--surface);
 }
 .hero-actions {
   display: flex;
@@ -221,17 +239,17 @@ p {
 }
 .footer-main p {
   font-size: 12px;
-  color: #666666;
+  color: var(--muted);
   margin: 8px 0 0 6px;
 }
 .footer-links {
   display: flex;
   gap: 25px;
   font-size: 11px;
-  color: #666666;
+  color: var(--muted);
 }
 .footer-links a:hover {
-  color: #171717;
+  color: var(--foreground);
 }
 .footer-bottom {
   border-top: 1px solid var(--border);
@@ -243,7 +261,7 @@ p {
   font:
     11px ui-monospace,
     monospace;
-  color: #666666;
+  color: var(--muted);
 }
 .footer-bottom > span:nth-child(2),
 .footer-bottom > a {
@@ -276,12 +294,12 @@ p {
   gap: 6px 12px;
   margin-top: 22px;
   font-size: 12px;
-  color: #666666;
+  color: var(--muted);
 }
 .policy-meta .text-link {
   gap: 4px;
   font-size: 12px;
-  color: #404040;
+  color: var(--body-text);
 }
 .policy-summary {
   padding-bottom: 56px;
@@ -302,10 +320,10 @@ p {
   padding: 22px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
 }
 .policy-summary svg {
-  color: #595959;
+  color: var(--muted);
 }
 .policy-summary h3 {
   font-size: 14px;
@@ -345,7 +363,7 @@ p {
   border-left: 1px solid transparent;
   font-size: 12px;
   line-height: 1.6;
-  color: #666666;
+  color: var(--muted);
   transition:
     color 0.2s,
     border-color 0.2s;
@@ -357,7 +375,7 @@ p {
     SFMono-Regular,
     Consolas,
     monospace;
-  color: #8a8a8a;
+  color: var(--muted);
 }
 .policy-toc a:hover {
   color: var(--foreground);
@@ -392,7 +410,7 @@ p {
 .policy-table td {
   font-size: 14px;
   line-height: 1.95;
-  color: #404040;
+  color: var(--body-text);
 }
 .policy-content p + *,
 .policy-content * + p {
@@ -417,7 +435,7 @@ p {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #a3a3a3;
+  background: var(--muted);
 }
 .policy-list strong {
   display: block;
@@ -428,7 +446,7 @@ p {
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
 }
 .policy-table {
   width: 100%;
@@ -447,8 +465,8 @@ p {
 .policy-table thead th {
   font-size: 11px;
   font-weight: 500;
-  color: #666666;
-  background: #f4f4f5;
+  color: var(--muted);
+  background: var(--secondary);
 }
 .policy-table tbody th {
   white-space: nowrap;
@@ -472,7 +490,7 @@ p {
 }
 .policy-top {
   margin-top: 8px;
-  color: #666666;
+  color: var(--muted);
   font-size: 12px;
 }
 .not-found {
@@ -524,7 +542,7 @@ p {
     padding: 20px 22px;
     border: 1px solid var(--border);
     border-radius: 12px;
-    background: #fff;
+    background: var(--surface);
   }
   .policy-toc ol {
     display: grid;
@@ -537,7 +555,7 @@ p {
     border-left: 0;
   }
   .policy-toc a[aria-current] {
-    color: #666666;
+    color: var(--muted);
   }
 }
 @media (max-width: 760px) {
@@ -560,7 +578,7 @@ p {
     display: none;
   }
   .header-actions {
-    gap: 0;
+    gap: 12px;
   }
   .brand {
     font-size: 21px;
@@ -612,8 +630,8 @@ p {
     grid-column: 2;
     grid-row: 1;
   }
-  .language-select svg {
-    display: none;
+  .language-select {
+    gap: 3px;
   }
   .language-select select {
     font-size: 11px;
@@ -747,7 +765,28 @@ p {
     font-size: 28px;
   }
 }
+@media (max-width: 380px) {
+  .site-header {
+    grid-template-columns: auto 1fr;
+  }
+  .site-header nav {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+    gap: 16px;
+  }
+  .header-actions {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: flex-end;
+    gap: 18px;
+  }
+}
 @media print {
+  html[data-theme],
+  :root {
+    color-scheme: light;
+  }
   .site-header,
   .site-footer,
   .skip-link,
