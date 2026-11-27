@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"path/filepath"
 	"runtime"
 
 	"github.com/egoist/mygo"
@@ -83,10 +84,15 @@ func (a *application) chooseBrowserProgram() {
 	draft.picking = true
 	current := a.preferencesLease()
 	options := mygo.OpenDialogOptions{Parent: a.dialogParent(), Title: a.t("选择浏览器程序"), DefaultPath: draft.value.Path}
-	if runtime.GOOS == "darwin" {
-		options.Filters = []mygo.FileFilter{{Name: a.t("macOS 应用程序"), Extensions: []string{"app"}}}
-	}
-	if runtime.GOOS == "windows" {
+	switch runtime.GOOS {
+	case "darwin":
+		// An "app" extension filter can resolve to com.apple.application-file,
+		// which excludes application bundles. Saving validates the bundle itself.
+		options.DefaultPath = "/Applications"
+		if filepath.IsAbs(draft.value.Path) {
+			options.DefaultPath = filepath.Dir(filepath.Clean(draft.value.Path))
+		}
+	case "windows":
 		options.Filters = []mygo.FileFilter{{Name: a.t("Windows 应用程序"), Extensions: []string{"exe"}}}
 	}
 	open := a.preferences.openDialog
