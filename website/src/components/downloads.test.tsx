@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { DownloadSection } from "../pages/home";
-import { en, zh } from "../constants/copy";
+import { chromeWebStoreUrl } from "../constants/routes";
+import { en, linuxInstallCommand, zh } from "../constants/copy";
 import { bundledRelease } from "../lib/release-snapshot";
 import type { Device, Release } from "../lib/downloads";
 
@@ -21,6 +22,18 @@ function render(
 }
 
 describe("available website downloads", () => {
+  it.each([en, zh])("shows the copyable one-step installer on the Linux x64 card", (copy) => {
+    const html = render(bundledRelease, copy);
+    const card = html.split("<article").find((part) => part.includes(">Linux</h3>"))?.split("</article>")[0];
+    expect(card).toContain(`<code>${linuxInstallCommand}</code>`);
+    expect(card).toContain(copy.downloads.copyCommand);
+    expect(card).toContain(copy.downloads.linuxCommand);
+    const otherArchitectures = bundledRelease.assets.filter(
+      (asset) => !(asset.platform === "linux" && asset.architecture === "x64"),
+    );
+    expect(render({ ...bundledRelease, assets: otherArchitectures }, copy)).not.toContain(linuxInstallCommand);
+  });
+
   it("renders only released platforms, architectures, and browser packages", () => {
     const release = {
       ...bundledRelease,
@@ -34,7 +47,10 @@ describe("available website downloads", () => {
     expect(html).not.toContain(">Windows</h3>");
     expect(html).not.toContain(">Linux</h3>");
     expect(html).not.toContain("Intel");
-    expect(html).not.toContain(zh.downloads.extensionTitle);
+    expect(html).toContain(`href="${chromeWebStoreUrl}"`);
+    expect(html).toContain(zh.downloads.chromeStore);
+    expect(html).not.toContain(zh.downloads.extensionDownload(zh.downloads.chromium));
+    expect(html).not.toContain(zh.downloads.extensionDownload(zh.downloads.firefox));
     for (const asset of release.assets)
       expect(html).toContain(`href="${asset.url}"`);
   });
@@ -60,6 +76,7 @@ describe("available website downloads", () => {
 
   it("translates download guidance and accessible link names into English", () => {
     const html = render(bundledRelease, en);
+    expect(html).toContain(en.downloads.chromeStore);
     expect(html).toContain(en.downloads.latest(bundledRelease.tag));
     expect(html).toContain('aria-label="Download for Windows · x64"');
     expect(html).toContain(
@@ -67,5 +84,6 @@ describe("available website downloads", () => {
     );
     expect(html).not.toContain(zh.downloads.installGuide);
     expect(html).not.toContain(zh.downloads.extensionTitle);
+    expect(html).not.toContain(zh.downloads.chromeStore);
   });
 });

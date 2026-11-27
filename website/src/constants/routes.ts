@@ -10,6 +10,9 @@ export const pageDocuments = {
 
 export const routes = { home: "/", privacy: "/privacy" } as const;
 
+export const chromeWebStoreUrl =
+  "https://chromewebstore.google.com/detail/passpine/aphkddfagflppihmghlcjpnkkdgbflnp";
+
 export type HomeSectionId =
   | "video"
   | "features"
@@ -39,7 +42,7 @@ export type PrivacySectionId = (typeof privacySectionIds)[number];
 // The date the policy was last revised, the release it was checked against,
 // and the maintainer's private contact address.
 export const privacyPolicy = {
-  updated: "2026-10-28",
-  reviewedVersion: "0.1.13",
+  updated: "2026-11-27",
+  reviewedVersion: "0.1.23-dev",
   contactEmail: "knothhe@gmail.com",
 };

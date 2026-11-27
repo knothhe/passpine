@@ -1,6 +1,8 @@
 import type { PrivacySectionId } from "./routes.ts";
 
 export const homebrewInstallCommand = "brew install --cask knothhe/tap/passpine";
+export const linuxInstallCommand =
+  "curl -fsSL https://raw.githubusercontent.com/knothhe/passpine/main/scripts/install-linux.sh | sh";
 
 // Policy sections are structured so both languages keep the same shape.
 export type PolicyListItem = string | { term: string; text: string };
@@ -60,14 +62,21 @@ export const zh = {
     zh: "简体中文",
   },
   hero: {
-    eyebrow: "本地优先 · 兼容 pass",
-    title: "Passpine",
+    eyebrow: "开源 · 本地密码管理器",
+    title: "你的密码库。",
+    accentTitle: "你的密钥。",
     description:
-      "兼容 pass 的本地密码管理器，支持密码生成、TOTP、Git 同步与浏览器填充。",
+      "用自己的 GPG 密钥加密每条密码，在浏览器里一键填充。想同步时，再连接自己的 Git 仓库。",
     download: "下载 Passpine",
     downloadFor: (platform: string, architecture: string) =>
       `下载 ${platform} · ${architecture}`,
-    explore: "了解它的不同",
+    watch: "看 30 秒演示",
+    workspace: "产品预览",
+    workspaceTitle: "从桌面到浏览器",
+    desktop: "桌面客户端",
+    extension: "浏览器扩展",
+    desktopDetail: "在桌面整理账号、生成密码，随时查看动态验证码。",
+    extensionDetail: "在浏览器中找到当前网站的账号，选中后填入登录表单。",
     platforms: "macOS · Windows · Linux",
     preview: "真实客户端与扩展预览 · 仅使用演示账号",
     desktopAlt: "Passpine 桌面客户端：文件夹、账号列表与 GitHub 演示账号详情",
@@ -195,18 +204,23 @@ export const zh = {
       windows:
         "Windows 安装包尚未进行 Authenticode 签名，系统可能显示安全提示。",
       linux:
-        "Linux 需要 GTK 3。下载压缩包后，按安装指南运行安装脚本。",
+        "手动安装需 GTK 3。解压安装包后，运行其中的 install.sh。",
     },
     installGuide: "安装与系统要求",
     homebrew: "通过 Homebrew 安装",
+    linuxCommand: "一键安装最新版（x64）",
+    copyCommand: "复制命令",
+    commandCopied: "安装命令已复制。",
+    copyManually: "无法自动复制，请手动复制上方命令。",
     homebrewNote:
       "适用于 Apple Silicon · macOS 13 及以上。命令会自动添加 knothhe/tap 并安装正式版。",
     extensionTitle: "把 Passpine 带进浏览器",
     extensionBody:
-      "先安装并运行桌面客户端，再按指南加载扩展。当前提供本地安装包。",
+      "先安装并运行桌面客户端。Chrome、Edge、Brave 等兼容浏览器可从 Chrome 应用商店安装扩展。",
+    chromeStore: "从 Chrome 应用商店安装",
     chromium: "Chrome / Edge / Brave",
     firefox: "Firefox",
-    extensionDownload: (name: string) => `下载 ${name} 扩展`,
+    extensionDownload: (name: string) => `下载 ${name} 扩展 ZIP`,
     extensionGuide: "扩展安装指南",
   },
   faq: {
@@ -230,7 +244,7 @@ export const zh = {
       {
         question: "浏览器扩展可以独立使用吗？",
         answer:
-          "扩展需要已安装且正在运行的桌面客户端，通过 Native Messaging 连接本地密码库。当前从 GitHub 下载后本地加载；Firefox 临时扩展在浏览器重启后需要重新加载。填写账号后不会自动提交网页表单。",
+          "扩展需要已安装且正在运行的桌面客户端，通过 Native Messaging 连接本地密码库。Chrome 和兼容浏览器可从 Chrome 应用商店安装。Firefox 使用 GitHub 安装包临时加载，重启浏览器后需要重新加载。填写账号后不会自动提交网页表单。",
       },
       {
         question: "忘记口令或丢失密钥怎么办？",
@@ -300,7 +314,7 @@ export const zh = {
             },
             {
               term: "条目内容",
-              text: "你保存的用户名、密码、网站地址、一次性验证码、备注和自定义字段。复制和网页填充只使用用户名、密码或验证码。",
+              text: "你保存的用户名、密码、网站地址、一次性验证码、备注和自定义字段。网页填充使用用户名、密码或验证码。连接支持的客户端时，你也可以将所选自定义字段复制到系统剪贴板。",
             },
             {
               term: "当前网页",
@@ -522,14 +536,21 @@ export const en: Copy = {
     zh: "简体中文",
   },
   hero: {
-    eyebrow: "LOCAL FIRST · PASS COMPATIBLE",
-    title: "Passpine",
+    eyebrow: "OPEN-SOURCE PASSWORD MANAGER",
+    title: "Your vault.",
+    accentTitle: "Your keys.",
     description:
-      "A local password manager compatible with pass, with password generation, TOTP, Git sync, and browser filling.",
+      "Encrypt each password with your own GPG key. Fill sign-ins from your browser and sync to your own Git repository when you choose.",
     download: "Download Passpine",
     downloadFor: (platform, architecture) =>
       `Download for ${platform} · ${architecture}`,
-    explore: "See what makes it different",
+    watch: "Watch the 30s film",
+    workspace: "PRODUCT PREVIEW",
+    workspaceTitle: "From desktop to browser",
+    desktop: "Desktop app",
+    extension: "Browser extension",
+    desktopDetail: "Organize accounts, generate passwords, and find one-time codes in the desktop app.",
+    extensionDetail: "Find accounts for the site you’re visiting, then pick one to fill the sign-in form.",
     platforms: "macOS · Windows · Linux",
     preview: "Real desktop and extension previews · Demo accounts only",
     desktopAlt:
@@ -672,18 +693,23 @@ export const en: Copy = {
       windows:
         "The Windows installer is not Authenticode signed. Your system may display a security notice.",
       linux:
-        "Linux requires GTK 3. Extract the archive and follow the guide to run the installer.",
+        "Manual installation requires GTK 3. Extract the archive and run the included install.sh.",
     },
     installGuide: "Installation and system requirements",
     homebrew: "Install with Homebrew",
+    linuxCommand: "Install the latest release (x64)",
+    copyCommand: "Copy command",
+    commandCopied: "Install command copied.",
+    copyManually: "Automatic copying is unavailable. Copy the command above manually.",
     homebrewNote:
       "For Apple Silicon · macOS 13 or later. The command adds knothhe/tap and installs the stable app.",
     extensionTitle: "A companion for your browser",
     extensionBody:
-      "Install and run the desktop app first, then load the extension using the guide. Local installation packages are available now.",
+      "Install and run the desktop app first. Get the extension from the Chrome Web Store for Chrome, Edge, Brave, and other compatible browsers.",
+    chromeStore: "Get it on the Chrome Web Store",
     chromium: "Chrome / Edge / Brave",
     firefox: "Firefox",
-    extensionDownload: (name) => `Download ${name} extension`,
+    extensionDownload: (name) => `Download ${name} extension ZIP`,
     extensionGuide: "Extension installation guide",
   },
   faq: {
@@ -707,7 +733,7 @@ export const en: Copy = {
       {
         question: "Does the browser extension work on its own?",
         answer:
-          "The desktop app needs to be installed and running. The extension connects to your local vault through Native Messaging. Download and load the extension locally; Firefox temporary extensions need to be loaded again after a browser restart. Filling an account does not submit the form.",
+          "The desktop app needs to be installed and running. The extension connects to your local vault through Native Messaging. Install from the Chrome Web Store in Chrome and compatible browsers. For Firefox, load the GitHub package as a temporary extension after each browser restart. Filling an account does not submit the form.",
       },
       {
         question: "What if I lose my key or forget my passphrase?",
@@ -779,7 +805,7 @@ export const en: Copy = {
             },
             {
               term: "Entry contents",
-              text: "Usernames, passwords, website addresses, one-time codes, notes, and custom fields you save. Copying and filling use only the username, password, or one-time code.",
+              text: "Usernames, passwords, website addresses, one-time codes, notes, and custom fields you save. Form filling uses the username, password, or one-time code. With a compatible desktop app, you can also copy a selected custom field to the system clipboard.",
             },
             {
               term: "The current page",

@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 BUCKET=oss
-VERSION=v1
+VERSION=v3
 PREFIX="passpine/promo/${VERSION}"
 ORIGIN=https://oss.knothhe.com
 wrangler() { pnpm --dir ../../website exec wrangler "$@"; }

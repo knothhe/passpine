@@ -1,33 +1,72 @@
 import React from "react";
-import { interpolate, useCurrentFrame } from "remotion";
-import { Cursor, FeatureCard, Window } from "../components";
+import { Img, interpolate, staticFile, useCurrentFrame } from "remotion";
+import { Cursor, FeatureCard, LockIcon, Toast, Window } from "../components";
 import { useCopy } from "../copy";
-import { fonts, ink, muted, pop, ramp, sceneFade, timing } from "../theme";
-import { VaultList } from "./VaultList";
-
+import { fonts, palette, pop, ramp, sceneFade, timing } from "../theme";
 
 export const Vault = () => {
-  const c = useCopy().vault;
+  const copy = useCopy();
+  const c = copy.vault;
   const frame = useCurrentFrame();
-  const enter = ramp(frame, 0, 26);
-  const importTab = frame >= 33;
-  const panel = ramp(frame, 36, 54);
-  const pressed = frame >= 96 && frame < 101;
-  const opened = ramp(frame, 106, 126);
+  const enter = ramp(frame, 0, 24);
+  const importTab = frame >= 30;
+  const panel = ramp(frame, 32, 50);
+  const pressed = frame >= 88 && frame < 94;
+  const opened = ramp(frame, 98, 118);
+  const toast = Math.min(pop(frame, 118), 1);
 
-  const cx = interpolate(frame, [16, 30, 70, 94], [700, 490, 490, 490], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const cy = interpolate(frame, [16, 30, 70, 94], [300, 52, 52, 468], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const cursorOpacity = interpolate(frame, [12, 18, 102, 108], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const clicking = (frame >= 30 && frame < 35) || pressed;
+  const cx = interpolate(frame, [14, 28, 66, 86], [760, 528, 528, 528], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const cy = interpolate(frame, [14, 28, 66, 86], [300, 58, 58, 512], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const cursorOpacity = interpolate(frame, [10, 16, 94, 102], [0, 1, 1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const clicking = (frame >= 28 && frame < 33) || pressed;
 
   return (
     <div style={{ position: "absolute", inset: 0, opacity: sceneFade(frame, timing.vault.duration) }}>
-      <FeatureCard index={4} title={c.title} caption={c.caption} />
-      <div style={{ position: "absolute", left: 800, top: 190, opacity: enter, transform: `translateY(${(1 - enter) * 40}px)` }}>
-        <Window width={1000} height={640} title={frame >= 116 ? c.vaultName : c.window}>
-          {/* Import screen */}
-          <div style={{ position: "absolute", inset: 0, opacity: 1 - opened }}>
-            <div style={{ position: "absolute", left: 220, top: 32, width: 560, height: 50, borderRadius: 12, background: "#f0f0ee", display: "flex", padding: 4 }}>
+      <FeatureCard index={4} eyebrow={c.eyebrow} title={c.title} caption={c.caption} spec={c.spec} />
+
+      <div
+        style={{
+          position: "absolute",
+          left: 752,
+          top: 156,
+          opacity: enter,
+          transform: `translateY(${(1 - enter) * 36}px)`,
+        }}
+      >
+        <Window width={1056} height={680} title={frame >= 108 ? c.importedWindow : c.window} darkBody={frame < 108}>
+          {/* Phase 1: Standard pass vault inspector & import flow */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: palette.graphite,
+              opacity: 1 - opened,
+            }}
+          >
+            {/* Segmented tabs */}
+            <div
+              style={{
+                position: "absolute",
+                left: 238,
+                top: 32,
+                width: 580,
+                height: 50,
+                borderRadius: 12,
+                background: palette.panel,
+                border: `1px solid ${palette.border}`,
+                display: "flex",
+                padding: 4,
+              }}
+            >
               {c.tabs.map((tab, i) => {
                 const on = importTab ? i === 1 : i === 0;
                 return (
@@ -37,12 +76,12 @@ export const Vault = () => {
                       flex: 1,
                       display: "grid",
                       placeItems: "center",
-                      borderRadius: 9,
-                      fontSize: 18,
+                      borderRadius: 8,
+                      fontSize: 17,
                       fontWeight: on ? 600 : 400,
-                      background: on ? "#fff" : "transparent",
-                      boxShadow: on ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                      color: on ? ink : muted,
+                      background: on ? palette.panelElevated : "transparent",
+                      border: on ? `1px solid ${palette.borderStrong}` : "1px solid transparent",
+                      color: on ? palette.ink : palette.inkMuted,
                     }}
                   >
                     {tab}
@@ -50,36 +89,120 @@ export const Vault = () => {
                 );
               })}
             </div>
-            <div style={{ position: "absolute", left: 120, top: 110, width: 760, opacity: panel, transform: `translateY(${(1 - panel) * 12}px)` }}>
-              <div style={{ height: 50, padding: "0 18px", borderRadius: 12, background: "#eef5ff", color: "#24508f", fontSize: 17, display: "flex", alignItems: "center" }}>{c.found}</div>
-              <div style={{ marginTop: 18, padding: "12px 18px", borderRadius: 12, border: "1px solid #ececea", fontFamily: fonts.mono, fontSize: 17 }}>
+
+            <div
+              style={{
+                position: "absolute",
+                left: 128,
+                top: 112,
+                width: 800,
+                opacity: panel,
+                transform: `translateY(${(1 - panel) * 12}px)`,
+              }}
+            >
+              {/* Detected vault banner */}
+              <div
+                style={{
+                  minHeight: 50,
+                  padding: "12px 18px",
+                  borderRadius: 12,
+                  background: palette.panel,
+                  border: `1px solid ${palette.silverBorder}`,
+                  color: palette.ink,
+                  fontSize: 16,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <LockIcon size={16} color={palette.silver} />
+                <span>{c.found}</span>
+              </div>
+
+              {/* Standard ~/.password-store file tree */}
+              <div
+                style={{
+                  marginTop: 18,
+                  padding: "16px 20px",
+                  borderRadius: 14,
+                  background: palette.panel,
+                  border: `1px solid ${palette.border}`,
+                  fontFamily: fonts.mono,
+                  fontSize: 16,
+                }}
+              >
                 {c.files.map((f, i) => (
-                  <div key={f} style={{ height: 30, display: "flex", alignItems: "center", color: i === 0 ? muted : ink, opacity: ramp(frame, 44 + i * 5, 54 + i * 5) }}>
-                    {f}
+                  <div
+                    key={f.name}
+                    style={{
+                      height: 36,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      borderBottom: i < c.files.length - 1 ? `1px solid ${palette.border}` : "none",
+                      color: f.encrypted ? palette.ink : palette.inkMuted,
+                      opacity: ramp(frame, 38 + i * 5, 48 + i * 5),
+                    }}
+                  >
+                    <span>{f.name}</span>
+                    {f.encrypted && (
+                      <span
+                        style={{
+                          padding: "2px 9px",
+                          borderRadius: 6,
+                          background: palette.panelElevated,
+                          border: `1px solid ${palette.borderStrong}`,
+                          fontSize: 12,
+                          color: palette.silver,
+                        }}
+                      >
+                        {c.encryptedTag}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
-              <div style={{ marginTop: 22, display: "flex", alignItems: "center", gap: 18, fontSize: 18 }}>
-                <span style={{ color: muted }}>{c.keySource}</span>
-                <div style={{ display: "flex", padding: 3, borderRadius: 10, background: "#f0f0ee" }}>
+
+              {/* Key source selector */}
+              <div style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 18, fontSize: 17 }}>
+                <span style={{ color: palette.inkMuted }}>{c.keySource}</span>
+                <div
+                  style={{
+                    display: "flex",
+                    padding: 3,
+                    borderRadius: 10,
+                    background: palette.panel,
+                    border: `1px solid ${palette.border}`,
+                  }}
+                >
                   {c.sources.map((s, i) => (
-                    <div key={s} style={{ padding: "8px 18px", borderRadius: 8, background: i === 0 ? "#fff" : "transparent", fontWeight: i === 0 ? 600 : 400, color: i === 0 ? ink : muted }}>
+                    <div
+                      key={s}
+                      style={{
+                        padding: "7px 18px",
+                        borderRadius: 8,
+                        background: i === 0 ? palette.panelElevated : "transparent",
+                        fontWeight: i === 0 ? 600 : 400,
+                        color: i === 0 ? palette.ink : palette.inkMuted,
+                      }}
+                    >
                       {s}
                     </div>
                   ))}
                 </div>
               </div>
+
               <div
                 style={{
-                  marginTop: 24,
-                  height: 56,
+                  marginTop: 22,
+                  height: 54,
                   borderRadius: 12,
-                  background: ink,
-                  color: "#fff",
+                  background: palette.ink,
+                  color: palette.graphite,
                   display: "grid",
                   placeItems: "center",
-                  fontSize: 20,
-                  fontWeight: 600,
+                  fontSize: 19,
+                  fontWeight: 700,
                   transform: `scale(${pressed ? 0.98 : 1})`,
                 }}
               >
@@ -87,16 +210,28 @@ export const Vault = () => {
               </div>
             </div>
           </div>
-          {/* Imported vault */}
-          <div style={{ position: "absolute", inset: 0, display: "flex", opacity: opened, transform: `translateY(${(1 - opened) * 20}px)` }}>
-            <div style={{ width: 380, borderRight: "1px solid #ececea", background: "#fbfbfa" }}>
-              <VaultList title={c.allEntries} entries={c.entries} selected={frame >= 130 ? "github" : undefined} />
-            </div>
-            <div style={{ flex: 1, padding: "30px 40px", opacity: pop(frame, 130) }}>
-              <div style={{ fontSize: 34, fontWeight: 700 }}>{c.entries[1].name}</div>
-              <div style={{ fontSize: 16, color: muted, marginTop: 6, fontFamily: fonts.mono }}>{c.entries[1].path}.gpg</div>
-            </div>
+
+          {/* Phase 2: Seamless reveal of REAL Passpine Desktop App UI with imported vault open */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              opacity: opened,
+              transform: `scale(${0.98 + 0.02 * opened})`,
+            }}
+          >
+            <Img
+              src={staticFile(`demo/${copy.locale}/desktop.png`)}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                objectPosition: "top left",
+              }}
+            />
+            <Toast text={c.importedToast} progress={toast} />
           </div>
+
           <div style={{ opacity: cursorOpacity }}>
             <Cursor x={cx} y={cy} pressed={clicking} />
           </div>

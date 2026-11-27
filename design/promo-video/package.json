@@ -4,10 +4,11 @@
   "type": "module",
   "scripts": {
     "music": "node scripts/music.mjs",
-    "studio": "node scripts/music.mjs && remotion studio src/index.ts",
+    "prepare:assets": "node scripts/prepare-assets.mjs",
+    "studio": "pnpm run prepare:assets && remotion studio src/index.ts",
     "render": "bash scripts/render.sh",
     "upload": "bash scripts/upload.sh",
-    "still": "node scripts/music.mjs && remotion still src/index.ts"
+    "still": "pnpm run prepare:assets && remotion still src/index.ts"
   },
   "dependencies": {
     "@remotion/cli": "4.0.534",

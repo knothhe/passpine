@@ -1,23 +1,25 @@
 import React from "react";
-import { interpolate, useCurrentFrame } from "remotion";
-import { Check, Cursor, FeatureCard, Logo, Window, typed } from "../components";
+import { Img, interpolate, staticFile, useCurrentFrame } from "remotion";
+import { Check, Cursor, FeatureCard, LockIcon, Window, typed } from "../components";
 import { useCopy } from "../copy";
-import { ink, pop, ramp, sceneFade, timing } from "../theme";
-
+import { fonts, palette, pop, ramp, sceneFade, timing } from "../theme";
 
 const Field = ({ label, value, active }: { label: string; value: string; active: boolean }) => (
-  <div style={{ marginTop: 26 }}>
-    <div style={{ fontSize: 18, color: "#6b6b68", marginBottom: 10 }}>{label}</div>
+  <div style={{ marginTop: 22 }}>
+    <div style={{ fontSize: 16, color: palette.inkMuted, marginBottom: 8, fontWeight: 500 }}>{label}</div>
     <div
       style={{
-        height: 58,
+        height: 56,
         borderRadius: 12,
-        border: `2px solid ${active ? ink : "#e2e2df"}`,
+        border: `1.5px solid ${active ? palette.ink : palette.borderStrong}`,
+        boxShadow: active ? `0 0 0 3px ${palette.silverSoft}` : "none",
         display: "flex",
         alignItems: "center",
         padding: "0 18px",
-        fontSize: 22,
-        background: value ? "#f6f8ff" : "#fff",
+        fontSize: 21,
+        color: palette.ink,
+        background: value ? palette.panelElevated : palette.graphite,
+        fontFamily: fonts.sans,
       }}
     >
       {value}
@@ -26,124 +28,201 @@ const Field = ({ label, value, active }: { label: string; value: string; active:
 );
 
 export const Fill = () => {
-  const c = useCopy().fill;
+  const copy = useCopy();
+  const c = copy.fill;
   const frame = useCurrentFrame();
-  const enter = ramp(frame, 0, 26);
+  const enter = ramp(frame, 0, 24);
 
-  const popupIn = pop(frame, 32);
-  const popupOut = ramp(frame, 78, 90);
-  const popupOpacity = Math.min(popupIn, 1 - popupOut);
-  const rowHighlight = ramp(frame, 58, 66);
+  const popupIn = pop(frame, 30);
+  const popupOut = ramp(frame, 92, 104);
+  const popupOpacity = Math.max(0, Math.min(popupIn, 1 - popupOut));
+  const rowHighlight = ramp(frame, 64, 74);
 
-  const username = typed(c.username, frame, 86, 110);
-  const dots = "•".repeat(Math.round(interpolate(frame, [108, 122], [0, 12], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })));
-  const pressed = frame >= 126 && frame < 132;
-  const filled = pop(frame, 132);
+  const username = typed(c.username, frame, 98, 120);
+  const dots = "•".repeat(
+    Math.round(interpolate(frame, [118, 132], [0, 14], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })),
+  );
+  const pressed = frame >= 136 && frame < 142;
+  const filled = pop(frame, 140);
 
-  // Cursor path: centre → extension icon → first entry → away.
-  const cx = interpolate(frame, [18, 32, 48, 62, 92, 110], [520, 952, 952, 760, 760, 1100], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const cy = interpolate(frame, [18, 32, 48, 62, 92, 110], [380, -36, -36, 170, 170, 700], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const cursorOpacity = interpolate(frame, [14, 20, 96, 108], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const clicking = (frame >= 32 && frame < 37) || (frame >= 70 && frame < 76);
+  // Cursor path: centre -> extension button -> first real row in extension.png -> away.
+  const cx = interpolate(frame, [14, 28, 52, 68, 96, 114], [480, 996, 996, 800, 800, 1090], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const cy = interpolate(frame, [14, 28, 52, 68, 96, 114], [360, -26, -26, 134, 134, 620], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const cursorOpacity = interpolate(frame, [10, 16, 100, 112], [0, 1, 1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const clicking = (frame >= 28 && frame < 34) || (frame >= 82 && frame < 88);
 
   return (
     <div style={{ position: "absolute", inset: 0, opacity: sceneFade(frame, timing.fill.duration) }}>
-      <FeatureCard index={1} title={c.title} caption={c.caption} />
-      <div style={{ position: "absolute", left: 800, top: 190, opacity: enter, transform: `translateY(${(1 - enter) * 40}px)` }}>
+      <FeatureCard index={1} eyebrow={c.eyebrow} title={c.title} caption={c.caption} spec={c.spec} />
+
+      <div
+        style={{
+          position: "absolute",
+          left: 752,
+          top: 156,
+          opacity: enter,
+          transform: `translateY(${(1 - enter) * 36}px)`,
+        }}
+      >
         <Window
-          width={1000}
-          height={640}
+          width={1056}
+          height={680}
+          title={
+            <div
+              style={{
+                width: 480,
+                height: 30,
+                borderRadius: 15,
+                background: palette.graphite,
+                border: `1px solid ${palette.border}`,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "0 14px",
+                fontSize: 14,
+                fontFamily: fonts.mono,
+                color: palette.silver,
+              }}
+            >
+              <LockIcon size={13} color={palette.inkMuted} />
+              <span>{c.site}</span>
+            </div>
+          }
           toolbar={
-            <div style={{ width: 34, height: 34, borderRadius: 8, background: popupIn > 0.05 && popupOut < 1 ? "#e3e3e0" : "transparent", display: "grid", placeItems: "center" }}>
-              <Logo size={30} />
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 9,
+                  background: popupIn > 0.05 && popupOut < 1 ? palette.panelElevated : "transparent",
+                  border: `1px solid ${popupIn > 0.05 && popupOut < 1 ? palette.silverBorder : "transparent"}`,
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <Img src={staticFile("icon.svg")} width={24} height={24} />
+              </div>
             </div>
           }
         >
-          <div style={{ position: "absolute", left: 150, top: -44, width: 520, height: 32, borderRadius: 16, background: "#fff", border: "1px solid #e2e2df", display: "flex", alignItems: "center", padding: "0 16px", fontSize: 17, color: "#555" }}>
-            {c.site}
-          </div>
-          <div style={{ position: "absolute", left: 290, top: 70, width: 420 }}>
-            <div style={{ fontSize: 34, fontWeight: 700 }}>{c.loginTitle}</div>
-            <Field label={c.emailLabel} value={username} active={frame >= 86 && frame < 108} />
-            <Field label={c.passwordLabel} value={dots} active={frame >= 108 && frame < 124} />
-            <div
-              style={{
-                marginTop: 34,
-                height: 60,
-                borderRadius: 12,
-                background: ink,
-                color: "#fff",
-                display: "grid",
-                placeItems: "center",
-                fontSize: 22,
-                fontWeight: 600,
-                transform: `scale(${pressed ? 0.97 : 1})`,
-              }}
-            >
-              {c.signIn}
-            </div>
-            <div
-              style={{
-                position: "absolute",
-                right: 0,
-                top: 0,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 16px",
-                borderRadius: 20,
-                background: "#e8f6ee",
-                color: "#1f7a46",
-                fontSize: 19,
-                fontWeight: 600,
-                opacity: filled,
-                transform: `scale(${0.7 + 0.3 * filled})`,
-              }}
-            >
-              <Check size={20} color="#1f7a46" /> {c.filled}
-            </div>
-          </div>
-
-          {/* Extension popup */}
+          {/* Dark monochrome login surface */}
           <div
             style={{
               position: "absolute",
-              right: 18,
-              top: 8,
-              width: 380,
-              borderRadius: 14,
-              background: "#f4f4f2",
-              boxShadow: "0 24px 60px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06)",
-              opacity: popupOpacity,
-              transform: `translateY(${(1 - popupIn) * -16}px) scale(${0.96 + 0.04 * popupIn})`,
-              transformOrigin: "top right",
-              overflow: "hidden",
+              inset: 0,
+              background: `radial-gradient(640px 420px at 32% 28%, rgba(196, 196, 204, 0.05) 0%, transparent 70%), ${palette.graphite}`,
             }}
           >
-            <div style={{ padding: "18px 20px 10px", fontSize: 19, fontWeight: 600 }}>{c.site}</div>
-            <div style={{ margin: "0 16px", height: 42, borderRadius: 10, background: "#fff", display: "flex", alignItems: "center", padding: "0 14px", color: "#9a9a96", fontSize: 17 }}>
-              {c.popupSearch}
-            </div>
-            <div style={{ padding: "14px 20px 6px", fontSize: 15, color: "#7a7a76" }}>{c.popupSection}</div>
-            {c.entries.map((e, i) => (
+            <div
+              style={{
+                position: "absolute",
+                left: 112,
+                top: 96,
+                width: 448,
+                padding: "36px 38px",
+                borderRadius: 18,
+                background: palette.panel,
+                border: `1px solid ${palette.borderStrong}`,
+                boxShadow: "0 24px 60px rgba(0, 0, 0, 0.35)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ fontSize: 30, fontWeight: 700, color: palette.ink, letterSpacing: -0.6 }}>
+                  {c.loginTitle}
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "6px 14px",
+                    borderRadius: 999,
+                    background: palette.ink,
+                    color: palette.graphite,
+                    fontSize: 15,
+                    fontWeight: 700,
+                    opacity: filled,
+                    transform: `scale(${0.76 + 0.24 * filled})`,
+                  }}
+                >
+                  <Check size={16} color={palette.graphite} />
+                  <span>{c.filled}</span>
+                </div>
+              </div>
+
+              <Field label={c.emailLabel} value={username} active={frame >= 98 && frame < 118} />
+              <Field label={c.passwordLabel} value={dots} active={frame >= 118 && frame < 134} />
+
               <div
-                key={e.name}
                 style={{
-                  margin: "0 8px",
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  background: i === 0 ? `rgba(23,25,24,${0.08 * rowHighlight})` : "transparent",
+                  marginTop: 30,
+                  height: 54,
+                  borderRadius: 12,
+                  background: palette.ink,
+                  color: palette.graphite,
+                  display: "grid",
+                  placeItems: "center",
+                  fontSize: 19,
+                  fontWeight: 700,
+                  transform: `scale(${pressed ? 0.97 : 1})`,
                 }}
               >
-                <div style={{ fontSize: 14, color: "#7a7a76" }}>{e.group}</div>
-                <div style={{ fontSize: 19, fontWeight: 600 }}>{e.name}</div>
+                {c.signIn}
               </div>
-            ))}
-            <div style={{ marginTop: 10, padding: "12px 20px", borderTop: "1px solid #e2e2df", fontSize: 15, color: "#555", display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ width: 9, height: 9, borderRadius: 5, background: "#22a35a" }} />
-              {c.popupStatus}
             </div>
           </div>
+
+          {/* REAL Passpine Browser Extension UI screenshot (full original colors preserved) */}
+          <div
+            style={{
+              position: "absolute",
+              right: 22,
+              top: 12,
+              width: 392,
+              borderRadius: 16,
+              overflow: "hidden",
+              background: "#ffffff",
+              border: `1px solid ${palette.silverBorder}`,
+              boxShadow: `0 28px 74px rgba(0, 0, 0, 0.62), 0 0 0 1px rgba(237, 237, 241, 0.14)`,
+              opacity: popupOpacity,
+              transform: `translateY(${(1 - popupIn) * -14}px) scale(${0.95 + 0.05 * popupIn})`,
+              transformOrigin: "top right",
+            }}
+          >
+            <div style={{ position: "relative", width: "100%" }}>
+              <Img
+                src={staticFile(`demo/${copy.locale}/extension.png`)}
+                style={{ width: "100%", height: "auto", display: "block" }}
+              />
+              {/* Subtle monochrome selection highlight over the first real github.com entry */}
+              <div
+                style={{
+                  position: "absolute",
+                  left: 10,
+                  right: 10,
+                  top: 86,
+                  height: 62,
+                  borderRadius: 10,
+                  border: `2px solid ${palette.graphite}`,
+                  background: "rgba(28, 28, 33, 0.08)",
+                  boxShadow: "0 4px 16px rgba(28, 28, 33, 0.14)",
+                  opacity: rowHighlight,
+                  pointerEvents: "none",
+                }}
+              />
+            </div>
+          </div>
+
           <div style={{ opacity: cursorOpacity }}>
             <Cursor x={cx} y={cy} pressed={clicking} />
           </div>

@@ -1,0 +1,681 @@
+/* The film, product notes and installation sections share the landing palette. */
+.home-site {
+  --section-space: clamp(64px, 8vw, 112px);
+  --section-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.video-section,
+.features-section,
+.security-section,
+.guide-section,
+.download-section,
+.faq-section {
+  color: var(--foreground);
+}
+
+.section-heading .eyebrow,
+.security-copy .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent);
+  font: 600 11px/1.5 var(--section-mono);
+  letter-spacing: .12em;
+}
+
+.section-heading .eyebrow::before,
+.security-copy .eyebrow::before {
+  content: "";
+  width: 25px;
+  height: 2px;
+  background: currentColor;
+}
+
+.section-heading h2,
+.security-copy h2,
+.faq-section h2 {
+  margin-top: 16px;
+  font-size: clamp(32px, 4.2vw, 57px);
+  font-weight: 550;
+  letter-spacing: -.055em;
+  line-height: 1.12;
+}
+
+.section-heading p,
+.security-copy > p {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.video-section {
+  display: grid;
+  grid-template-columns: minmax(0, .8fr) minmax(0, 1.6fr);
+  align-items: center;
+  gap: clamp(24px, 5vw, 72px);
+  padding-top: var(--section-space);
+}
+
+.film-heading p {
+  max-width: 36ch;
+  margin-top: 20px;
+}
+
+.promo-video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--background);
+  color-scheme: dark;
+  box-shadow: 0 18px 50px -30px #0007;
+}
+
+.features-section,
+.guide-section,
+.download-section,
+.faq-section {
+  padding-block: var(--section-space);
+}
+
+.split-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 40px;
+}
+
+.split-heading > p {
+  max-width: 350px;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 38px;
+  overflow: hidden;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  gap: 1px;
+}
+
+.feature-grid article {
+  padding: clamp(22px, 2.6vw, 34px);
+  background: var(--secondary);
+}
+
+.feature-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--accent);
+  font: 500 10px/1.5 var(--section-mono);
+  letter-spacing: .09em;
+}
+
+.feature-grid h3,
+.guide-steps h3,
+.extension-downloads h3 {
+  margin: 24px 0 10px;
+  font-size: clamp(19px, 2vw, 24px);
+  font-weight: 550;
+  line-height: 1.24;
+  letter-spacing: -.033em;
+}
+
+.feature-grid p,
+.security-points p,
+.guide-steps p,
+.extension-downloads p,
+.faq-list details p {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.security-section {
+  padding-block: var(--section-space);
+  border-block: 1px solid var(--border);
+  background-color: var(--secondary);
+  background-image: radial-gradient(ellipse at 72% 40%, #34343c 0, transparent 53%);
+}
+
+.security-inner {
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(32px, 6vw, 82px);
+}
+
+.security-copy > p {
+  margin-top: 22px;
+}
+
+.security-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 25px;
+  margin-top: 24px;
+}
+
+.security-links a,
+.guide-section > a,
+.download-section .text-link {
+  color: var(--foreground);
+  text-underline-offset: 4px;
+}
+
+.security-links a:hover,
+.guide-section > a:hover,
+.download-section .text-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.vault-illustration {
+  min-width: 0;
+  padding: clamp(18px, 3vw, 32px);
+  border: 1px solid #56565f;
+  border-radius: 16px;
+  background: var(--background);
+  box-shadow: 0 24px 52px -30px #0007;
+}
+
+.vault-caption,
+.vault-caption span,
+.file-tree div,
+.private-key,
+.encrypted-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vault-caption {
+  justify-content: space-between;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.vault-illustration svg,
+.file-dot {
+  color: var(--accent);
+}
+
+.file-tree {
+  margin: 22px 0 18px;
+  font: 13px/1.65 var(--section-mono);
+}
+
+.file-tree .tree-branch,
+.file-tree .tree-entries {
+  display: grid;
+  border-inline-start: 1px solid #57575e;
+  margin-inline-start: 7px;
+  padding-inline-start: 17px;
+  gap: 7px;
+}
+
+.file-tree .tree-branch {
+  margin-top: 9px;
+}
+
+.file-dot,
+.security-points h3 > span {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.file-dot {
+  margin-inline-start: auto;
+}
+
+.encrypted-badge {
+  display: inline-flex;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.private-key {
+  margin-top: 20px;
+  border-top: 1px dashed var(--border);
+  padding-top: 18px;
+}
+
+.private-key > div {
+  flex: 1;
+}
+
+.private-key b,
+.private-key span,
+.tree-footnote {
+  display: block;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.private-key span,
+.tree-footnote {
+  color: var(--muted);
+}
+
+.tree-footnote {
+  margin-top: 14px;
+}
+
+.security-points {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-column: 1 / -1;
+  gap: 28px;
+}
+
+.security-points article {
+  border-top: 1px solid #53545c;
+  padding-top: 20px;
+}
+
+.security-points h3 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 8px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.guide-section {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  grid-template-rows: auto 1fr;
+  gap: 20px clamp(30px, 6vw, 85px);
+  border-bottom: 1px solid var(--border);
+}
+
+.guide-section > a {
+  justify-self: start;
+  align-self: start;
+}
+
+.guide-steps {
+  grid-row: span 2;
+  display: grid;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.guide-steps li {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  column-gap: 18px;
+  border-top: 1px solid var(--border);
+  padding-block: 20px;
+}
+
+.guide-steps li:last-child {
+  padding-bottom: 0;
+}
+
+.step-number {
+  grid-row: span 2;
+  font: 500 16px/1.7 var(--section-mono);
+  color: var(--accent);
+}
+
+.guide-steps h3 {
+  margin: 0 0 6px;
+}
+
+.download-section {
+  text-align: center;
+}
+
+.download-section .section-heading p {
+  max-width: 52ch;
+  margin: 16px auto 0;
+}
+
+.release-info {
+  margin-top: 28px;
+}
+
+.release-version,
+.system-badge {
+  display: inline-block;
+  color: var(--accent);
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: 500 11px/1.6 var(--section-mono);
+}
+
+.release-status,
+.detected-system,
+.asset-architecture,
+.install-note,
+.homebrew-install p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.release-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.release-status:not(:empty),
+.detected-system {
+  margin-top: 12px;
+}
+
+.retry-button {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.download-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(245px, 100%), 1fr));
+  gap: 14px;
+  margin-top: 32px;
+}
+
+.platform-download {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  text-align: start;
+  padding: clamp(18px, 2.5vw, 30px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--secondary);
+}
+
+.platform-download-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.platform-download-heading h3 {
+  font-size: 22px;
+  font-weight: 550;
+  letter-spacing: -.03em;
+}
+
+.system-badge {
+  margin-inline-start: auto;
+}
+
+.platform-download-links {
+  display: grid;
+  align-content: start;
+  flex: 1;
+  gap: 15px;
+  margin-block: 20px;
+}
+
+.platform-download .download-button {
+  width: 100%;
+  height: auto;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  background: var(--accent);
+  color: var(--background);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.platform-download .download-button:hover {
+  background: var(--foreground);
+}
+
+.homebrew-install,
+.linux-install {
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.homebrew-install p,
+.homebrew-install pre {
+  margin-top: 9px;
+}
+
+.homebrew-install pre,
+.linux-install pre {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  font: 12px/1.65 var(--section-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.linux-command-heading,
+.command-copy {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.linux-command-heading {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.command-copy {
+  min-height: 32px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--foreground);
+}
+
+.command-copy:hover {
+  background: var(--background);
+}
+
+.linux-install pre {
+  user-select: all;
+}
+
+.linux-install [role="status"]:not(:empty) {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.install-guide,
+.all-releases {
+  margin-top: 20px;
+}
+
+.extension-downloads {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 25px;
+  margin-top: 26px;
+  padding: clamp(20px, 3vw, 36px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--secondary);
+  text-align: start;
+}
+
+.extension-downloads > div:first-child {
+  max-width: 58ch;
+}
+
+.extension-downloads > div:first-child > svg {
+  color: var(--accent);
+}
+
+.extension-downloads h3 {
+  margin: 12px 0 6px;
+}
+
+.extension-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.extension-actions [data-slot="button"] {
+  white-space: normal;
+  justify-content: space-between;
+  gap: 12px;
+  height: auto;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid #85858e;
+  background: transparent;
+}
+
+.extension-actions [data-slot="button"]:hover {
+  background: #32323a;
+}
+
+
+.extension-actions .store-install {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+
+.extension-actions .store-install:hover {
+  background: var(--accent);
+}
+
+.extension-actions .text-link {
+  margin-top: 4px;
+  justify-self: start;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .spin {
+    animation: release-spin 1.8s linear infinite;
+  }
+}
+
+@keyframes release-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+.faq-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: clamp(30px, 6vw, 85px);
+  border-top: 1px solid var(--border);
+}
+
+.faq-section h2 {
+  margin: 0;
+  font-size: clamp(30px, 3.5vw, 46px);
+}
+
+.faq-list details {
+  border-bottom: 1px solid var(--border);
+}
+
+.faq-list details:first-child {
+  border-top: 1px solid var(--border);
+}
+
+.faq-list summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-block: 18px;
+  font-weight: 550;
+  list-style: none;
+}
+
+.faq-list summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq-list summary svg {
+  color: var(--accent);
+}
+
+.faq-list details[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.faq-list details p {
+  padding-bottom: 20px;
+}
+
+@media (max-width: 800px) {
+  .feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .video-section,
+  .security-inner,
+  .guide-section,
+  .faq-section {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .film-heading p,
+  .split-heading > p {
+    max-width: 56ch;
+  }
+
+  .split-heading {
+    display: grid;
+    gap: 14px;
+  }
+
+  .guide-steps {
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .feature-grid,
+  .security-points {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .extension-downloads {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .guide-steps li {
+    grid-template-columns: 28px 1fr;
+    gap: 0 12px;
+  }
+
+  .feature-grid h3 {
+    margin-top: 18px;
+  }
+}

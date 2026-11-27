@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { m } from "motion/react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -9,6 +8,7 @@ import {
   CircleCheck,
   Code2,
   Command,
+  Copy as CopyIcon,
   FileKey2,
   FileLock2,
   Folder,
@@ -16,19 +16,20 @@ import {
   KeyRound,
   LockKeyhole,
   Monitor,
+  Play,
   Puzzle,
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { ExternalLink, SiteLayout } from "../components/site-chrome";
-import { homebrewInstallCommand, type Copy } from "../constants/copy";
+import { homebrewInstallCommand, linuxInstallCommand, type Copy } from "../constants/copy";
 import {
   productScreenshots,
   promoVideo,
   type MediaLanguage,
 } from "../constants/media";
-import { routes, sectionHref } from "../constants/routes";
+import { chromeWebStoreUrl, routes, sectionHref } from "../constants/routes";
 import {
   chooseAsset,
   chooseExtension,
@@ -119,43 +120,51 @@ function ProductPreview({
   c: Copy;
   language: MediaLanguage;
 }) {
+  const [view, setView] = useState<"desktop" | "extension">("desktop");
   const screenshots = productScreenshots(language);
+  const isDesktop = view === "desktop";
   return (
-    <m.figure
-      className="product-preview"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.7, delay: 0.15 }}
-    >
-      <div className="preview-halo" aria-hidden="true" />
-      <div className="desktop-window">
-        <div className="window-chrome" aria-hidden="true">
-          <div className="window-dots">
-            <i />
-            <i />
-            <i />
+    <section className="workspace section-shell" aria-labelledby="workspace-title">
+      <div className="workspace-panel">
+        <div className="workspace-copy">
+          <span className="eyebrow">{c.hero.workspace}</span>
+          <h2 id="workspace-title">{c.hero.workspaceTitle}</h2>
+          <div className="workspace-switch" role="group" aria-label={c.hero.workspace}>
+            {(["desktop", "extension"] as const).map((item) => {
+              const Icon = item === "desktop" ? Monitor : Puzzle;
+              return (
+                <button
+                  key={item}
+                  type="button"
+                  aria-pressed={view === item}
+                  onClick={() => setView(item)}
+                >
+                  <Icon size={15} aria-hidden="true" />
+                  {c.hero[item]}
+                </button>
+              );
+            })}
           </div>
-          <span>{c.brand}</span>
-          <LockKeyhole size={10} />
+          <p aria-live="polite">{isDesktop ? c.hero.desktopDetail : c.hero.extensionDetail}</p>
+          {!isDesktop && (
+            <ExternalLink href={chromeWebStoreUrl} className="text-link workspace-store">
+              {c.downloads.chromeStore}
+              <ArrowUpRight size={15} aria-hidden="true" />
+            </ExternalLink>
+          )}
         </div>
-        <img
-          src={screenshots.desktop}
-          alt={c.hero.desktopAlt}
-          width="1120"
-          height="760"
-          fetchPriority="high"
-        />
+        <figure className="workspace-preview">
+          <div className="workspace-stage">
+            <img
+              src={screenshots[view]}
+              alt={isDesktop ? c.hero.desktopAlt : c.hero.extensionAlt}
+              loading="lazy"
+            />
+          </div>
+          <figcaption>{c.hero.preview}</figcaption>
+        </figure>
       </div>
-      <div className="extension-window">
-        <img
-          src={screenshots.extension}
-          alt={c.hero.extensionAlt}
-          width="380"
-          height="460"
-        />
-      </div>
-      <figcaption>{c.hero.preview}</figcaption>
-    </m.figure>
+    </section>
   );
 }
 
@@ -164,6 +173,42 @@ function assetArchitecture(c: Copy, asset: ReleaseAsset): string {
   return asset.platform === "macos"
     ? c.downloads.macArchitectures[asset.architecture]
     : c.downloads.architectures[asset.architecture];
+}
+
+function LinuxInstallCommand({ c }: { c: Copy }) {
+  const command = useRef<HTMLPreElement>(null);
+  const [status, setStatus] = useState<"commandCopied" | "copyManually" | null>(null);
+  async function copyCommand() {
+    try {
+      await navigator.clipboard.writeText(linuxInstallCommand);
+      setStatus("commandCopied");
+    } catch {
+      if (command.current) {
+        command.current.focus();
+        const range = document.createRange();
+        range.selectNodeContents(command.current);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+      setStatus("copyManually");
+    }
+  }
+  return (
+    <div className="linux-install">
+      <div className="linux-command-heading">
+        <h4>{c.downloads.linuxCommand}</h4>
+        <button type="button" className="command-copy" onClick={copyCommand}>
+          <CopyIcon size={14} aria-hidden="true" />
+          {c.downloads.copyCommand}
+        </button>
+      </div>
+      <pre ref={command} tabIndex={0} aria-label={c.downloads.linuxCommand}>
+        <code>{linuxInstallCommand}</code>
+      </pre>
+      <p role="status">{status && c.downloads[status]}</p>
+    </div>
+  );
 }
 
 export function DownloadSection({
@@ -194,7 +239,7 @@ export function DownloadSection({
       className="download-section section-shell"
       aria-labelledby="download-title"
     >
-      <div className="section-heading centered">
+      <div className="section-heading">
         <span className="eyebrow">{c.downloads.eyebrow}</span>
         <h2 id="download-title">{c.downloads.title}</h2>
         <p>{c.downloads.description}</p>
@@ -272,6 +317,9 @@ export function DownloadSection({
                 ))}
             </div>
             <p className="install-note">{c.downloads.notes[platform]}</p>
+            {platform === "linux" && release.assets.some(
+              (asset) => asset.platform === "linux" && asset.architecture === "x64",
+            ) && <LinuxInstallCommand c={c} />}
             {platform === "macos" && (
               <details className="homebrew-install">
                 <summary>{c.downloads.homebrew}</summary>
@@ -294,41 +342,45 @@ export function DownloadSection({
         {c.downloads.installGuide}
         <ArrowUpRight size={13} />
       </ExternalLink>
-      {extensions.length > 0 && (
-        <div className="extension-downloads">
-          <div>
-            <Puzzle size={22} strokeWidth={1.5} />
-            <h3>{c.downloads.extensionTitle}</h3>
-            <p>{c.downloads.extensionBody}</p>
-          </div>
-          <div className="extension-actions">
-            {extensions.map(({ browser, asset }) => {
-              const name =
-                browser === "chrome"
-                  ? c.downloads.chromium
-                  : c.downloads.firefox;
-              return (
-                <Button variant="outline" asChild key={browser}>
-                  <a
-                    href={asset.url}
-                    aria-label={c.downloads.extensionDownload(name)}
-                  >
-                    {name}
-                    <ArrowDownToLine />
-                  </a>
-                </Button>
-              );
-            })}
-            <ExternalLink
-              href={`${DOCS_URL}#首次加载与使用`}
-              className="text-link small-link"
-            >
-              {c.downloads.extensionGuide}
-              <ArrowUpRight size={13} />
-            </ExternalLink>
-          </div>
+      <div className="extension-downloads">
+        <div>
+          <Puzzle size={22} strokeWidth={1.5} />
+          <h3>{c.downloads.extensionTitle}</h3>
+          <p>{c.downloads.extensionBody}</p>
         </div>
-      )}
+        <div className="extension-actions">
+          <Button asChild className="store-install">
+            <a href={chromeWebStoreUrl} target="_blank" rel="noopener noreferrer">
+              {c.downloads.chromeStore}
+              <ArrowUpRight aria-hidden="true" />
+            </a>
+          </Button>
+          {extensions.map(({ browser, asset }) => {
+            const name =
+              browser === "chrome"
+                ? c.downloads.chromium
+                : c.downloads.firefox;
+            return (
+              <Button variant="outline" asChild key={browser}>
+                <a
+                  href={asset.url}
+                  aria-label={c.downloads.extensionDownload(name)}
+                >
+                  {c.downloads.extensionDownload(name)}
+                  <ArrowDownToLine />
+                </a>
+              </Button>
+            );
+          })}
+          <ExternalLink
+            href={`${DOCS_URL}#首次加载与使用`}
+            className="text-link small-link"
+          >
+            {c.downloads.extensionGuide}
+            <ArrowUpRight size={13} />
+          </ExternalLink>
+        </div>
+      </div>
       <ExternalLink href={RELEASES_URL} className="text-link all-releases">
         {c.downloads.releases}
         <ArrowUpRight size={14} />
@@ -380,6 +432,7 @@ export function HomePage({
   releaseState: ReleaseState;
   mobile: boolean;
 }) {
+  const player = useRef<HTMLVideoElement>(null);
   const video = promoVideo(language);
   const recommended = chooseAsset(
     releaseState.release,
@@ -389,44 +442,51 @@ export function HomePage({
   return (
     <SiteLayout c={c} control={control}>
       <section className="hero" aria-labelledby="hero-title">
-        <m.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          <div className="eyebrow hero-eyebrow">
-            <span className="status-dot" />
-            {c.hero.eyebrow}
-          </div>
-          <h1 id="hero-title">{c.hero.title}</h1>
-          <p className="hero-description">{c.hero.description}</p>
-          <div className="hero-actions">
-            <Button asChild>
-              <a href={recommended?.url ?? sectionHref("download")}>
-                {recommended && device.platform ? (
-                  <PlatformIcon
-                    platform={device.platform}
-                    className="size-4"
-                  />
-                ) : (
-                  <ArrowDownToLine />
-                )}
-                {recommended && device.platform
-                  ? c.hero.downloadFor(
-                      c.downloads.platforms[device.platform],
-                      assetArchitecture(c, recommended),
-                    )
-                  : c.hero.download}
+        <div className="hero-terrain" aria-hidden="true" />
+        <div className="hero-inner section-shell">
+          <div className="hero-copy">
+            <div className="eyebrow hero-eyebrow">
+              <span className="status-dot" />
+              {c.hero.eyebrow}
+            </div>
+            <h1 id="hero-title">{c.hero.title}<span>{c.hero.accentTitle}</span></h1>
+            <p className="hero-description">{c.hero.description}</p>
+            <div className="hero-actions">
+              <Button asChild>
+                <a href={recommended?.url ?? sectionHref("download")}>
+                  {recommended && device.platform ? (
+                    <PlatformIcon
+                      platform={device.platform}
+                      className="size-4"
+                    />
+                  ) : (
+                    <ArrowDownToLine />
+                  )}
+                  {recommended && device.platform
+                    ? c.hero.downloadFor(
+                        c.downloads.platforms[device.platform],
+                        assetArchitecture(c, recommended),
+                      )
+                    : c.hero.download}
+                </a>
+              </Button>
+              <a
+                href={sectionHref("video")}
+                className="hero-film"
+                onClick={(event) => {
+                  if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey)
+                    void player.current?.play().catch(() => {
+                      // Native playback controls remain available if playback is blocked.
+                    });
+                }}
+              >
+                <Play size={14} aria-hidden="true" />
+                {c.hero.watch}
               </a>
-            </Button>
-            <a href={sectionHref("features")} className="text-link">
-              {c.hero.explore}
-              <ArrowRight size={15} />
-            </a>
+            </div>
+            <p className="platform-support">{c.hero.platforms}</p>
           </div>
-          <p className="platform-support">{c.hero.platforms}</p>
-        </m.div>
-        <ProductPreview c={c} language={language} />
+        </div>
         <div className="hero-points">
           {c.hero.points.map((text) => (
             <span key={text}>
@@ -436,12 +496,13 @@ export function HomePage({
           ))}
         </div>
       </section>
+      <ProductPreview c={c} language={language} />
       <section
         id="video"
         className="video-section section-shell"
         aria-labelledby="video-title"
       >
-        <div className="section-heading split-heading">
+        <div className="section-heading film-heading">
           <div>
             <span className="eyebrow">{c.video.eyebrow}</span>
             <h2 id="video-title">{c.video.title}</h2>
@@ -449,6 +510,7 @@ export function HomePage({
           <p>{c.video.description}</p>
         </div>
         <video
+          ref={player}
           key={video.src}
           className="promo-video"
           src={video.src}
@@ -481,12 +543,11 @@ export function HomePage({
             return (
               <article key={item.tag}>
                 <div className="feature-top">
-                  <Icon size={25} strokeWidth={1.4} />
-                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <Icon size={22} strokeWidth={1.6} aria-hidden="true" />
+                  <span>{item.tag}</span>
                 </div>
                 <h3>{item.title}</h3>
                 <p>{item.body}</p>
-                <span className="feature-tag">{item.tag}</span>
               </article>
             );
           })}

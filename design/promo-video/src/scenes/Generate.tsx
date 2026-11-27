@@ -1,30 +1,32 @@
 import React from "react";
 import type { ReactNode } from "react";
-import { useCurrentFrame } from "remotion";
+import { Img, interpolate, staticFile, useCurrentFrame } from "remotion";
 import { FeatureCard, Toast, Window, typed } from "../components";
 import { useCopy } from "../copy";
-import { fonts, ink, muted, pop, ramp, sceneFade, timing } from "../theme";
+import { fonts, palette, pop, ramp, sceneFade, timing } from "../theme";
 
 const pool = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*";
 
-/** Deterministic scramble that settles on the final password. */
+/** Deterministic scramble that settles cleanly on the final strong password. */
 const scramble = (password: string, frame: number, settleAt: number) =>
   frame >= settleAt
     ? password
     : Array.from(password, (_, i) => pool[(i * 7 + Math.floor(frame / 2) * 13 + i * i) % pool.length]).join("");
 
 const Field = ({ label, active, children }: { label: string; active: boolean; children: ReactNode }) => (
-  <div style={{ marginBottom: 24 }}>
-    <div style={{ fontSize: 17, color: muted, marginBottom: 10 }}>{label}</div>
+  <div style={{ marginBottom: 18 }}>
+    <div style={{ fontSize: 15, color: palette.inkMuted, marginBottom: 7, fontWeight: 500 }}>{label}</div>
     <div
       style={{
-        height: 56,
-        borderRadius: 12,
-        border: `2px solid ${active ? ink : "#e2e2df"}`,
+        height: 48,
+        borderRadius: 10,
+        border: `1.5px solid ${active ? palette.ink : palette.borderStrong}`,
+        background: palette.graphite,
         display: "flex",
         alignItems: "center",
-        padding: "0 18px",
-        fontSize: 21,
+        padding: "0 14px",
+        fontSize: 18,
+        color: palette.ink,
       }}
     >
       {children}
@@ -33,129 +35,216 @@ const Field = ({ label, active, children }: { label: string; active: boolean; ch
 );
 
 export const Generate = () => {
-  const c = useCopy().generate;
+  const copy = useCopy();
+  const c = copy.generate;
   const frame = useCurrentFrame();
-  const enter = ramp(frame, 0, 26);
-  const name = typed(c.name, frame, 16, 32);
-  const username = typed(c.username, frame, 34, 52);
-  const generatorIn = pop(frame, 58);
-  const generatorOut = ramp(frame, 106, 116);
-  const generator = Math.min(generatorIn, 1 - generatorOut);
-  const filledIn = frame >= 106;
-  const savePressed = frame >= 124 && frame < 129;
-  const saved = Math.min(pop(frame, 130), 1);
+  const enter = ramp(frame, 0, 24);
+  const bgScale = interpolate(frame, [0, timing.generate.duration], [1.0, 1.03], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+
+  const modalIn = pop(frame, 14);
+  const name = typed(c.name, frame, 24, 40);
+  const username = typed(c.username, frame, 42, 60);
+  const genPanel = ramp(frame, 62, 74);
+  const filledIn = frame >= 104;
+  const savePressed = frame >= 122 && frame < 128;
+  const saved = Math.min(pop(frame, 128), 1);
 
   return (
     <div style={{ position: "absolute", inset: 0, opacity: sceneFade(frame, timing.generate.duration) }}>
-      <FeatureCard index={2} title={c.title} caption={c.caption} />
-      <div style={{ position: "absolute", left: 800, top: 190, opacity: enter, transform: `translateY(${(1 - enter) * 40}px)` }}>
-        <Window width={1000} height={640} title={c.window}>
-          <div style={{ position: "absolute", left: 48, top: 40, width: 500 }}>
-            <Field label={c.nameLabel} active={frame >= 16 && frame < 34}>
+      <FeatureCard index={2} eyebrow={c.eyebrow} title={c.title} caption={c.caption} spec={c.spec} />
+
+      <div
+        style={{
+          position: "absolute",
+          left: 752,
+          top: 156,
+          opacity: enter,
+          transform: `translateY(${(1 - enter) * 36}px)`,
+        }}
+      >
+        <Window width={1056} height={680} title={c.window} darkBody={false}>
+          {/* REAL Passpine Desktop App UI (full original colors preserved) */}
+          <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+            <Img
+              src={staticFile(`demo/${copy.locale}/desktop.png`)}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                objectPosition: "top left",
+                transform: `scale(${bgScale})`,
+                transformOrigin: "30% 35%",
+              }}
+            />
+            {/* Soft dark scrim over the right detail area so the generator sheet reads crisply while leaving the real sidebar & entry list clear */}
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background:
+                  "linear-gradient(90deg, rgba(28, 28, 33, 0.06) 0%, rgba(28, 28, 33, 0.28) 42%, rgba(28, 28, 33, 0.62) 100%)",
+                opacity: modalIn,
+              }}
+            />
+          </div>
+
+          {/* Monochrome New Entry + Password Generator sheet anchored over the right side of the real desktop UI */}
+          <div
+            style={{
+              position: "absolute",
+              right: 28,
+              top: 26,
+              width: 540,
+              padding: "26px 28px",
+              borderRadius: 18,
+              background: palette.panelGlass,
+              border: `1px solid ${palette.silverBorder}`,
+              boxShadow: "0 30px 80px rgba(0, 0, 0, 0.55)",
+              opacity: modalIn,
+              transform: `translateX(${(1 - modalIn) * 28}px)`,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: palette.ink }}>{c.modalTitle}</div>
+              <span
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  background: palette.panelElevated,
+                  border: `1px solid ${palette.borderStrong}`,
+                  fontFamily: fonts.mono,
+                  fontSize: 13,
+                  color: palette.silver,
+                }}
+              >
+                {c.entropy}
+              </span>
+            </div>
+
+            <Field label={c.nameLabel} active={frame >= 24 && frame < 42}>
               {name}
             </Field>
-            <Field label={c.usernameLabel} active={frame >= 34 && frame < 54}>
+            <Field label={c.usernameLabel} active={frame >= 42 && frame < 62}>
               {username}
             </Field>
-            <Field label={c.passwordLabel} active={frame >= 54 && frame < 120}>
+            <Field label={c.passwordLabel} active={frame >= 62 && frame < 118}>
               {filledIn ? (
-                <span style={{ fontFamily: fonts.mono, fontSize: 20, letterSpacing: 1 }}>{c.password}</span>
+                <span style={{ fontFamily: fonts.mono, fontSize: 18, letterSpacing: 0.8, color: palette.ink }}>
+                  {c.password}
+                </span>
               ) : (
-                <span style={{ color: "#9a9a96" }}>{c.passwordPlaceholder}</span>
+                <span style={{ color: palette.inkSubtle }}>{c.passwordPlaceholder}</span>
               )}
               <span
                 style={{
                   marginLeft: "auto",
-                  fontSize: 16,
-                  padding: "6px 12px",
-                  borderRadius: 8,
-                  background: frame >= 52 && frame < 58 ? "#dcdcd9" : "#efefed",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  padding: "5px 11px",
+                  borderRadius: 7,
+                  background: palette.panelElevated,
+                  border: `1px solid ${palette.borderStrong}`,
+                  color: palette.ink,
                   whiteSpace: "nowrap",
                 }}
               >
                 {c.generateButton}
               </span>
             </Field>
+
+            {/* Live password generator block */}
             <div
               style={{
-                marginTop: 18,
-                width: 180,
-                height: 54,
+                marginTop: 14,
+                padding: "16px 18px",
                 borderRadius: 12,
-                background: ink,
-                color: "#fff",
+                background: palette.panelElevated,
+                border: `1px solid ${palette.borderStrong}`,
+                opacity: genPanel,
+                transform: `translateY(${(1 - genPanel) * 10}px)`,
+              }}
+            >
+              <div
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 9,
+                  background: palette.graphite,
+                  border: `1px solid ${palette.border}`,
+                  fontFamily: fonts.mono,
+                  fontSize: 19,
+                  letterSpacing: 1.1,
+                  textAlign: "center",
+                  color: palette.ink,
+                }}
+              >
+                {scramble(c.password, frame, 94)}
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 14, fontSize: 15 }}>
+                <span style={{ color: palette.inkMuted }}>{c.length}</span>
+                <div style={{ flex: 1, height: 4, borderRadius: 2, background: palette.graphite, position: "relative" }}>
+                  <div style={{ width: "62%", height: "100%", borderRadius: 2, background: palette.ink }} />
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: "62%",
+                      top: -6,
+                      width: 16,
+                      height: 16,
+                      borderRadius: 8,
+                      background: palette.ink,
+                      border: `2px solid ${palette.graphite}`,
+                      transform: "translateX(-50%)",
+                    }}
+                  />
+                </div>
+                <span style={{ fontFamily: fonts.mono, fontWeight: 600, color: palette.ink }}>{c.lengthValue}</span>
+                <span style={{ color: palette.inkMuted, marginLeft: 8 }}>{c.symbols}</span>
+                <div
+                  style={{
+                    width: 38,
+                    height: 22,
+                    borderRadius: 11,
+                    background: palette.ink,
+                    position: "relative",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: 3,
+                      top: 3,
+                      width: 16,
+                      height: 16,
+                      borderRadius: 8,
+                      background: palette.graphite,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: 20,
+                height: 48,
+                borderRadius: 10,
+                background: palette.ink,
+                color: palette.graphite,
                 display: "grid",
                 placeItems: "center",
-                fontSize: 20,
-                fontWeight: 600,
-                transform: `scale(${savePressed ? 0.96 : 1})`,
+                fontSize: 18,
+                fontWeight: 700,
+                transform: `scale(${savePressed ? 0.97 : 1})`,
               }}
             >
               {c.save}
             </div>
           </div>
 
-          {/* Generator popover */}
-          <div
-            style={{
-              position: "absolute",
-              left: 580,
-              top: 120,
-              width: 380,
-              padding: "24px 26px",
-              borderRadius: 16,
-              background: "#fff",
-              boxShadow: "0 24px 60px rgba(0,0,0,0.16), 0 0 0 1px rgba(0,0,0,0.07)",
-              opacity: generator,
-              transform: `translateX(${(1 - generatorIn) * -20}px)`,
-            }}
-          >
-            <div style={{ fontSize: 20, fontWeight: 700 }}>{c.generator}</div>
-            <div
-              style={{
-                marginTop: 18,
-                padding: "16px 14px",
-                borderRadius: 10,
-                background: "#f4f4f2",
-                fontFamily: fonts.mono,
-                fontSize: 21,
-                letterSpacing: 1,
-                textAlign: "center",
-              }}
-            >
-              {scramble(c.password, frame, 92)}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", marginTop: 20, fontSize: 18 }}>
-              <span style={{ width: 60, color: muted }}>{c.length}</span>
-              <div style={{ flex: 1, height: 4, borderRadius: 2, background: "#e2e2df", position: "relative" }}>
-                <div style={{ width: "40%", height: "100%", borderRadius: 2, background: ink }} />
-                <div style={{ position: "absolute", left: "40%", top: -8, width: 20, height: 20, borderRadius: 10, background: "#fff", border: `2px solid ${ink}`, transform: "translateX(-50%)" }} />
-              </div>
-              <span style={{ width: 40, textAlign: "right", fontWeight: 600 }}>{c.lengthValue}</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", marginTop: 18, fontSize: 18 }}>
-              <span style={{ color: muted }}>{c.symbols}</span>
-              <div style={{ marginLeft: "auto", width: 44, height: 26, borderRadius: 13, background: ink, position: "relative" }}>
-                <div style={{ position: "absolute", right: 3, top: 3, width: 20, height: 20, borderRadius: 10, background: "#fff" }} />
-              </div>
-            </div>
-            <div
-              style={{
-                marginTop: 22,
-                height: 50,
-                borderRadius: 10,
-                background: ink,
-                color: "#fff",
-                display: "grid",
-                placeItems: "center",
-                fontSize: 18,
-                fontWeight: 600,
-                transform: `scale(${frame >= 100 && frame < 105 ? 0.96 : 1})`,
-              }}
-            >
-              {c.fillButton}
-            </div>
-          </div>
           <Toast text={c.saved} progress={saved} />
         </Window>
       </div>

@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { LazyMotion, domAnimation, MotionConfig } from "motion/react";
 import { ArrowDown, ArrowUpRight, GitBranch, Globe2, Sprout } from "lucide-react";
 import type { Copy, LanguagePreference } from "../constants/copy";
 import { routes, sectionHref } from "../constants/routes";
@@ -116,15 +115,13 @@ export function SiteLayout({
   children: ReactNode;
 }) {
   return (
-    <LazyMotion features={domAnimation}>
-      <MotionConfig reducedMotion="user">
-        <a className="skip-link" href="#main">
-          {c.skip}
-        </a>
-        <SiteHeader c={c} control={control} />
-        <main id="main">{children}</main>
-        <SiteFooter c={c} />
-      </MotionConfig>
-    </LazyMotion>
+    <>
+      <a className="skip-link" href="#main">
+        {c.skip}
+      </a>
+      <SiteHeader c={c} control={control} />
+      <main id="main">{children}</main>
+      <SiteFooter c={c} />
+    </>
   );
 }

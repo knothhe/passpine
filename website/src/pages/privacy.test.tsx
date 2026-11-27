@@ -44,7 +44,7 @@ describe("privacy policy", () => {
       expect(html).toContain(`href="#${id}"`);
     }
     expect(html).toContain(`<h1 id="policy-title">${c.privacy.title}</h1>`);
-    expect(html).toContain('dateTime="2026-10-28"');
+    expect(html).toContain('dateTime="2026-11-27"');
     expect(html).toContain('href="mailto:knothhe@gmail.com"');
   });
 

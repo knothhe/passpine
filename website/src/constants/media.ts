@@ -1,7 +1,7 @@
 // Large media is served from the R2 bucket bound to oss.knothhe.com, not bundled with the site.
 // Paths are versioned: upload a new version instead of overwriting, so caches never serve stale video.
 export const MEDIA_ORIGIN = "https://oss.knothhe.com";
-const PROMO_BASE = `${MEDIA_ORIGIN}/passpine/promo/v1`;
+const PROMO_BASE = `${MEDIA_ORIGIN}/passpine/promo/v3`;
 
 export type MediaLanguage = "en" | "zh-CN";
 
