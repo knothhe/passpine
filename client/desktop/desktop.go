@@ -579,7 +579,7 @@ func (a *application) clearSecrets() {
 	a.passphrase, a.confirmPassphrase = "", ""
 	a.setupPrivateKey, a.setupPublicKey = "", ""
 	a.closeGenerator()
-	a.backupOpen, a.backupPassphrase = false, ""
+	a.backupOpen, a.backupPath, a.backupPassphrase = false, "", ""
 	a.recovery = nil
 	a.recoverySelection, a.restoreDestination = "", ""
 	a.clearClipboard()
@@ -1115,7 +1115,7 @@ func (a *application) contentView(c *ui.Context) {
 				a.pageFrame(c, "setup", func() { a.setupView(c) })
 				return
 			}
-			if a.state.Locked && a.pendingUnlock.action == "export" {
+			if a.state.Locked && (a.pendingUnlock.action == "export" || a.pendingUnlock.action == "verify-backup") {
 				a.pageFrame(c, "unlock", func() { a.unlockView(c) })
 				return
 			}
@@ -1125,7 +1125,7 @@ func (a *application) contentView(c *ui.Context) {
 				a.pageFrame(c, "unlock", func() { a.detailView(c) })
 				return
 			}
-			if a.page != "settings" && a.page != "recovery" && a.page != "activity" {
+			if !isPreferencesPage(a.page) {
 				if !a.state.Locked || a.state.Settings.BrowseWhileLocked {
 					a.managerColumnsView(c)
 				} else {
@@ -1133,11 +1133,13 @@ func (a *application) contentView(c *ui.Context) {
 				}
 				return
 			}
-			if a.state.Locked && a.page != "settings" && a.page != "activity" {
+			if a.state.Locked && a.page == "recovery" {
 				a.pageFrame(c, "unlock", func() { a.unlockView(c) })
 				return
 			}
 			switch a.page {
+			case "backup-guide":
+				a.pageFrame(c, "backup-guide", func() { a.backupGuideView(c) })
 			case "recovery":
 				a.recoveryColumnsView(c, a.managerListWidth(c))
 			case "settings":

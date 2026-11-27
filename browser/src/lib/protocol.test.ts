@@ -42,9 +42,22 @@ describe('extension boundary', () => {
     expect(validUIRequest({ action: 'save', vaultId: 'vault', entry: 'entry', mode: 'edit', contents: 'new', revision: 'old' })).toBe(true);
     expect(validUIRequest({ action: 'fetch', vaultId: 'vault', entry: '../secret' })).toBe(false);
   });
+  it('binds custom field copies to the displayed revision, key and position', () => {
+    const target = { action: 'copy', vaultId: 'vault', entry: 'example', field: 'custom', fieldIndex: 2, fieldKey: 'Tenant', revision: 'read-revision' } as const;
+    expect(validUIRequest(target)).toBe(true);
+    const injected = { ...target, contents: 'untrusted' };
+    expect(nativeRequest(injected)).toEqual({ ...target, protocol: 1, interactive: true });
+    for (const change of [{ fieldIndex: -1 }, { fieldIndex: null }, { fieldKey: 'tOtp' }, { fieldKey: '' }, { revision: '' }]) {
+      expect(validUIRequest({ ...target, ...change })).toBe(false);
+    }
+  });
   it.each(['fill', 'associate', 'dissociate'])('validates the vault, entry and tab for %s', action => {
-    const request = { action, vaultId: 'vault', entry: 'account', tab: { id: 4, url: 'https://example.test/login', hostname: 'example.test', secure: true } };
+    const request = { action, ...(action === 'fill' ? { remember: false } : {}), vaultId: 'vault', entry: 'account', tab: { id: 4, url: 'https://example.test/login', hostname: 'example.test', secure: true } };
     expect(validUIRequest(request)).toBe(true);
+    if (action === 'fill') {
+      expect(validUIRequest({ ...request, remember: undefined })).toBe(false);
+      expect(validUIRequest({ ...request, remember: 'true' })).toBe(false);
+    }
     expect(validUIRequest({ ...request, vaultId: '' })).toBe(false);
     expect(validUIRequest({ ...request, entry: '../secret' })).toBe(false);
     expect(validUIRequest({ ...request, tab: { ...request.tab, id: '4' } })).toBe(false);

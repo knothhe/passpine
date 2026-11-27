@@ -30,6 +30,8 @@ type Request struct {
 	ID                     string                  `json:"id,omitempty"`
 	Kind                   string                  `json:"kind,omitempty"`
 	Field                  string                  `json:"field,omitempty"`
+	FieldIndex             *int                    `json:"fieldIndex,omitempty"`
+	FieldKey               string                  `json:"fieldKey,omitempty"`
 	URL                    string                  `json:"url,omitempty"`
 	Length                 int                     `json:"length,omitempty"`
 	Lowercase              bool                    `json:"lowercase,omitempty"`
@@ -72,11 +74,21 @@ type Entry struct {
 	Name   string `json:"name"`
 	Folder string `json:"folder"`
 }
+
+// RecoveryKeyStage records the last successful recovery-key step on this device.
+type RecoveryKeyStage string
+
+const (
+	RecoveryKeyExported RecoveryKeyStage = "exported"
+	RecoveryKeyVerified RecoveryKeyStage = "verified"
+)
+
 type VaultInfo struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	Directory      string `json:"directory"`
-	NameCustomized bool   `json:"nameCustomized,omitempty"`
+	RecoveryKeyStage RecoveryKeyStage `json:"recoveryKeyStage,omitempty"`
+	ID               string           `json:"id"`
+	Name             string           `json:"name"`
+	Directory        string           `json:"directory"`
+	NameCustomized   bool             `json:"nameCustomized,omitempty"`
 }
 type RecoveryItem struct {
 	ID        string `json:"id"`

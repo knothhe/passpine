@@ -20,7 +20,7 @@ func TestNativeHelperProcess(t *testing.T) {
 	}
 	s := testService(t)
 	state := must(t, s, Request{Action: "status"})
-	saved := must(t, s, Request{Action: "save", Entry: "example.com/login", Contents: "fixture-password\nusername: test-user\n", Mode: "create"})
+	saved := must(t, s, Request{Action: "save", Entry: "example.com/login", Contents: "fixture-password\nusername: test-user\naccount-id: test-id\n", Mode: "create"})
 	cmd := exec.Command(binary, "chrome-extension://"+nativehost.ChromiumID+"/")
 	cmd.Env = append(os.Environ(), buildinfo.HomeEnvironment()+"="+s.directory)
 	stdin, e := cmd.StdinPipe()
@@ -82,6 +82,21 @@ func TestNativeHelperProcess(t *testing.T) {
 	}
 	if r := roundtrip(Request{Action: "fetch", VaultID: state.VaultID, Entry: saved.Entry}); r.Status != "ok" || r.Data.Password != "fixture-password" {
 		t.Fatal(r)
+	}
+	copied := make(chan string, 1)
+	s.SetClipboard(func(write ClipboardWrite) error {
+		return write.Lease(func() { copied <- write.Text })
+	})
+	if r := roundtrip(Request{Action: "copy", VaultID: state.VaultID, Entry: saved.Entry, Revision: saved.Revision, Field: "custom", FieldIndex: new(1), FieldKey: "account-id", Interactive: true}); r.Status != "ok" || r.Data.Contents != "" {
+		t.Fatal("native helper custom field copy failed", r.Code)
+	}
+	select {
+	case value := <-copied:
+		if value != "test-id" {
+			t.Fatal("native helper copied a different field")
+		}
+	default:
+		t.Fatal("native helper did not complete the clipboard write")
 	}
 	if r := roundtrip(Request{Action: "fetch", Entry: saved.Entry}); r.Code != "vault_changed" {
 		t.Fatal(r)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -59,6 +60,59 @@ func TestClipboardWritesCarrySensitivityAndSessionLease(t *testing.T) {
 	written := false
 	if err := last.Lease(func() { written = true }); err == nil || written {
 		t.Fatal("entry clipboard lease survived the vault lock")
+	}
+}
+
+func TestBrowserCopyCustomField(t *testing.T) {
+	s := testService(t)
+	config, _ := browserClipboardRequest(t, s, Request{Action: "configure"})
+	if !slices.Contains(config.Data.Capabilities, "copy-custom-field-v1") {
+		t.Fatal("custom field copy was not advertised")
+	}
+	saved := must(t, s, Request{Action: "save", Entry: "example", Mode: "create", Contents: "secret\r\nusername: first\r\nUsername: second\r\ntoken: one\r\ntoken:  two \r\nOTP: JBSWY3DPEHPK3PXP\r\n"})
+	var last ClipboardWrite
+	writes := 0
+	s.SetClipboard(func(write ClipboardWrite) error {
+		return write.Lease(func() {
+			last = write
+			writes++
+		})
+	})
+	request := Request{Action: "copy", VaultID: saved.VaultID, Entry: saved.Entry, Field: "custom", Revision: saved.Revision, FieldIndex: new(3), FieldKey: "token"}
+	out, encoded := browserClipboardRequest(t, s, request)
+	if out.Status != "ok" || writes != 1 || last.Text != " two " || !last.Sensitive || last.Seconds != s.prefs.Settings.ClipboardSeconds || strings.Contains(string(encoded), last.Text) {
+		t.Fatal("copy lost duplicate field identity, whitespace, clipboard policy, or response privacy", out.Code)
+	}
+	alias := request
+	alias.FieldIndex, alias.FieldKey = new(1), "Username"
+	if out, _ := browserClipboardRequest(t, s, alias); out.Status != "ok" || last.Text != "second" || !last.Sensitive {
+		t.Fatal("failed to copy secondary username independently")
+	}
+	for _, change := range []func(*Request){
+		func(r *Request) { r.FieldIndex = nil },
+		func(r *Request) { r.FieldIndex = new(-1) },
+		func(r *Request) { r.FieldIndex = new(5) },
+		func(r *Request) { r.FieldIndex = new(4); r.FieldKey = "OTP" },
+		func(r *Request) { r.FieldKey = "" },
+		func(r *Request) { r.FieldKey = "different" },
+		func(r *Request) { r.Revision = "" },
+		func(r *Request) { r.Field = "password" },
+		func(r *Request) { r.Contents = "substitute" },
+		func(r *Request) { r.VaultID = "another" },
+	} {
+		invalid := request
+		change(&invalid)
+		if out, _ := browserClipboardRequest(t, s, invalid); out.Status != "error" || writes != 2 {
+			t.Fatal("invalid field selector wrote to the clipboard")
+		}
+	}
+	must(t, s, Request{Action: "save", Entry: saved.Entry, Mode: "edit", Revision: saved.Revision, Contents: strings.Replace(saved.Contents, " two ", "three", 1)})
+	if out, _ := browserClipboardRequest(t, s, request); out.Code != "revision_conflict" || writes != 2 {
+		t.Fatal("stale field selection reached clipboard")
+	}
+	must(t, s, Request{Action: "lock"})
+	if err := last.Lease(func() { t.Error("revoked field copy performed a native write") }); err == nil {
+		t.Fatal("field clipboard lease survived lock")
 	}
 }
 

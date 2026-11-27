@@ -152,6 +152,7 @@ describe('account list keyboard navigation', () => {
   it('does not intercept Ctrl+N/P inside account editor fields', async () => {
     await render(navigationFixture().client);
     await newAccount();
+    expect(container.querySelector('form [role="checkbox"]')).toBeNull();
     const input = container.querySelector<HTMLInputElement>('input[placeholder="path/to/entry（支持多级路径）"]')!;
     input.focus();
     for (const key of ['n', 'p']) expect((await pressNavigation(input, key, { ctrlKey: true })).defaultPrevented).toBe(false);
@@ -182,6 +183,18 @@ describe('create an account from a locked popup', () => {
     expect(container.querySelector<HTMLInputElement>('input[autocomplete="url"]')?.value).toBe('https://example.test');
   });
 
+  it('keeps the original website when the tab changes during authentication', async () => {
+    const { client } = fixture(state => {
+      state.locked = false;
+      state.tab = { id: 2, hostname: 'different.test', url: 'https://different.test/login', secure: true };
+    });
+    await render(client);
+    await newAccount();
+    const checkbox = container.querySelector<HTMLElement>('[role="checkbox"]')!;
+    expect(checkbox.closest('label')?.textContent).toContain('保存时关联到 example.test');
+    expect(container.querySelector<HTMLInputElement>('input[autocomplete="url"]')?.value).toBe('https://example.test');
+  });
+
   it('keeps the list and allows retry when authentication is cancelled', async () => {
     const { client } = fixture(() => { throw new Error('已取消解锁'); });
     await render(client);
@@ -189,6 +202,34 @@ describe('create an account from a locked popup', () => {
     expect(container.querySelector('form')).toBeNull();
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('已取消解锁');
     expect(container.querySelector<HTMLButtonElement>('button[aria-label="新建账号"]')?.disabled).toBe(false);
+  });
+
+  it.each(['empty', 'save-link-failure'])('makes the first saved and linked entry available for the site in the %s preview', async name => {
+    const previous = location.href;
+    try {
+      history.replaceState(null, '', '/?fixture=' + name);
+      vi.resetModules();
+      const { demoClient } = await import('../../preview/client');
+      const request = vi.spyOn(demoClient, 'request');
+      await render(demoClient);
+      await newAccount();
+      for (const [selector, value] of [['input[placeholder^="path/to/entry"]', 'work/hosting'], ['#entry-password', 'preview-password']] as const) {
+        const input = container.querySelector<HTMLInputElement>(selector)!;
+        await act(async () => {
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+      }
+      await act(async () => container.querySelector<HTMLElement>('[role="checkbox"]')!.click());
+      await act(async () => container.querySelector<HTMLButtonElement>('button[type="submit"]')!.click());
+      if (name === 'save-link-failure') {
+        expect(container.querySelector('[role="alert"]')?.textContent).toContain('未能关联到 github.com');
+        const retry = Array.from(container.querySelectorAll('button')).find(button => button.textContent === '重试关联')!;
+        await act(async () => retry.click());
+      }
+      expect(container.querySelector('[data-entry-path="work/hosting"] .site-account-badge')).not.toBeNull();
+      expect(request.mock.calls.filter(([message]) => message.action === 'save')).toHaveLength(1);
+    } finally { history.replaceState(null, '', previous); }
   });
 
   it('does not create in a different vault selected during authentication', async () => {
@@ -207,6 +248,14 @@ function deferred<T>() {
 }
 
 describe('account list primary action', () => {
+  async function chooseFill(label: string) {
+    const dialog = document.querySelector<HTMLElement>('[role="alertdialog"]')!;
+    expect(dialog.textContent).toContain('accounts/Alex');
+    expect(dialog.textContent).toContain('example.test');
+    const button = Array.from(dialog.querySelectorAll('button')).find(item => item.textContent === label)!;
+    await act(async () => button.click());
+  }
+
   function fillFixture({ locked = false, matched = false, error, associated = true, associationError, demo = true, fillResult }: { locked?: boolean; matched?: boolean; error?: Error; associated?: boolean; associationError?: Error; demo?: boolean; fillResult?: Promise<FillResult> } = {}) {
     const state: Snapshot = { configured: true, vaultId: 'first', vaultName: '测试密码库', locked, entriesVersion: 1, capabilities: [], entries: [{ path: 'accounts/Alex', name: 'Alex', folder: 'accounts' }], matches: matched ? ['accounts/Alex'] : [], tab: { id: 1, url: 'https://example.test/login', hostname: 'example.test', secure: true } };
     const requests: UIRequest[] = [];
@@ -217,7 +266,7 @@ describe('account list primary action', () => {
         if (request.action === 'unlock') state.locked = false;
         if (request.action === 'fill') {
           if (error) throw error;
-          const result = fillResult ? await fillResult : { filled: 2, associated };
+          const result = fillResult ? await fillResult : { filled: 2, associated: request.remember ? associated : undefined };
           if (result.associated) state.matches = [request.entry];
           return result as T;
         }
@@ -237,18 +286,41 @@ describe('account list primary action', () => {
     await render(fixture.client);
     expect(container.querySelector('button[data-entry-path]')?.getAttribute('aria-label')).toBe('填充「Alex」的账号与密码');
     await act(async () => container.querySelector<HTMLButtonElement>('button[data-entry-path]')!.click());
+    if (matched) expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    else {
+      expect(fixture.requests.map(request => request.action)).toEqual(['snapshot']);
+      await chooseFill('填充并记住');
+    }
     expect(fixture.requests.map(request => request.action)).toEqual(locked ? ['snapshot', 'unlock', 'snapshot', 'fill', 'snapshot'] : ['snapshot', 'fill', 'snapshot']);
-    expect(fixture.requests.find(request => request.action === 'fill')).toEqual({ action: 'fill', vaultId: 'first', entry: 'accounts/Alex', tab: fixture.state.tab });
+    expect(fixture.requests.find(request => request.action === 'fill')).toEqual({ action: 'fill', vaultId: 'first', entry: 'accounts/Alex', tab: fixture.state.tab, remember: !matched });
     expect(currentPage().dataset.popupPage).toBe('list');
-    expect(container.querySelector('[role="status"]')?.textContent).toContain('已填写 2 个登录字段，已关联 example.test');
+    expect(container.querySelector('[role="status"]')?.textContent).toContain(matched ? '已在 example.test 填写 2 个登录字段' : '已填写 2 个登录字段，已关联 example.test');
     expect(container.querySelector('.site-account-badge')?.textContent).toBe('当前网站');
     expect(container.querySelector('.site-match-count')?.textContent).toBe('1 个关联账号');
+  });
+
+  it('does not unlock or fill on cancellation, and a one-time fill leaves the account unmatched', async () => {
+    const fixture = fillFixture({ locked: true });
+    await render(fixture.client);
+    const entry = container.querySelector<HTMLButtonElement>('button[data-entry-path]')!;
+    entry.focus();
+    await act(async () => entry.click());
+    await chooseFill('取消');
+    await vi.waitFor(() => expect(document.activeElement).toBe(entry));
+    expect(fixture.requests.map(request => request.action)).toEqual(['snapshot']);
+    await act(async () => entry.click());
+    await chooseFill('仅填这次');
+    expect(fixture.requests.find(request => request.action === 'fill')).toMatchObject({ remember: false });
+    expect(container.querySelector('.site-account-badge')).toBeNull();
+    expect(container.querySelector('.notice[role="status"]')?.textContent).toContain('已在 example.test 填写 2 个登录字段');
+    expect(container.querySelector('.notice[role="alert"]')).toBeNull();
   });
 
   it('shows a filling failure without opening details or associating the entry', async () => {
     const fixture = fillFixture({ error: new Error('当前页面未找到可填写的登录字段。') });
     await render(fixture.client);
     await act(async () => container.querySelector<HTMLButtonElement>('button[data-entry-path]')!.click());
+    await chooseFill('填充并记住');
     expect(fixture.requests.map(request => request.action)).toEqual(['snapshot', 'fill']);
     expect(currentPage().dataset.popupPage).toBe('list');
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('当前页面未找到可填写的登录字段。');
@@ -260,7 +332,8 @@ describe('account list primary action', () => {
     const fixture = fillFixture({ associated: false });
     await render(fixture.client);
     await act(async () => container.querySelector<HTMLButtonElement>('button[data-entry-path]')!.click());
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('已填写 2 个登录字段，但未能关联 example.test，请重试。');
+    await chooseFill('填充并记住');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('已填写 2 个登录字段，但未能关联 example.test。可在账号菜单或详情中关联网站。');
     expect(container.querySelector('.site-account-badge')).toBeNull();
     await clickAction('查看 Alex');
     const associate = currentPage().querySelector<HTMLButtonElement>('.detail-associate')!;
@@ -280,6 +353,8 @@ describe('account list primary action', () => {
     expect(currentPage().querySelector('button[aria-label="编辑账号"]')?.textContent).toBe('');
     if (trigger === 'button') await clickAction('填充账号与密码');
     else await pressNavigation(window.document.activeElement!, 'f', { altKey: true });
+    expect(fixture.requests.some(request => request.action === 'fill')).toBe(false);
+    await chooseFill('填充并记住');
     expect(fixture.requests.some(request => request.action === 'fill')).toBe(true);
     expect(currentPage().dataset.popupPage).toBe('detail');
     expect(currentPage().querySelector('[aria-label="已关联当前网站"]')).not.toBeNull();
@@ -314,6 +389,7 @@ describe('account list primary action', () => {
     await act(async () => cancel.click());
     expect(container.querySelector('.site-account-badge')).toBeNull();
     await act(async () => container.querySelector<HTMLButtonElement>('button[data-entry-path]')!.click());
+    await chooseFill('填充并记住');
     expect(container.querySelector('.site-account-badge')).not.toBeNull();
     expect(fixture.requests.map(request => request.action)).toContain('dissociate');
     expect(fixture.requests.map(request => request.action)).not.toContain('associate');
@@ -344,6 +420,7 @@ describe('account list primary action', () => {
       if (trigger === 'detail button') await clickAction('填充账号与密码');
       else await pressNavigation(document.activeElement!, 'f', { altKey: true });
     }
+    await chooseFill('仅填这次');
     const actionsBeforeResult = fixture.requests.map(request => request.action);
     expect(actionsBeforeResult).toEqual(trigger === 'list' ? ['snapshot', 'fill'] : ['snapshot', 'fetch', 'status', 'fill']);
     expect(close).not.toHaveBeenCalled();
@@ -352,13 +429,15 @@ describe('account list primary action', () => {
     expect(fixture.requests.map(request => request.action)).toEqual(actionsBeforeResult);
   });
 
-  it('closes after fields are filled even if automatic association fails', async () => {
+  it('keeps the completed fill visible when the requested link could not be saved', async () => {
     const close = vi.spyOn(window, 'close').mockImplementation(() => {});
     const fixture = fillFixture({ demo: false, associated: false });
     await render(fixture.client);
     await act(async () => container.querySelector<HTMLButtonElement>('button[data-entry-path]')!.click());
-    expect(close).toHaveBeenCalledTimes(1);
-    expect(fixture.requests.map(request => request.action)).toEqual(['snapshot', 'fill']);
+    await chooseFill('填充并记住');
+    expect(close).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('可在账号菜单或详情中关联网站');
+    expect(fixture.requests.map(request => request.action)).toEqual(['snapshot', 'fill', 'snapshot']);
   });
 
   it('keeps the extension popup open with a retryable error when filling fails', async () => {
@@ -366,6 +445,7 @@ describe('account list primary action', () => {
     const fixture = fillFixture({ demo: false, error: new Error('当前页面未找到可填写的登录字段。') });
     await render(fixture.client);
     await act(async () => container.querySelector<HTMLButtonElement>('button[data-entry-path]')!.click());
+    await chooseFill('填充并记住');
     expect(close).not.toHaveBeenCalled();
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('当前页面未找到可填写的登录字段。');
     expect(container.querySelector<HTMLButtonElement>('button[data-entry-path]')?.disabled).toBe(false);
@@ -377,6 +457,7 @@ describe('account list primary action', () => {
     const fixture = fillFixture({ demo: false, fillResult: Promise.resolve({ filled: 0, associated: false }) });
     await render(fixture.client);
     await act(async () => container.querySelector<HTMLButtonElement>('button[data-entry-path]')!.click());
+    await chooseFill('填充并记住');
     expect(close).not.toHaveBeenCalled();
   });
 
@@ -385,6 +466,7 @@ describe('account list primary action', () => {
     const fixture = fillFixture();
     await render(fixture.client);
     await act(async () => container.querySelector<HTMLButtonElement>('button[data-entry-path]')!.click());
+    await chooseFill('填充并记住');
     expect(close).not.toHaveBeenCalled();
     expect(container.querySelector('[role="status"]')?.textContent).toContain('演示：已填写 2 个登录字段');
     expect(fixture.requests.map(request => request.action)).toEqual(['snapshot', 'fill', 'snapshot']);
@@ -451,6 +533,26 @@ async function clickAction(label: string) {
 }
 
 describe('responsive detail navigation and session safety', () => {
+  it.each([false, true])('masks extra fields and copies the selected occurrence by revision when supported (%s)', async supportsCopy => {
+    const fixture = detailFixture();
+    if (supportsCopy) fixture.state.capabilities.push('copy-custom-field-v1');
+    const requests = vi.spyOn(fixture.client, 'request');
+    await render(fixture.client);
+    await clickAction('查看 Alex');
+    await act(async () => fixture.fetch.resolve({ ...credentials, contents: credentials.contents + '\nTenant: customer-a\notpauth: private-seed\nTenant: customer-b' }));
+    expect(currentPage().innerHTML).not.toMatch(/customer-a|customer-b|private-seed/);
+    const reveal = currentPage().querySelectorAll<HTMLButtonElement>('[aria-label="显示Tenant"]');
+    expect(reveal).toHaveLength(2);
+    await act(async () => reveal[1]!.click());
+    expect(currentPage().textContent).toContain('customer-b');
+    expect(currentPage().textContent).not.toContain('customer-a');
+    const buttons = currentPage().querySelectorAll<HTMLButtonElement>('[aria-label="复制Tenant"]');
+    expect(buttons).toHaveLength(supportsCopy ? 2 : 0);
+    if (supportsCopy) {
+      await act(async () => buttons[1]!.click());
+      expect(requests).toHaveBeenCalledWith({ action: 'copy', vaultId: 'first', entry: 'example.test/Alex', field: 'custom', revision: '1', fieldIndex: 5, fieldKey: 'Tenant' });
+    }
+  });
   it.each([false, true])('refreshes association matches while preserving the open detail or editor (editing=%s)', async editing => {
     const fixture = detailFixture();
     fixture.state.associationVersion = 1;
@@ -692,5 +794,59 @@ describe('responsive detail navigation and session safety', () => {
     await act(async () => fixture.copy.resolve({}));
     expect(currentPage().querySelector<HTMLButtonElement>('button[aria-label="查看 Alex"]')?.disabled).toBe(false);
     expect(container.textContent).toContain('示例数据：未复制凭证');
+  });
+});
+
+describe('fill shortcut account chooser', () => {
+  function chooser(outcome?: Snapshot['shortcutOutcome']) {
+    const { client, state } = navigationFixture();
+    state.tab = { id: 7, url: 'https://example.test/sign-in', hostname: 'example.test', secure: true };
+    state.matches = [state.entries[0]!.path, state.entries[1]!.path];
+    const request = vi.fn(async (message: UIRequest) => {
+      if (message.action === 'fill') return { filled: 2 };
+      if (message.action === 'snapshot') {
+        const snapshot = { ...state, shortcutOutcome: outcome };
+        outcome = undefined;
+        return snapshot;
+      }
+      return state;
+    });
+    return { state, client: { ...client, request: request as Client['request'] }, request };
+  }
+
+  it('focuses the first site match, navigates to another match and fills the selected entry', async () => {
+    const { client, request, state } = chooser('choose-match');
+    await render(client);
+    const rows = container.querySelectorAll<HTMLButtonElement>('button[data-entry-path]');
+    expect(rows).toHaveLength(2);
+    expect(document.activeElement).toBe(rows[0]);
+    expect(container.querySelector('button.account-more')).toBeNull();
+    await pressNavigation(rows[0]!, 'ArrowDown');
+    expect(document.activeElement).toBe(rows[1]);
+    // Native buttons activate on Enter. jsdom does not synthesize that click.
+    await act(async () => (document.activeElement as HTMLButtonElement).click());
+    expect(request).toHaveBeenCalledWith({ action: 'fill', vaultId: state.vaultId, entry: state.matches[1], tab: state.tab, remember: false });
+  });
+
+  it('switches from matched accounts to the whole vault with a focused search input', async () => {
+    const { client } = chooser('choose-match');
+    await render(client);
+    const exit = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '查看全部账号');
+    expect(exit).toBeDefined();
+    await act(async () => exit!.click());
+    expect(container.querySelectorAll('button[data-entry-path]')).toHaveLength(3);
+    expect(document.activeElement).toBe(container.querySelector('input[aria-label="搜索密码库"]'));
+  });
+
+  it('shows the focus hint once for an ambiguous form and closes the preopened popup after background fill', async () => {
+    const { client } = chooser('ambiguous_form');
+    await render(client);
+    expect(container.querySelector('[role=alert]')?.textContent).toContain('请先点一下');
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    const done = chooser('filled'), close = vi.spyOn(window, 'close').mockImplementation(() => {});
+    await render({ ...done.client, demo: false });
+    expect(close).toHaveBeenCalledOnce();
+    expect(done.request.mock.calls.some(([message]) => message.action === 'fill')).toBe(false);
   });
 });

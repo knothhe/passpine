@@ -55,7 +55,14 @@ func TestCreateVaultWithoutGPGSurvivesRestartAndBackupRestore(t *testing.T) {
 		t.Fatal("new vault did not encrypt its first password", err)
 	}
 	backupFile := filepath.Join(root, "recovery-private-key.asc")
-	must(t, created, Request{Action: "export", Destination: backupFile})
+	exported := must(t, created, Request{Action: "export", Destination: backupFile})
+	if len(exported.Vaults) != 1 || exported.Vaults[0].RecoveryKeyStage != RecoveryKeyExported {
+		t.Fatal("export did not mark this vault as awaiting verification")
+	}
+	failed := created.Execute(Request{Action: "verify-backup", KeyFile: backupFile, Passphrase: "wrong-passphrase"})
+	if failed.Status != "error" || failed.Data.Vaults[0].RecoveryKeyStage != RecoveryKeyExported {
+		t.Fatal("failed recovery verification advanced the guide")
+	}
 	assertPrivateFile(t, backupFile)
 	backup, err := os.ReadFile(backupFile)
 	if err != nil {
@@ -77,7 +84,7 @@ func TestCreateVaultWithoutGPGSurvivesRestartAndBackupRestore(t *testing.T) {
 	}
 
 	restarted := newService(dataDir)
-	if state := must(t, restarted, Request{Action: "status"}); !state.Configured || !state.Locked || state.Directory != storeDir {
+	if state := must(t, restarted, Request{Action: "status"}); !state.Configured || !state.Locked || state.Directory != storeDir || state.Vaults[0].RecoveryKeyStage != RecoveryKeyVerified {
 		t.Fatal("restarted client did not retain the locked vault")
 	}
 	if result := restarted.Execute(Request{Action: "unlock", Passphrase: "wrong-passphrase"}); result.Code != "invalid_passphrase" || !result.Data.Locked {
@@ -96,13 +103,17 @@ func TestCreateVaultWithoutGPGSurvivesRestartAndBackupRestore(t *testing.T) {
 
 	// Recover the encrypted store using only the exported key after losing all
 	// application data, without a system keyring or the original local key.
+	restoredStore := filepath.Join(root, "copied-store")
+	if err = os.CopyFS(restoredStore, os.DirFS(storeDir)); err != nil {
+		t.Fatal(err)
+	}
 	restoredDir := filepath.Join(root, "restored-app")
 	restored := newService(restoredDir)
-	if result := restored.Execute(Request{Action: "open", Directory: storeDir, Mode: "key-file", KeyFile: backupFile, Passphrase: "wrong-passphrase"}); result.Code != "invalid_passphrase" || result.Data.Configured {
+	if result := restored.Execute(Request{Action: "open", Directory: restoredStore, Mode: "key-file", KeyFile: backupFile, Passphrase: "wrong-passphrase"}); result.Code != "invalid_passphrase" || result.Data.Configured {
 		t.Fatal("failed recovery installed a private key")
 	}
-	recovered := must(t, restored, Request{Action: "open", Directory: storeDir, Mode: "key-file", KeyFile: backupFile, Passphrase: passphrase})
-	if recovered.Locked || recovered.Fingerprint != identity.Fingerprint {
+	recovered := must(t, restored, Request{Action: "open", Directory: restoredStore, Mode: "key-file", KeyFile: backupFile, Passphrase: passphrase})
+	if recovered.Locked || recovered.Fingerprint != identity.Fingerprint || recovered.Vaults[0].RecoveryKeyStage != "" {
 		t.Fatal("restored key does not match the generated identity")
 	}
 	if got := must(t, restored, Request{Action: "fetch", Entry: saved.Entry}); got.Contents != saved.Contents {

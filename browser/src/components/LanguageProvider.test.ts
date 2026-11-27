@@ -103,16 +103,25 @@ describe('extension language settings', () => {
 
   it('keeps unsaved entry inputs and custom field labels when the language changes', async () => {
     const { client, request } = clientFixture();
-    await render(createElement(EditorForm, { client, value: { vaultId: 'vault' }, defaultURL: 'https://例子.test', close: () => {}, saved: async () => {} }));
+    await render(createElement(EditorForm, { client, value: { vaultId: 'vault', creationTab: { id: 9, hostname: 'login.example.test', url: 'https://login.example.test/login', secure: true } }, defaultURL: 'https://例子.test', close: () => {}, saved: async () => {} }));
     const input = container.querySelector<HTMLInputElement>('input[placeholder="用户名或邮箱"]')!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '中文 user@example.test');
       input.dispatchEvent(new Event('input', { bubbles: true }));
       Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '添加字段')!.click();
+      const notes = container.querySelector('textarea')!;
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(notes, '原样保留\nWork account');
+      notes.dispatchEvent(new Event('input', { bubbles: true }));
     });
+    await act(async () => container.querySelector<HTMLElement>('[role="checkbox"]')!.click());
     await choose('English');
+    const link = container.querySelector<HTMLElement>('[role="checkbox"]')!;
+    expect(link.closest('label')?.textContent).toContain('Link to login.example.test when saving');
+    expect(link.getAttribute('aria-checked')).toBe('true');
     expect(container.querySelector<HTMLInputElement>('input[placeholder="Username or email"]')?.value).toBe('中文 user@example.test');
     expect(container.querySelector('input[aria-label="Field 1 name"]')).not.toBeNull();
+    expect(container.querySelector('textarea')?.labels?.[0]?.textContent).toContain('Notes');
+    expect(container.querySelector('textarea')?.value).toBe('原样保留\nWork account');
     expect(container.querySelector<HTMLInputElement>('input[autocomplete="url"]')?.value).toBe('https://例子.test');
     expect(request).not.toHaveBeenCalled();
   });

@@ -284,3 +284,26 @@ func TestGitClonePreservesFileCreatedDuringDownload(t *testing.T) {
 		t.Fatal("clone removed or changed the concurrently created file", e)
 	}
 }
+
+func TestVerifyEmptyVaultBackupExercisesEncryptionSubkey(t *testing.T) {
+	v := rotationFixture(t)
+	backup, err := v.ExportSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := v.VerifyBackup(backup, testPassphrase); err != nil {
+		t.Fatal("fresh recovery key failed the in-memory decryption", err)
+	}
+	rotateEncryptionKey(t, v, true)
+	partial, err := v.ExportSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := v.VerifyBackup(partial, testPassphrase); err == nil {
+		t.Fatal("a private key missing its current decryption subkey verified on an empty vault")
+	}
+	entries, err := v.List()
+	if err != nil || len(entries) != 0 {
+		t.Fatal("verification wrote a test credential into the vault", err)
+	}
+}

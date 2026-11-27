@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Client } from './types';
 
-const runtime = vi.hoisted(() => ({ sendMessage: vi.fn(), openOptionsPage: vi.fn() }));
+const runtime = vi.hoisted(() => ({ sendMessage: vi.fn(), openOptionsPage: vi.fn(), getURL: vi.fn(), getContexts: vi.fn() }));
 const environment = vi.hoisted(() => ({
   management: { getSelf: vi.fn() },
   storage: { local: { get: vi.fn() }, onChanged: { addListener: vi.fn(), removeListener: vi.fn() } },
@@ -103,5 +103,42 @@ describe('UI source scopes', () => {
     switchTarget('dev');
     resolve({ protocol: 1, status: 'ok', data: { vaultId: 'old-vault' } });
     await expect(pending).rejects.toMatchObject({ code: 'native_connection_failed' });
+  });
+});
+
+describe('popup snapshot identity', () => {
+  const url = 'chrome-extension://test-extension/popup.html';
+  beforeEach(() => {
+    const self = {};
+    vi.stubGlobal('window', Object.assign(self, { top: self }));
+    vi.stubGlobal('location', new URL(url));
+    runtime.getURL.mockReturnValue(url);
+  });
+
+  it('sends a verified document claim only on snapshots of the toolbar popup', async () => {
+    runtime.getContexts.mockResolvedValue([{ contextType: 'POPUP', documentUrl: url, documentId: 'popup-doc' }]);
+    await client.request({ action: 'snapshot' });
+    expect(runtime.getContexts).toHaveBeenCalledExactlyOnceWith({ documentUrls: [url] });
+    expect(runtime.sendMessage.mock.calls[0]![0].popupInstance).toBe('popup-doc');
+    await client.request({ action: 'status' });
+    expect(runtime.getContexts).toHaveBeenCalledTimes(1);
+    expect(runtime.sendMessage.mock.calls[1]![0]).not.toHaveProperty('popupInstance');
+  });
+
+  it('omits the claim on ambiguous, tab, framed, or unidentifiable pages', async () => {
+    const popup = { contextType: 'POPUP', documentId: 'popup-doc', documentUrl: url };
+    const tab = { contextType: 'TAB', documentId: 'tab-doc', documentUrl: url };
+    for (const contexts of [[tab, popup], [tab], [{ ...popup, documentUrl: url + '?test' }], []]) {
+      runtime.getContexts.mockResolvedValue(contexts);
+      await client.request({ action: 'snapshot' });
+    }
+    runtime.getContexts.mockRejectedValueOnce(new Error('unsupported'));
+    await client.request({ action: 'snapshot' });
+    runtime.getContexts.mockResolvedValue([popup]);
+    vi.stubGlobal('window', { top: {} });
+    await client.request({ action: 'snapshot' });
+    expect(runtime.getContexts).toHaveBeenCalledTimes(5);
+    expect(runtime.sendMessage).toHaveBeenCalledTimes(6);
+    for (const [message] of runtime.sendMessage.mock.calls) expect(message).not.toHaveProperty('popupInstance');
   });
 });

@@ -11,6 +11,7 @@ import { initializePageShortcuts } from '../src/lib/page-shortcut-registration';
 import { initializeToolbarAppearance } from '../src/lib/appearance';
 import { initializeConfigurationSync } from '../src/lib/config-sync';
 import { associationCapability, initializeAssociationSync } from '../src/lib/associations';
+import { shortcutPopup, uniquePopupAtURL, type ShortcutResult } from '../src/lib/shortcut-popup';
 import { PROTOCOL, type EntryDocument, type FillResult, type NativeRequest, type SessionStatus, type Snapshot, type TabContext, type UIRequest, type VaultState } from '../src/lib/types';
 
 interface NativeSession {
@@ -24,11 +25,13 @@ export default defineBackground(() => {
   initializePageShortcuts();
   const configurationSync = initializeConfigurationSync();
   const associationSync = initializeAssociationSync();
+  const popup = shortcutPopup();
   let associationState: VaultState | undefined;
   let generation = 0;
   let selected: { target: Awaited<ReturnType<typeof loadClientTarget>>; connection: NativeConnection } | undefined;
   const invalidateTarget = () => {
     generation++;
+    popup.clear();
     configurationSync.invalidate();
     associationSync.invalidate();
     associationState = undefined;
@@ -136,6 +139,7 @@ export default defineBackground(() => {
       native.assertCurrent();
       const result = results.find(result => result.frameId === 0)?.result;
       if (result?.code || !result?.filled) throw new PassPineError(result?.code ?? 'no_fields');
+      if (!request.remember) return { filled: result.filled } satisfies FillResult;
       // Filling has already succeeded. A later navigation or association failure
       // must not turn that completed action into a reported fill failure.
       let associated = false;
@@ -145,24 +149,49 @@ export default defineBackground(() => {
     }
     return native.request(nativeRequest(request));
   };
-  const dispatch = async (request: UIRequest, expectedTarget: ClientTarget): Promise<unknown> => execute(request, await session(expectedTarget));
-  const runShortcut = async (command: PageShortcutCommand, expected?: TabContext) => {
-    if (expected) await currentTab(expected);
-    if (command === OPEN_COMMAND) { await browser.action.openPopup(); return; }
-    try {
-      const native = await session();
-      const state = await snapshot(native);
-      if (expected) {
-        await currentTab(expected);
-        if (!state.tab || !sameTab(expected, state.tab)) return;
-      }
-      // Ambiguous matches always go through the user's account selection.
-      if (state.matches.length === 1 && state.tab) await execute({ action: 'fill', vaultId: state.vaultId, entry: state.matches[0]!, tab: state.tab }, native);
-      else await browser.action.openPopup();
-    } catch {
-      if (expected) await currentTab(expected);
-      await browser.action.openPopup().catch(() => {});
+  const dispatch = async (request: UIRequest, expectedTarget: ClientTarget, documentId?: string): Promise<unknown> => {
+    const native = await session(expectedTarget);
+    if (request.action !== 'snapshot' || !documentId) return execute(request, native);
+    const result = await popup.take(documentId);
+    const state = await snapshot(native);
+    if (result?.target === native.target && result.vaultId === state.vaultId && state.tab && sameTab(result.tab, state.tab)) {
+      state.shortcutOutcome = result.outcome;
     }
+    return state;
+  };
+  async function shortcutResult(expected: TabContext): Promise<ShortcutResult | undefined> {
+    await currentTab(expected);
+    const native = await session();
+    const state = await snapshot(native);
+    await currentTab(expected);
+    if (!state.tab || !sameTab(expected, state.tab)) throw new PassPineError('tab_changed');
+    const scope = { tab: expected, vaultId: state.vaultId, target: native.target };
+    if (state.matches.length > 1) return { ...scope, outcome: 'choose-match' };
+    if (state.matches.length === 0) return;
+    try {
+      await execute({ action: 'fill', vaultId: state.vaultId, entry: state.matches[0]!, tab: expected, remember: false }, native);
+      return { ...scope, outcome: 'filled' };
+    } catch (error) {
+      if (error instanceof PassPineError && error.code === 'ambiguous_form') return { ...scope, outcome: 'ambiguous_form' };
+      throw error;
+    }
+  }
+  const runShortcut = async (command: PageShortcutCommand, expected?: TabContext, windowId?: number) => {
+    popup.clear();
+    if (command === OPEN_COMMAND) {
+      if (expected) await currentTab(expected);
+      await browser.action.openPopup();
+      return;
+    }
+    const target = expected ?? tabContext(await activeTab() ?? {});
+    if (!target) { await browser.action.openPopup(); return; }
+    let result: ShortcutResult | undefined;
+    try { result = await shortcutResult(target); }
+    catch { await currentTab(target); }
+    if (result?.outcome === 'filled') return;
+    await currentTab(target);
+    if (result) await popup.open(async () => result, windowId);
+    else await browser.action.openPopup();
   };
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message?.type === 'passpine-page-shortcut') {
@@ -185,12 +214,31 @@ export default defineBackground(() => {
       fail(new PassPineError('native_connection_failed'));
       return true;
     }
-    dispatch(message.request, message.clientTarget).then(data => sendResponse({ protocol: PROTOCOL, status: 'ok', data }), fail);
+    const root = browser.runtime.getURL('/');
+    const identifyPopup = async (): Promise<string | undefined> => {
+      const url = new URL('popup.html', root).href;
+      if (message.request.action !== 'snapshot' || sender.url !== url) return;
+      const claim = typeof message.popupInstance === 'string' ? message.popupInstance : undefined;
+      if (root.startsWith('moz-extension:')) return claim;
+      if (sender.documentId) return sender.documentId;
+      // A tab displaying the extension page cannot borrow a toolbar popup's ID.
+      if (claim && await uniquePopupAtURL(url) === claim) return claim;
+    };
+    identifyPopup().then(id => dispatch(message.request, message.clientTarget, id)).then(data => sendResponse({ protocol: PROTOCOL, status: 'ok', data }), fail);
     return true;
   });
-  browser.commands.onCommand.addListener(async command => {
+  browser.commands.onCommand.addListener(async (command, tab) => {
     if (command !== FILL_COMMAND) return;
-    await runShortcut(FILL_COMMAND);
+    const expected = tab && tabContext(tab);
+    const firefoxVersion = Number(/Firefox\/(\d+)/.exec(navigator.userAgent)?.[1]);
+    if (firefoxVersion > 0 && firefoxVersion < 149) {
+      // Older Firefox requires openPopup in the command's user-gesture stack.
+      // The popup waits for this same operation, including a sole-match fill.
+      await popup.open(async () => {
+        const target = expected ?? tabContext(await activeTab() ?? {});
+        return target && shortcutResult(target);
+      }, tab?.windowId).catch(() => {});
+    } else await runShortcut(FILL_COMMAND, expected, tab?.windowId).catch(() => {});
   });
   const associationAlarm = 'passpine-associations-refresh';
   // Alarms survive MV3 worker suspension. No page or credential access is

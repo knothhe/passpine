@@ -142,7 +142,7 @@ func (a *application) syncSelectedIndex() {
 }
 
 func isPreferencesPage(page string) bool {
-	return page == "settings" || page == "recovery" || page == "activity"
+	return page == "settings" || page == "recovery" || page == "activity" || page == "backup-guide"
 }
 
 func (a *application) shouldRememberNavigation(page, filter string) bool {
@@ -205,7 +205,7 @@ func (a *application) handleMainWindowClose(event *mygo.CloseEvent) {
 	if a.backupOpen || a.purgeOpen || a.deleteOpen {
 		event.PreventDefault()
 		a.backupOpen, a.purgeOpen, a.deleteOpen = false, false, false
-		a.backupPassphrase = ""
+		a.backupPath, a.backupPassphrase = "", ""
 		a.invalidate()
 		return
 	}

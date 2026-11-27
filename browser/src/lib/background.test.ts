@@ -6,7 +6,8 @@ const environment = vi.hoisted(() => ({
   native: vi.fn(),
   disconnect: vi.fn(),
   browser: {
-    runtime: { id: 'test-extension', getURL: vi.fn(), connectNative: vi.fn(), onMessage: { addListener: vi.fn() } },
+    runtime: { id: 'test-extension', getURL: vi.fn(), getContexts: vi.fn(), connectNative: vi.fn(), onMessage: { addListener: vi.fn() } },
+    extension: { getViews: vi.fn() },
     management: { getSelf: vi.fn() },
     tabs: { query: vi.fn() },
     storage: { local: { get: vi.fn(), set: vi.fn() }, onChanged: { addListener: vi.fn(), removeListener: vi.fn() } },
@@ -31,7 +32,7 @@ vi.mock('./native', () => ({ NativeConnection: class {
   disconnect = environment.disconnect;
 } }));
 
-type MessageListener = (message: unknown, sender: { id: string; url: string; tab?: { id: number; url: string } }, respond: (response: NativeResponse) => void) => boolean;
+type MessageListener = (message: unknown, sender: { id: string; url: string; documentId?: string; tab?: { id: number; url: string } }, respond: (response: NativeResponse) => void) => boolean;
 const tab: TabContext = { id: 7, url: 'https://login.example.test/sign-in', hostname: 'login.example.test', secure: true };
 const account = 'Personal/account';
 let current: { id: number; url: string }, stored: Record<string, unknown>, listener: MessageListener;
@@ -42,7 +43,7 @@ function request<T = Record<string, never>>(value: UIRequest, clientTarget: 'rel
     expect(listener({ type: 'passpine', clientTarget, request: value }, { id: 'test-extension', url: 'chrome-extension://test-extension/popup.html' }, response => resolve(response as NativeResponse<T>))).toBe(true);
   });
 }
-const fill = (entry = account) => request<FillResult>({ action: 'fill', vaultId: 'vault', entry, tab });
+const fill = (entry = account, remember = true) => request<FillResult>({ action: 'fill', vaultId: 'vault', entry, tab, remember });
 function switchTarget(target: 'release' | 'dev') {
   stored.clientTarget = target;
   const onChanged = environment.browser.storage.onChanged.addListener.mock.calls[0]![0];
@@ -158,6 +159,16 @@ describe('background fill and website associations', () => {
     const { PassPineError } = await import('./errors');
     environment.native.mockRejectedValue(new PassPineError('native_connection_failed'));
     expect(await request({ action: 'copy-generated', contents: 'fresh-password' })).toMatchObject({ protocol: 1, status: 'error', code: 'native_connection_failed' });
+  });
+
+  it('fills once without writing associations, including after an explicit unlink', async () => {
+    const key = await associationKey('vault', account, tab.hostname);
+    stored.associations = { [key]: false };
+    expect((await fill(account, false)).data).toEqual({ filled: 2 });
+    expect(environment.browser.scripting.executeScript).toHaveBeenCalledOnce();
+    expect(environment.browser.storage.local.set).not.toHaveBeenCalled();
+    expect(stored.associations).toEqual({ [key]: false });
+    expect((await request<Snapshot>({ action: 'snapshot' })).data?.matches).toEqual([]);
   });
 
   it('fills a manually selected unrelated account and then associates its exact host', async () => {
@@ -443,5 +454,113 @@ describe('page shortcut messages', () => {
     expect(listener({ type: 'passpine', clientTarget: 'release', request: { action: 'fetch', vaultId: 'vault', entry: account } }, sender, vi.fn())).toBe(false);
     expect(listener({ type: 'passpine-page-shortcut', command: 'fetch', shortcut: 'Alt+F' }, sender, vi.fn())).toBe(false);
     expect(environment.native).not.toHaveBeenCalled();
+  });
+});
+
+describe('fill shortcut popup', () => {
+  const siteEntry = (name: string) => ({ path: tab.hostname + '/' + name, name, folder: tab.hostname });
+  function shortcut() {
+    const [run] = environment.browser.commands.onCommand.addListener.mock.calls[0]!;
+    return run('fill-best', { ...current, windowId: 5 });
+  }
+  function snapshotFrom(page: string, documentId?: string, popupInstance?: string, tabSender = false): Promise<Snapshot> {
+    return new Promise(resolve => {
+      const url = environment.browser.runtime.getURL('/') + page;
+      expect(listener({ type: 'passpine', clientTarget: 'release', popupInstance, request: { action: 'snapshot' } }, { id: 'test-extension', url, documentId, ...(tabSender ? { tab: { id: 4, url }, frameId: 0 } : {}) }, value => {
+        expect(value.status).toBe('ok');
+        resolve(value.data as Snapshot);
+      })).toBe(true);
+    });
+  }
+  beforeEach(() => {
+    state.entries = [siteEntry('Alex'), siteEntry('Blair'), { path: account, name: 'account', folder: 'Personal' }];
+    environment.browser.runtime.getContexts.mockResolvedValue([{ documentId: 'chosen-popup' }]);
+  });
+
+  it('limits the selection to the action popup opened by the command, once, without fetching credentials', async () => {
+    await shortcut();
+    expect(environment.browser.action.openPopup).toHaveBeenCalledExactlyOnceWith({ windowId: 5 });
+    expect(environment.browser.runtime.getContexts).toHaveBeenCalledExactlyOnceWith({ contextTypes: ['POPUP'] });
+    expect((await snapshotFrom('options.html', 'chosen-popup')).shortcutOutcome).toBeUndefined();
+    expect((await snapshotFrom('popup.html', 'manual-popup')).shortcutOutcome).toBeUndefined();
+    expect((await snapshotFrom('popup.html', 'chosen-popup')).shortcutOutcome).toBe('choose-match');
+    expect((await snapshotFrom('popup.html', 'chosen-popup')).shortcutOutcome).toBeUndefined();
+    expect(environment.native.mock.calls.some(([r]) => r.action === 'fetch')).toBe(false);
+  });
+
+  it('binds a missing Chromium sender ID to the unique popup document, even for concurrent initial snapshots', async () => {
+    const url = 'chrome-extension://test-extension/popup.html', id = '20baabad1234567890abcdefabcdabcd';
+    const chosen = { contextType: 'POPUP', documentUrl: url, documentId: id };
+    environment.browser.runtime.getContexts.mockResolvedValue([chosen]);
+    await shortcut();
+    // The native sender ID always wins when it is present.
+    expect((await snapshotFrom('popup.html', 'another-document', id)).shortcutOutcome).toBeUndefined();
+    expect((await snapshotFrom('options.html', undefined, id)).shortcutOutcome).toBeUndefined();
+    environment.browser.runtime.getContexts.mockResolvedValue([chosen, { contextType: 'TAB', documentUrl: url, documentId: 'tab' }]);
+    expect((await snapshotFrom('popup.html', undefined, id, true)).shortcutOutcome).toBeUndefined();
+    environment.browser.runtime.getContexts.mockResolvedValue([chosen]);
+    const results = await Promise.all([snapshotFrom('popup.html', undefined, id), snapshotFrom('popup.html', undefined, id)]);
+    expect(results.filter(snapshot => snapshot.shortcutOutcome === 'choose-match')).toHaveLength(1);
+    expect(environment.native.mock.calls.some(([r]) => r.action === 'fetch')).toBe(false);
+  });
+
+  it('keeps a manually reopened popup on the ordinary list when sender IDs are missing', async () => {
+    const url = 'chrome-extension://test-extension/popup.html';
+    environment.browser.runtime.getContexts.mockResolvedValue([{ contextType: 'POPUP', documentUrl: url, documentId: 'closed' }]);
+    await shortcut();
+    environment.browser.runtime.getContexts.mockResolvedValue([{ contextType: 'POPUP', documentUrl: url, documentId: 'manual' }]);
+    expect((await snapshotFrom('popup.html', undefined, 'closed')).shortcutOutcome).toBeUndefined();
+    expect((await snapshotFrom('popup.html', undefined, 'manual')).shortcutOutcome).toBeUndefined();
+  });
+
+  it('opens the ordinary vault list when the browser cannot identify the popup document', async () => {
+    environment.browser.runtime.getContexts.mockRejectedValueOnce(new Error('unsupported'));
+    await shortcut();
+    const snapshot = await snapshotFrom('popup.html', 'unidentified-popup');
+    expect(snapshot.shortcutOutcome).toBeUndefined();
+    expect(snapshot.entries).toEqual(state.entries);
+    expect(environment.native.mock.calls.some(([r]) => r.action === 'fetch')).toBe(false);
+  });
+
+  it.each(['expire', 'navigate', 'switch-vault', 'open-failure', 'restart'])('discards the shortcut if its context changes (%s)', async cause => {
+    if (cause === 'open-failure') environment.browser.action.openPopup.mockRejectedValueOnce(new Error('not available'));
+    await shortcut();
+    if (cause === 'expire') vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 13_000);
+    if (cause === 'navigate') current.url += '?different-page';
+    if (cause === 'switch-vault') state.vaultId = 'another-vault';
+    if (cause === 'restart') {
+      vi.resetModules();
+      await import('../../entrypoints/background');
+      listener = environment.browser.runtime.onMessage.addListener.mock.calls.at(-1)![0] as MessageListener;
+    }
+    try { expect((await snapshotFrom('popup.html', 'chosen-popup')).shortcutOutcome).toBeUndefined(); }
+    finally { vi.restoreAllMocks(); }
+  });
+
+  it('shows the field-focus hint after a sole-match shortcut reaches an ambiguous form', async () => {
+    state.entries = [siteEntry('Alex')];
+    environment.browser.scripting.executeScript.mockResolvedValue([{ frameId: 0, result: { filled: 0, code: 'ambiguous_form' } }]);
+    await shortcut();
+    expect((await snapshotFrom('popup.html', 'chosen-popup')).shortcutOutcome).toBe('ambiguous_form');
+    expect(environment.browser.scripting.executeScript).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([1, 2])('opens synchronously in Firefox 128 and hands only its popup the result for %i matches', async count => {
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 Firefox/128.0' });
+    try {
+      environment.browser.runtime.getURL.mockReturnValue('moz-extension://test-extension/');
+      environment.browser.extension.getViews.mockReturnValue([{ document: { documentElement: { dataset: { passpinePopup: 'firefox-popup' } } } }]);
+      state.entries = state.entries.slice(0, count);
+      const opening = deferred<void>();
+      environment.browser.action.openPopup.mockReturnValue(opening.promise);
+      const command = shortcut();
+      expect(environment.browser.action.openPopup).toHaveBeenCalledExactlyOnceWith({ windowId: 5 });
+      const initial = snapshotFrom('popup.html', 'irrelevant-id', 'firefox-popup');
+      opening.resolve();
+      await command;
+      expect((await initial).shortcutOutcome).toBe(count === 1 ? 'filled' : 'choose-match');
+      expect(environment.browser.scripting.executeScript).toHaveBeenCalledTimes(count === 1 ? 1 : 0);
+      expect((await snapshotFrom('popup.html', 'irrelevant-id', 'firefox-popup')).shortcutOutcome).toBeUndefined();
+    } finally { vi.unstubAllGlobals(); }
   });
 });

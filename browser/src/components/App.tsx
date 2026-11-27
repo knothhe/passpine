@@ -1,12 +1,12 @@
 import { useCopy, useLanguage } from './LanguageProvider';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, MotionConfig, useIsPresent, useReducedMotion } from 'motion/react';
 import { AlertDialog, Badge, Button, Flex, Heading, IconButton, Separator, Spinner, Text, TextField } from '@radix-ui/themes';
 import { ArrowDownToLine, Check, CircleAlert, Copy, Eye, EyeOff, Globe2, KeyRound, Link2, Link2Off, LockKeyhole, Pencil, Plus, RefreshCw, Search, Settings2, Trash2, X } from 'lucide-react';
-import { entriesFor, parseDocument } from '../lib/model';
+import { additionalFieldIndices, entriesFor, parseDocument, sameTab } from '../lib/model';
 import { errorMessage } from '../lib/errors';
-import type { Client, Entry, EntryDocument, FillResult, SessionStatus, Snapshot } from '../lib/types';
-import { ActionIcon, ApplicationIcon, PageHeader, SecretField } from './Primitives';
+import type { Client, Entry, EntryDocument, FillResult, SessionStatus, Snapshot, TabContext } from '../lib/types';
+import { ActionIcon, ApplicationIcon, CustomDetailField, PageHeader, SecretField } from './Primitives';
 import { ConnectionState } from './ConnectionState';
 import { AccountList } from './AccountList';
 import { EditorForm } from './EditorForm';
@@ -17,8 +17,9 @@ import { useExpiringValue } from '../lib/use-expiring-value';
 import { subscribeClientTarget } from '../lib/client-target';
 
 export type Detail = EntryDocument & { entry: Entry; vaultId: string; receivedAt: number };
-export type EditorValue = { vaultId: string; original?: Detail; password?: string };
+export type EditorValue = { vaultId: string; original?: Detail; password?: string; creationTab?: TabContext };
 type DetailTarget = { entry: Entry; vaultId: string };
+type FillTarget = { entry: Entry; vaultId: string; tab: TabContext };
 type RefreshResult = { ok: boolean; error?: string };
 type PopupView = 'list' | 'detail' | 'editor';
 
@@ -37,6 +38,7 @@ function VaultApp({ client: sourceClient }: { client: Client }) {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [connectionError, setConnectionError] = useState<unknown>();
   const [query, setQuery] = useState('');
+  const [siteOnly, setSiteOnly] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
   const clearSearch = () => { setQuery(''); searchInput.current?.focus({ preventScroll: true }); };
   const [loading, setLoading] = useState(true);
@@ -49,6 +51,8 @@ function VaultApp({ client: sourceClient }: { client: Client }) {
   const [detailTarget, setDetailTarget] = useState<DetailTarget>();
   const [revealed, setRevealed] = useState(false);
   const [editor, setEditor] = useState<EditorValue>();
+  const [fillChoice, setFillChoice] = useState<FillTarget>();
+  const fillTrigger = useRef<HTMLElement | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const busyOperation = useRef(false);
@@ -74,9 +78,10 @@ function VaultApp({ client: sourceClient }: { client: Client }) {
     }
   }, []);
   const clearSecrets = useCallback((preservePending = false) => {
+    setSiteOnly(false);
     if (preservePending) { detailRequest.current++; setDetail(undefined); setRevealed(false); }
     else cancelDetails();
-    setEditor(undefined); setDeleteOpen(false);
+    setEditor(undefined); setDeleteOpen(false); setFillChoice(undefined);
   }, [cancelDetails]);
   const disconnected = useCallback((error: unknown) => {
     session.current.disconnect(); latestSnapshot.current = undefined;
@@ -89,6 +94,7 @@ function VaultApp({ client: sourceClient }: { client: Client }) {
     const expectedUnlock = !!opening.current?.awaitingUnlock && state.configured && !state.locked && state.vaultId === opening.current.vaultId;
     if (result.invalidated) clearSecrets(expectedUnlock);
     else if (result.metadataChanged) {
+      setFillChoice(undefined);
       if (expectedUnlock) { detailRequest.current++; setDetail(undefined); setRevealed(false); }
       else cancelDetails();
     }
@@ -101,6 +107,10 @@ function VaultApp({ client: sourceClient }: { client: Client }) {
       try {
         const next = await client.request<Snapshot>({ action: 'snapshot' });
         if (!observe(next, sequence).accepted) return { ok: false };
+        if (next.shortcutOutcome === 'choose-match' && next.tab) setSiteOnly(true);
+        else if (!next.tab || !latestSnapshot.current?.tab || !sameTab(next.tab, latestSnapshot.current.tab)) setSiteOnly(false);
+        if (next.shortcutOutcome === 'ambiguous_form') setNotice({ text: copy.errors.ambiguous_form, error: true });
+        if (next.shortcutOutcome === 'filled' && !client.demo) window.close();
         latestSnapshot.current = next; setSnapshot(next); setConnectionError('');
         setDetail(previous => previous?.vaultId === next.vaultId ? { ...previous, entry: { ...previous.entry, matched: next.matches.includes(previous.entry.path) } } : previous);
         return { ok: true };
@@ -221,35 +231,50 @@ function VaultApp({ client: sourceClient }: { client: Client }) {
       throw error;
     } finally { if (opening.current?.id === navigation) opening.current = undefined; }
   });
-  const fill = (entry: Entry) => void run(async () => {
-    if (!snapshot?.tab) return;
-    const tab = snapshot.tab;
-    await ensureUnlocked(snapshot.vaultId);
-    const result = await client.request<FillResult>({ action: 'fill', vaultId: snapshot.vaultId, entry: entry.path, tab });
-    if (!client.demo && result.filled > 0) { window.close(); return; }
+  const executeFill = ({ entry, vaultId, tab }: FillTarget, remember: boolean) => void run(async () => {
+    setFillChoice(undefined);
+    await ensureUnlocked(vaultId);
+    const result = await client.request<FillResult>({ action: 'fill', vaultId, entry: entry.path, tab, remember });
+    const linkFailed = remember && result.associated !== true;
+    if (!client.demo && result.filled > 0 && !linkFailed) { window.close(); return; }
     await refresh();
-    const text = copy.vault.fillResult(result.filled, tab.hostname, result.associated);
-    setNotice({ text: client.demo ? copy.preview.notice(text) : text, error: !result.associated });
+    const text = remember
+      ? copy.vault.fillResult(result.filled, tab.hostname, result.associated === true)
+      : copy.vault.filledFields(result.filled, tab.hostname);
+    setNotice({ text: client.demo ? copy.preview.notice(text) : text, error: linkFailed });
   });
-  const copyCredential = (field: 'password' | 'username' | 'otp') => void run(async () => {
+  const fill = (entry: Entry) => {
+    if (!snapshot?.tab || busyOperation.current) return;
+    const target = { entry, vaultId: snapshot.vaultId, tab: snapshot.tab };
+    if (snapshot.matches.includes(entry.path)) executeFill(target, false);
+    else {
+      fillTrigger.current = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
+      setFillChoice(target);
+    }
+  };
+  const copyCredential = (field: 'password' | 'username' | 'otp' | { fieldIndex: number; fieldKey: string }) => void run(async () => {
     if (!detail) return;
-    await client.request({ action: 'copy', vaultId: detail.vaultId, entry: detail.entry.path, field });
+    const target = typeof field === 'string' ? { field } : { field: 'custom' as const, revision: detail.revision, ...field };
+    await client.request({ action: 'copy', vaultId: detail.vaultId, entry: detail.entry.path, ...target });
     setNotice({ text: client.demo ? copy.preview.credentialsNotCopied : copy.vault.copiedWithExpiry });
   });
   const lock = () => void run(async () => {
     clearSecrets(); session.current.disconnect();
     await client.request({ action: 'lock' }); await refresh();
   });
-  const entries = snapshot ? entriesFor(snapshot, query) : [];
+  const entries = snapshot ? entriesFor(snapshot, query, siteOnly ? 'site' : 'all') : [];
+  useLayoutEffect(() => {
+    if (siteOnly) window.document.querySelector<HTMLButtonElement>('.entries-list button[data-entry-path]')?.focus();
+  }, [siteOnly]);
   const associate = (entry: Entry) => void run(async () => {
     if (!snapshot?.tab) return;
     await client.request({ action: entry.matched ? 'dissociate' : 'associate', vaultId: snapshot.vaultId, entry: entry.path, tab: snapshot.tab });
     await refresh(); setNotice({ text: (entry.matched ? copy.accounts.dissociatedWebsite : copy.accounts.associatedWebsite)(snapshot.tab.hostname) });
   });
-  const newAccount = () => void run(async () => { if (!snapshot?.configured || editor) return; await ensureUnlocked(snapshot.vaultId); setEditor({ vaultId: snapshot.vaultId }); });
+  const newAccount = () => void run(async () => { if (!snapshot?.configured || editor) return; await ensureUnlocked(snapshot.vaultId); setEditor({ vaultId: snapshot.vaultId, creationTab: snapshot.tab }); });
   useEffect(() => {
     const handle = (event: KeyboardEvent) => {
-      if (editor || deleteOpen || window.document.hidden) return;
+      if (editor || deleteOpen || fillChoice || window.document.hidden) return;
       const binding = shortcuts.find(item => matchesPopupShortcut(event, item.shortcut));
       if (!binding || busy && binding.action !== 'search') return;
       if (['copy', 'fill', 'edit'].includes(binding.action) && !detail) return;
@@ -271,7 +296,7 @@ function VaultApp({ client: sourceClient }: { client: Client }) {
   const [navigation, setNavigation] = useState<{ page: PopupView; direction: number }>({ page, direction: 1 });
   if (navigation.page !== page) setNavigation({ page, direction: pageOrder[page] > pageOrder[navigation.page] ? 1 : -1 });
   const navigateEntries = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (page !== 'list' || busy || deleteOpen || window.document.hidden || event.defaultPrevented || event.nativeEvent.isComposing) return;
+    if (page !== 'list' || busy || deleteOpen || fillChoice || window.document.hidden || event.defaultPrevented || event.nativeEvent.isComposing) return;
     const control = event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
     const plain = !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
     const key = event.key.toLowerCase();
@@ -291,7 +316,7 @@ function VaultApp({ client: sourceClient }: { client: Client }) {
 
   return <MotionConfig reducedMotion="user" transition={{ duration: .16, ease: [.2, .8, .2, 1] }}><div className="popup-shell" onKeyDown={navigateEntries}>
     <div className="popup-pages"><AnimatePresence initial={false} mode="sync" custom={navigation.direction}><PopupPage key={page} view={page} direction={navigation.direction} listScroll={listScroll.current} returnEntry={returnEntry.current}>
-    {editor ? <EditorForm client={client} value={editor} defaultURL={snapshot?.tab ? `https://${snapshot.tab.hostname}` : ''} close={() => setEditor(undefined)} saved={async () => { setEditor(undefined); cancelDetails(); await refresh(); setNotice({ text: copy.vault.encryptedSave }); }}/>
+    {editor ? <EditorForm client={client} value={editor} defaultURL={editor.creationTab ? new URL(editor.creationTab.url).origin : ''} close={() => setEditor(undefined)} saved={async linkedHost => { setEditor(undefined); cancelDetails(); await refresh(); setNotice({ text: linkedHost ? copy.editor.savedAndLinked(linkedHost) : copy.vault.encryptedSave }); }}/>
     : detailEntry ? <>
       <PageHeader title={copy.accounts.details} back={cancelDetails}><Button size="1" className="detail-fill-action" aria-label={copy.accounts.fillCredentials} title={snapshot?.tab ? copy.accounts.fillCredentials : copy.accounts.openWebsiteFirst} disabled={busy || !detail || !snapshot?.tab} onClick={() => detail && fill(detail.entry)}><ArrowDownToLine size={14}/><span>{copy.accounts.fillCredentials}</span></Button><ActionIcon label={copy.accounts.edit} disabled={!detail || busy} onClick={() => detail && setEditor({ vaultId: detail.vaultId, original: detail })}><Pencil size={16}/></ActionIcon><ActionIcon label={copy.accounts.delete} disabled={!detail || busy} onClick={() => setDeleteOpen(true)}><Trash2 size={16}/></ActionIcon></PageHeader>
       <main className="screen-content detail-content" aria-busy={!detail}>
@@ -305,19 +330,30 @@ function VaultApp({ client: sourceClient }: { client: Client }) {
           {detail.otp && <><Separator size="4"/><SecretField label={copy.accounts.otp(otpRemaining)} value={otpRemaining > 0 ? detail.otp : copy.accounts.maskedOTP} onCopy={() => copyCredential('otp')}/></>}
           <Separator size="4"/>
           <div className="credential-field site-detail"><div><Text as="div" size="1" color="gray" className="credential-label">{copy.common.website}</Text><Text as="div" size="2" className="credential-value truncate" title={document.urls[0]}>{document.urls[0] || (detail.entry.matched ? snapshot?.tab?.hostname : copy.accounts.websiteNotSet)}</Text></div>{detail.entry.matched && <Check size={15} className="accent" aria-label={copy.accounts.websiteAssociated}/>}</div>
+          {additionalFieldIndices(document).map(fieldIndex => {
+            const field = document.fields[fieldIndex]!;
+            if (['otp', 'totp', 'otpauth'].includes(field.key.toLowerCase())) return null;
+            const onCopy = snapshot?.capabilities.includes('copy-custom-field-v1')
+              ? () => copyCredential({ fieldIndex, fieldKey: field.key }) : undefined;
+            return <Fragment key={JSON.stringify([detail.entry.path, detail.revision, fieldIndex])}>
+              <Separator size="4"/>
+              <CustomDetailField label={field.key} value={field.value} onCopy={onCopy}/>
+            </Fragment>;
+          })}
         </div>
         {snapshot?.tab && <Button className="detail-associate" variant="ghost" size="1" disabled={busy} title={(detail.entry.matched ? copy.accounts.dissociateWebsite : copy.accounts.associateWebsite)(snapshot.tab.hostname)} onClick={() => associate(detail.entry)}>{detail.entry.matched ? <Link2Off size={14}/> : <Link2 size={14}/>}<span className="truncate">{detail.entry.matched ? copy.accounts.dissociateCurrentWebsite : copy.accounts.associateWebsite(snapshot.tab.hostname)}</span></Button>}
         {document.notes && <div className="detail-notes"><Text as="div" size="1" color="gray" className="credential-label">{copy.common.notes}</Text><Text as="p" size="2" className="notes">{document.notes}</Text></div>}
         </motion.div>}</div>
       </main>
     </> : <>
-      {snapshot?.configured && <div className="site-context"><Globe2 size={16}/><div className="site-context-label"><Text size="2" weight="medium" className="truncate" title={snapshot.tab?.hostname}>{snapshot.tab?.hostname || copy.accounts.websiteNotOpen}</Text><ActionIcon label={copy.accounts.create} onClick={newAccount} disabled={busy}><Plus size={16}/></ActionIcon></div>{snapshot.tab && !snapshot.tab.secure && <Badge variant="soft" color="amber" size="1">{copy.accounts.insecureProtocol}</Badge>}{snapshot.tab && <Text size="1" color="gray" className="site-match-count">{snapshot.matches.length > 0 ? copy.accounts.matchedCount(snapshot.matches.length) : copy.accounts.noMatches}</Text>}</div>}
-      <div className="search-section"><TextField.Root ref={searchInput} aria-label={copy.accounts.searchVault} placeholder={copy.accounts.search} value={query} onChange={event => setQuery(event.target.value)} size="3" autoFocus><TextField.Slot><Search size={18}/></TextField.Slot><TextField.Slot>{query ? <IconButton aria-label={copy.accounts.clearSearch} size="1" variant="ghost" onClick={clearSearch}><X size={14}/></IconButton> : <span className="search-shortcut">{shortcuts.find(item => item.action === 'search')?.shortcut && <ShortcutKeys value={shortcuts.find(item => item.action === 'search')!.shortcut}/>}</span>}</TextField.Slot></TextField.Root></div>
+      {snapshot?.configured && <div className="site-context"><Globe2 size={16}/><div className="site-context-label"><Text size="2" weight="medium" className="truncate" title={snapshot.tab?.hostname}>{snapshot.tab?.hostname || copy.accounts.websiteNotOpen}</Text>{!siteOnly && <ActionIcon label={copy.accounts.create} onClick={newAccount} disabled={busy}><Plus size={16}/></ActionIcon>}</div>{snapshot.tab && !snapshot.tab.secure && <Badge variant="soft" color="amber" size="1">{copy.accounts.insecureProtocol}</Badge>}{snapshot.tab && <Text size="1" color="gray" className="site-match-count">{snapshot.matches.length > 0 ? copy.accounts.matchedCount(snapshot.matches.length) : copy.accounts.noMatches}</Text>}</div>}
+      {siteOnly && <div className="list-toolbar"><Heading as="h1" size="2">{copy.accounts.chooseSiteAccount}</Heading><Button variant="ghost" size="1" onClick={() => { setSiteOnly(false); clearSearch(); }}>{copy.accounts.showFullVault}</Button></div>}
+      <div className="search-section"><TextField.Root ref={searchInput} aria-label={siteOnly ? copy.accounts.searchSiteAccounts : copy.accounts.searchVault} placeholder={siteOnly ? copy.accounts.searchSiteAccounts : copy.accounts.search} value={query} onChange={event => setQuery(event.target.value)} size="3" autoFocus><TextField.Slot><Search size={18}/></TextField.Slot><TextField.Slot>{query ? <IconButton aria-label={copy.accounts.clearSearch} size="1" variant="ghost" onClick={clearSearch}><X size={14}/></IconButton> : <span className="search-shortcut">{shortcuts.find(item => item.action === 'search')?.shortcut && <ShortcutKeys value={shortcuts.find(item => item.action === 'search')!.shortcut}/>}</span>}</TextField.Slot></TextField.Root></div>
       {loading ? <div className="empty-state"><Spinner size="3"/><Text size="2" color="gray">{copy.connection.connecting}</Text></div> : !snapshot ? <ConnectionState error={connectionError ? errorMessage(connectionError, copy) : ''} retry={() => void refreshManually()} settings={() => void client.openOptions()}/> : !snapshot.configured ? <div className="empty-state"><div className="empty-icon"><ApplicationIcon size={40}/></div><Heading size="4">{copy.vault.unconfigured}</Heading><Text size="2" color="gray">{copy.vault.setup}</Text><Button onClick={() => void refreshManually()}>{copy.connection.reconnect}</Button></div> : snapshot.locked && snapshot.entries.length === 0 ? <div className="empty-state"><div className="empty-icon"><LockKeyhole size={30}/></div><Heading size="4">{copy.vault.locked}</Heading><Button disabled={busy} onClick={() => void run(unlock)}><KeyRound size={16}/>{copy.vault.unlockInClient}</Button><Button variant="ghost" color="gray" onClick={() => void refreshManually()}>{copy.vault.refresh}</Button></div> : <>
         {query && <div className="list-toolbar"><Text size="1" color="gray">{copy.accounts.searchResults}</Text><Text size="1" color="gray">{copy.accounts.count(entries.length)}</Text></div>}
         <main className="entries-list">
-          {entries.length > 0 && <AccountList entries={entries} onOpen={open} onFill={fill} onCopy={copyEntry} onAssociate={associate} website={snapshot.tab?.hostname} busy={busy}/>}
-          {entries.length === 0 && <div className="no-results"><Search size={24}/><Text size="2">{query ? copy.accounts.noResults : copy.accounts.empty}</Text>{query && <><Button size="2" variant="soft" onClick={clearSearch}>{copy.accounts.clearSearch}</Button></>}</div>}
+          {entries.length > 0 && <AccountList fillOnly={siteOnly} entries={entries} onOpen={open} onFill={fill} onCopy={copyEntry} onAssociate={associate} website={snapshot.tab?.hostname} busy={busy}/>}
+          {entries.length === 0 && <div className="no-results"><Search size={24}/><Text size="2">{query ? copy.accounts.noResults : siteOnly ? copy.accounts.noMatches : copy.accounts.empty}</Text>{query && <><Button size="2" variant="soft" onClick={clearSearch}>{copy.accounts.clearSearch}</Button></>}</div>}
         </main>
       </>}
     </>}
@@ -329,6 +365,20 @@ function VaultApp({ client: sourceClient }: { client: Client }) {
     </footer>
     {client.demo && <div className="demo-ribbon">{copy.preview.ribbon}</div>}
 
+    <AlertDialog.Root open={!!fillChoice} onOpenChange={open => { if (!open) setFillChoice(undefined); }}>
+      {fillChoice && <AlertDialog.Content maxWidth="360px" onCloseAutoFocus={event => {
+        event.preventDefault();
+        if (fillTrigger.current?.isConnected) fillTrigger.current.focus({ preventScroll: true });
+      }}>
+        <AlertDialog.Title>{copy.accounts.fillChoiceTitle}</AlertDialog.Title>
+        <AlertDialog.Description size="2" style={{ overflowWrap: 'anywhere' }}>{copy.accounts.fillChoiceDescription(fillChoice.entry.path, fillChoice.tab.hostname)}</AlertDialog.Description>
+        <Flex justify="end" gap="2" mt="5" wrap="wrap">
+          <AlertDialog.Cancel><Button variant="soft" color="gray">{copy.common.cancel}</Button></AlertDialog.Cancel>
+          <Button variant="outline" onClick={() => executeFill(fillChoice, false)}>{copy.accounts.fillOnce}</Button>
+          <Button onClick={() => executeFill(fillChoice, true)}>{copy.accounts.fillAndRemember}</Button>
+        </Flex>
+      </AlertDialog.Content>}
+    </AlertDialog.Root>
     <AlertDialog.Root open={deleteOpen} onOpenChange={setDeleteOpen}><AlertDialog.Content maxWidth="360px"><AlertDialog.Title>{copy.vault.trashTitle}</AlertDialog.Title><AlertDialog.Description size="2">{copy.vault.trashDescription(detail?.entry.title ?? '')}</AlertDialog.Description><Flex justify="end" gap="3" mt="5"><AlertDialog.Cancel><Button variant="soft" color="gray">{copy.common.cancel}</Button></AlertDialog.Cancel><Button color="red" disabled={busy} onClick={() => void run(async () => { if (!detail) return; await client.request({ action: 'delete', vaultId: detail.vaultId, entry: detail.entry.path, revision: detail.revision }); setDeleteOpen(false); cancelDetails(); await refresh(); setNotice({ text: copy.vault.movedToTrash }); })}><Trash2 size={15}/>{copy.vault.moveToTrash}</Button></Flex></AlertDialog.Content></AlertDialog.Root>
   </div></MotionConfig>;
 }

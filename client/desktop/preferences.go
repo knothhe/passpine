@@ -44,7 +44,7 @@ func (a *application) loadPreferencesPage(page string) {
 		a.loadRecovery()
 	} else if page == "activity" {
 		a.requestPreferencesRead(page)
-	} else if a.service != nil && a.state.Configured {
+	} else if page == "settings" && a.service != nil && a.state.Configured {
 		if a.gitRemoteSaveAt.IsZero() && !a.gitRemoteSaving {
 			a.gitRemote, a.gitRemoteObserved = a.state.GitRemote, a.state.GitRemote
 		}
@@ -64,7 +64,7 @@ func (a *application) hidePreferences() {
 	a.preferences.epoch++
 	a.preferences.pendingRead = nil
 	a.preferences.keyExport = nil
-	a.backupOpen, a.backupPassphrase = false, ""
+	a.backupOpen, a.backupPath, a.backupPassphrase = false, "", ""
 	a.purgeOpen, a.purgeID = false, ""
 	a.setShortcutRecording(false)
 }

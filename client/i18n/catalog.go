@@ -43,6 +43,21 @@ const CLIHelp = `用法：
 // Chinese source keys keep the original language readable while the English
 // catalog provides the default for unsupported system languages.
 var english = map[string]string{
+	"恢复私钥备份":          "Recovery key backup",
+	"本机尚无恢复私钥验证记录。":   "No recovery key verification is recorded on this device.",
+	"恢复私钥已导出，等待验证。":   "Recovery key exported. Verification pending.",
+	"本机已验证此密码库的恢复私钥。": "A recovery key for this vault has been verified on this device.",
+	"查看备份步骤":          "View backup steps",
+	"换设备恢复时，需要密码库目录的副本、恢复私钥和私钥口令。请单独备份密码库目录。": "To restore on another device, you need a copy of the vault directory, your recovery key, and its passphrase. Back up the vault directory separately.",
+	"1. 导出受口令保护的私钥":         "1. Export the passphrase-protected key",
+	"将私钥文件保存在这台设备以外的安全位置。":  "Keep the key file in a safe place outside this device.",
+	"2. 验证私钥文件":             "2. Verify the key file",
+	"使用备份文件和私钥口令，检查能否解密此库。": "Use the backup file and its passphrase to check that it can decrypt this vault.",
+	"稍后再做": "Do this later",
+	"可随时在设置的“密码库”中继续。":             "Resume at any time in Settings > Vault.",
+	"恢复私钥已导出，但未能保存进度。可继续验证已导出的文件。": "Recovery key exported, but progress could not be saved. You can still verify the exported file.",
+	"恢复私钥已通过验证，但未能保存进度。请稍后重新验证。":   "Recovery key verified, but progress could not be saved. Verify it again later.",
+
 	"显示%s":    "Show %s",
 	"隐藏%s":    "Hide %s",
 	"正在完成退出…": "Finishing shutdown…",
@@ -386,8 +401,6 @@ var english = map[string]string{
 	"下载完成。选择密钥来源并输入私钥口令即可继续。":  "Clone complete. Choose a key source and enter your private key passphrase to continue.",
 	"口令至少需要 12 个字符，且两次输入必须一致。": "The passphrase must contain at least 12 characters and both entries must match.",
 	"密码库已打开": "Vault opened",
-	"密码库与私钥已创建。请在设置的“密码库”中导出恢复私钥并验证备份。":    "Vault and private key created. Export your recovery private key and verify the backup in Settings > Vault.",
-	"密码库与私钥已创建。%s。请在设置的“密码库”中导出恢复私钥并验证备份。": "Vault and private key created. %s. Export your recovery private key and verify the backup in Settings > Vault.",
 	"使用系统验证": "Use system authentication",
 	"系统解锁不可用，请在安全设置中关闭后使用私钥口令。": "System unlock is unavailable. Disable it in security settings to use your private key passphrase.",
 	"打开安全设置":       "Open security settings",

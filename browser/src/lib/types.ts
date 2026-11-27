@@ -27,7 +27,9 @@ export interface NativeRequest {
   includeEntries?: boolean;
   interactive?: boolean;
   purpose?: 'view' | 'fill' | 'copyPassword' | 'copyUsername' | 'copyOTP';
-  field?: 'password' | 'username' | 'otp';
+  field?: 'password' | 'username' | 'otp' | 'custom';
+  fieldIndex?: number;
+  fieldKey?: string;
   length?: number;
   lowercase?: boolean;
   uppercase?: boolean;
@@ -48,11 +50,12 @@ export interface VaultState { configured: boolean; vaultId: string; vaultName: s
 export type SessionStatus = Pick<VaultState, 'configured' | 'vaultId' | 'vaultName' | 'locked' | 'entriesVersion'> & { associationVersion?: number };
 export interface TabContext { id: number; url: string; hostname: string; secure: boolean }
 export interface Entry { path: string; title: string; folder: string; matched: boolean }
-export interface Snapshot extends VaultState { tab?: TabContext; matches: string[]; associationVersion?: number }
+export type ShortcutOutcome = 'choose-match' | 'ambiguous_form' | 'filled';
+export interface Snapshot extends VaultState { tab?: TabContext; matches: string[]; associationVersion?: number; shortcutOutcome?: ShortcutOutcome }
 export interface EntryDocument { contents: string; revision: string; otp?: string; otpSeconds?: number; session?: SessionStatus }
 export interface Credentials { password: string; username: string; urls: string[]; otp?: string; notes: string; fields: Array<{ key: string; value: string }> }
 export interface GeneratorOptions { length: number; lowercase: boolean; uppercase: boolean; numbers: boolean; symbols: boolean; excludeAmbiguous: boolean }
-export interface FillResult { filled: number; associated: boolean }
+export interface FillResult { filled: number; associated?: boolean }
 export type UIRequest =
   | { action: 'snapshot' }
   | { action: 'status' }
@@ -62,12 +65,13 @@ export type UIRequest =
   | { action: 'fetch'; vaultId: string; entry: string; interactive?: boolean }
   | { action: 'save'; vaultId: string; entry: string; contents: string; mode: 'create' | 'edit'; destination?: string; revision?: string }
   | { action: 'delete'; vaultId: string; entry: string; revision: string }
-  | { action: 'fill'; vaultId: string; entry: string; tab: TabContext }
+  | { action: 'fill'; vaultId: string; entry: string; tab: TabContext; remember: boolean }
   | { action: 'associate'; vaultId: string; entry: string; tab: TabContext }
   | { action: 'dissociate'; vaultId: string; entry: string; tab: TabContext }
   | { action: 'generate'; options: GeneratorOptions }
   | { action: 'copy-generated'; contents: string }
-  | { action: 'copy'; vaultId: string; entry: string; field: 'password' | 'username' | 'otp' };
+  | { action: 'copy'; vaultId: string; entry: string; field: 'password' | 'username' | 'otp' }
+  | { action: 'copy'; vaultId: string; entry: string; field: 'custom'; revision: string; fieldIndex: number; fieldKey: string };
 
 export interface Client {
   scope?(): Client;

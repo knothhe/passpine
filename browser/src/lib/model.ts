@@ -55,15 +55,21 @@ export const isPrimaryFieldKey = (key: string): boolean => [...usernameKeys, ...
 
 // The first username and website are displayed as dedicated controls. Keep
 // secondary aliases editable alongside OTP and other user-defined fields.
-export function additionalFields(document: Credentials): Credentials['fields'] {
+export function additionalFieldIndices(document: Credentials): number[] {
   let username = false, website = false;
-  return document.fields.filter(({ key }) => {
+  const indices: number[] = [];
+  document.fields.forEach(({ key }, index) => {
     const name = key.toLowerCase();
-    if (['notes', 'note'].includes(name)) return false;
-    if (!username && usernameKeys.includes(name)) { username = true; return false; }
-    if (!website && websiteKeys.includes(name)) { website = true; return false; }
-    return true;
+    if (['notes', 'note'].includes(name)) return;
+    if (!username && usernameKeys.includes(name)) { username = true; return; }
+    if (!website && websiteKeys.includes(name)) { website = true; return; }
+    indices.push(index);
   });
+  return indices;
+}
+
+export function additionalFields(document: Credentials): Credentials['fields'] {
+  return additionalFieldIndices(document).map(index => document.fields[index]!);
 }
 
 export type EditableField = Credentials['fields'][number] & { sourceIndex?: number };

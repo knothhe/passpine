@@ -284,6 +284,11 @@ func (a *application) settingsCategories() []components.SettingsCategory {
 				a.openSetup()
 			}
 		}},
+		{ID: "backup-guide", Title: a.t("恢复私钥备份"), Description: a.recoveryKeyStatus(), Build: func(c *ui.Context) {
+			if components.Button(c, a.t("查看备份步骤"), components.ButtonOutline).AlignSelf(ui.Center).Disabled(!a.state.Configured).Clicked() {
+				a.navigate("backup-guide", "")
+			}
+		}},
 		{ID: "export", Title: a.t("导出恢复私钥"), Build: func(c *ui.Context) {
 			if components.Button(c, a.t("导出…"), components.ButtonOutline).AlignSelf(ui.Center).Clicked() {
 				a.exportKey()
@@ -437,16 +442,28 @@ func (a *application) flushPendingKeyExport() {
 		return
 	}
 	a.call(app.Request{Action: "export", Destination: export.destination, VaultID: export.vaultID}, func(app.Data) {
-		a.notice = a.t("恢复私钥已导出。请使用验证备份确认可恢复。")
+		if a.page == "backup-guide" && export.current() {
+			a.backupPath, a.backupPassphrase, a.backupOpen = export.destination, "", true
+		} else {
+			a.notice = a.t("恢复私钥已导出。请使用验证备份确认可恢复。")
+		}
 	})
 }
 
 func (a *application) verifyBackup() {
+	if a.state.Locked {
+		a.beginUnlock("verify-backup")
+		return
+	}
 	options := mygo.OpenDialogOptions{Parent: a.dialogParent(), Title: a.t("选择要验证的恢复私钥"), Filters: []mygo.FileFilter{{Name: a.t("OpenPGP 私钥"), Extensions: []string{"asc", "pgp", "gpg", "key"}}}}
 	current := a.preferencesLease()
+	open := a.preferences.openDialog
+	if open == nil {
+		open = mygo.Dialog.Open
+	}
 	go func() {
-		paths, err := mygo.Dialog.Open(options)
-		mygo.RunOnMain(func() {
+		paths, err := open(options)
+		a.runOnMain(func() {
 			if !current() {
 				return
 			}

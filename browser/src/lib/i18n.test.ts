@@ -18,7 +18,7 @@ describe('client-compatible locales', () => {
     expect(en.accounts.count(2)).toBe('2 accounts');
     expect(en.accounts.copyPassword(value)).toBe(`Copy password for ${value}`);
     expect(en.vault.trashDescription(value)).toContain(value);
-    expect(en.vault.fillResult(1, '例子.test', false)).toBe('Filled 1 login field, but could not link to 例子.test. Try again.');
+    expect(en.vault.fillResult(1, '例子.test', false)).toBe('Filled 1 login field, but could not link to 例子.test. Link the site from the account menu or details.');
     expect(copyFor('zh-CN').accounts.count(2)).toBe('2 个账号');
   });
 

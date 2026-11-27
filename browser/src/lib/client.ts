@@ -2,6 +2,7 @@ import { browser } from 'wxt/browser';
 import { PassPineError } from './errors';
 import { unwrap } from './protocol';
 import { loadClientTarget, subscribeClientTarget } from './client-target';
+import { popupInstance, uniquePopupAtURL } from './shortcut-popup';
 import type { Client } from './types';
 
 let targetGeneration = 0, watchingTarget = false;
@@ -26,7 +27,14 @@ function scope(): Client {
       assertCurrent();
       if ('error' in captured) throw captured.error;
       let response: unknown;
-      try { response = await browser.runtime.sendMessage({ type: 'passpine', clientTarget: captured.value, request }); }
+      let popupInstanceId: string | undefined;
+      if (request.action === 'snapshot' && globalThis.location?.pathname === '/popup.html' &&
+          location.href === new URL('popup.html', browser.runtime.getURL('/')).href && window === window.top) {
+        popupInstanceId = location.protocol === 'moz-extension:' ? popupInstance(document) : await uniquePopupAtURL(location.href);
+        assertCurrent();
+      }
+      const popup = popupInstanceId ? { popupInstance: popupInstanceId } : {};
+      try { response = await browser.runtime.sendMessage({ type: 'passpine', clientTarget: captured.value, request, ...popup }); }
       catch { throw new PassPineError('background_unavailable'); }
       assertCurrent();
       if (response === undefined || response === null) throw new PassPineError('background_unavailable');

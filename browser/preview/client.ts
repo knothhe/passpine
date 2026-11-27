@@ -1,22 +1,24 @@
 // This module is imported only by the standalone preview, never by extension entrypoints.
 import { PassPineError } from '../src/lib/errors';
 import type { Client, EntryDocument, FillResult, Snapshot, UIRequest } from '../src/lib/types';
+import { sameTab } from '../src/lib/model';
 import { resolveLocale } from '../src/lib/i18n';
 
 // Demo vault contents are user data, so each language gets its own fictional set
 // instead of translated keys. English captures should not show Chinese names.
 const english = resolveLocale() === 'en';
 const vaultName = english ? 'Personal vault' : '个人密码库';
-const examples: Record<string, string> = english ? {
+const initialFixture = new URLSearchParams(location.search).get('fixture');
+const examples: Record<string, string> = initialFixture === 'empty' ? {} : english ? {
   'github.com/Personal': 'preview-only-password\nusername: alex@hey.com\nurl: https://github.com\n\nPersonal and open-source projects.',
-  'github.com/Work': 'preview-only-password\nusername: alex@studio.design\nurl: https://github.com\n\nTeam workspace.',
+  'github.com/Work': 'preview-only-password\nusername: alex@studio.design\nurl: https://github.com\nTenant-ID: studio-42\n\nTeam workspace.',
   'linear.app/Studio': 'preview-only-password\nusername: alex@studio.design\nurl: https://linear.app',
   'notion.so/My workspace': 'preview-only-password\nusername: alex@hey.com\nurl: https://notion.so',
   'vercel.com/Side projects': 'preview-only-password\nusername: alex@hey.com\nurl: https://vercel.com',
   'figma.com/Design team': 'preview-only-password\nusername: alex@studio.design\nurl: https://figma.com',
 } : {
   'github.com/个人账号': 'preview-only-password\nusername: alex@hey.com\nurl: https://github.com\n\n个人项目与开源代码。',
-  'github.com/工作账号': 'preview-only-password\nusername: alex@studio.design\nurl: https://github.com\n\n团队工作空间。',
+  'github.com/工作账号': 'preview-only-password\nusername: alex@studio.design\nurl: https://github.com\nTenant-ID: studio-42\n\n团队工作空间。',
   'linear.app/Studio': 'preview-only-password\nusername: alex@studio.design\nurl: https://linear.app',
   'notion.so/我的工作空间': 'preview-only-password\nusername: alex@hey.com\nurl: https://notion.so',
   'vercel.com/个人项目': 'preview-only-password\nusername: alex@hey.com\nurl: https://vercel.com',
@@ -24,7 +26,8 @@ const examples: Record<string, string> = english ? {
 };
 let locked = false;
 let revision = 1;
-const initialFixture = new URLSearchParams(location.search).get('fixture');
+let shortcutPickerPending = initialFixture === 'site-picker';
+let failNextLink = initialFixture === 'save-link-failure';
 const matches = new Set(initialFixture === 'rich' ? [] : Object.keys(examples).filter(path => path.startsWith('github.com/')));
 export function setPreviewState(state: 'connected' | 'locked' | 'disconnected') { locked = state === 'locked'; disconnected = state === 'disconnected'; }
 let disconnected = false;
@@ -32,9 +35,9 @@ const snapshot = (): Snapshot => {
   const fixture = new URLSearchParams(location.search).get('fixture');
   const configured = fixture !== 'unconfigured';
   const hostname = fixture === 'rich' ? 'accounts.very-long-organization-name.example.test' : 'github.com';
-  const paths = configured && fixture !== 'empty' ? Object.keys(examples) : [];
+  const paths = configured ? Object.keys(examples) : [];
   if (fixture === 'long') for (let index = 1; index <= 24; index++) paths.push(`工作/开发工具/示例 ${index}/用于检查省略与滚动的较长账号名称 ${index}`);
-  return { configured, vaultId: 'demo-vault', vaultName: configured ? vaultName : '', locked, entriesVersion: revision, capabilities: ['fetch', 'save', 'delete', 'copy', 'generate', 'copy-generated'], entries: paths.map(path => ({ path, name: path.split('/').at(-1)!, folder: path.split('/').slice(0, -1).join('/') })), tab: { id: 1, url: `https://${hostname}/login`, hostname, secure: true }, matches: paths.filter(path => matches.has(path)) };
+  return { configured, vaultId: 'demo-vault', vaultName: configured ? vaultName : '', locked, entriesVersion: revision, capabilities: ['fetch', 'save', 'delete', 'copy', 'generate', 'copy-generated', 'copy-custom-field-v1'], entries: paths.map(path => ({ path, name: path.split('/').at(-1)!, folder: path.split('/').slice(0, -1).join('/') })), tab: { id: 1, url: `https://${hostname}/login`, hostname, secure: true }, matches: paths.filter(path => matches.has(path)) };
 };
 
 export const demoClient: Client = {
@@ -47,7 +50,10 @@ export const demoClient: Client = {
       if (disconnected) throw new PassPineError('app_unavailable');
     }
     let result: unknown = {};
-    if (request.action === 'snapshot' || request.action === 'status') result = snapshot();
+    if (request.action === 'snapshot' && shortcutPickerPending) {
+      shortcutPickerPending = false;
+      result = { ...snapshot(), shortcutOutcome: 'choose-match' } satisfies Snapshot;
+    } else if (request.action === 'snapshot' || request.action === 'status') result = snapshot();
     else if (request.action === 'lock') locked = true;
     else if (request.action === 'unlock') locked = false;
     else if (request.action === 'generate') {
@@ -65,14 +71,23 @@ export const demoClient: Client = {
       }
       else if (request.action === 'save') { if (request.mode === 'create' && examples[request.entry]) throw new PassPineError('entry_exists'); if (request.destination) delete examples[request.entry]; examples[request.destination ?? request.entry] = request.contents; revision++; }
       else if (request.action === 'delete') { delete examples[request.entry]; revision++; }
-      else if (request.action === 'associate') matches.add(request.entry);
+      else if (request.action === 'associate') {
+        const state = snapshot();
+        if (!state.tab || !sameTab(request.tab, state.tab)) throw new PassPineError('tab_changed');
+        if (request.vaultId !== state.vaultId || !state.entries.some(entry => entry.path === request.entry)) throw new PassPineError('vault_changed');
+        if (failNextLink) { failNextLink = false; throw new PassPineError('operation_failed'); }
+        matches.add(request.entry);
+      }
       else if (request.action === 'dissociate') matches.delete(request.entry);
       else if (request.action === 'fill') {
         const fixture = new URLSearchParams(location.search).get('fixture');
         if (fixture === 'fill-failure') throw new PassPineError('no_fields');
-        const associated = fixture !== 'association-failure';
-        if (associated) matches.add(request.entry);
-        result = { filled: 2, associated } satisfies FillResult;
+        const fill: FillResult = { filled: 2 };
+        if (request.remember) {
+          fill.associated = fixture !== 'association-failure';
+          if (fill.associated) matches.add(request.entry);
+        }
+        result = fill;
       }
     }
     return result as T;

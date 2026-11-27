@@ -14,9 +14,9 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); });
 
-async function change(input: HTMLInputElement, value: string) {
+async function change(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
   await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value')!.set!.call(input, value);
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
 }
@@ -28,6 +28,71 @@ async function dialogClick(text: string) {
   const button = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')).find(button => button.textContent?.trim() === text)!;
   expect(button).toBeDefined(); await act(async () => button.click());
 }
+
+describe('linking a newly created account', () => {
+  const tab = { id: 7, hostname: 'login.example.test', url: 'https://login.example.test/first', secure: true };
+  async function renderCreate(request: Client['request']) {
+    const saved = vi.fn(async () => {});
+    const client: Client = { request, demo: true, openOptions: async () => {}, copy: async () => {} };
+    const value = { vaultId: 'vault', creationTab: tab, password: 'secret' };
+    await act(async () => root.render(createElement(Theme, {}, createElement(EditorForm, { client, value, defaultURL: new URL(tab.url).origin, close: () => {}, saved }))));
+    await change(container.querySelector<HTMLInputElement>('input[placeholder^="path/to/entry"]')!, 'work/hosting');
+    return saved;
+  }
+
+  it.each([false, true])('saves an entry and links the captured site only when selected (link=%s)', async link => {
+    const requests: UIRequest[] = [];
+    const saved = await renderCreate(async <T>(request: UIRequest) => { requests.push(request); return {} as T; });
+    const checkbox = container.querySelector<HTMLElement>('[role="checkbox"]')!;
+    expect(checkbox.closest('label')?.textContent).toContain('保存时关联到 login.example.test');
+    expect(checkbox.getAttribute('aria-checked')).toBe('false');
+    await change(container.querySelector<HTMLInputElement>('input[autocomplete="url"]')!, 'https://different.test');
+    if (link) await act(async () => checkbox.click());
+    await click(link ? '保存并关联' : '保存');
+    expect(requests[0]).toMatchObject({ action: 'save', entry: 'work/hosting', vaultId: 'vault', mode: 'create', contents: expect.stringContaining('url: https://different.test') });
+    expect(requests.slice(1)).toEqual(link ? [{ action: 'associate', vaultId: 'vault', entry: 'work/hosting', tab }] : []);
+    expect(saved.mock.calls).toEqual(link ? [[tab.hostname]] : [[]]);
+  });
+
+  it.each(['retry', 'leave'])('keeps the created entry after an association failure and allows %s without another save', async action => {
+    const requests: UIRequest[] = [];
+    let failLink = true;
+    const saved = await renderCreate(async <T>(request: UIRequest) => {
+      requests.push(request);
+      if (request.action === 'associate' && failLink) throw new Error('offline');
+      return {} as T;
+    });
+    await act(async () => container.querySelector<HTMLElement>('[role="checkbox"]')!.click());
+    await click('保存并关联');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('「work/hosting」已加密保存。未能关联到 login.example.test。');
+    expect(container.querySelector('form')).toBeNull();
+    expect(saved).not.toHaveBeenCalled();
+    failLink = false;
+    if (action === 'retry') {
+      const retry = Array.from(container.querySelectorAll('button')).find(button => button.textContent === '重试关联')!;
+      await act(async () => { retry.click(); retry.click(); });
+      expect(requests.map(request => request.action)).toEqual(['save', 'associate', 'associate']);
+      expect(requests[2]).toEqual(requests[1]);
+      expect(saved).toHaveBeenCalledWith(tab.hostname);
+    } else {
+      await click('返回密码库');
+      expect(requests.map(request => request.action)).toEqual(['save', 'associate']);
+      expect(saved).toHaveBeenCalledWith();
+    }
+  });
+
+  it('keeps the form available to correct a failed create without associating an existing entry', async () => {
+    const requests: UIRequest[] = [];
+    await renderCreate(async <T>(request: UIRequest) => {
+      requests.push(request);
+      throw new Error('already exists');
+    });
+    await act(async () => container.querySelector<HTMLElement>('[role="checkbox"]')!.click());
+    await click('保存并关联');
+    expect(container.querySelector('form [role="alert"]')?.textContent).toContain('already exists');
+    expect(requests.map(request => request.action)).toEqual(['save']);
+  });
+});
 
 describe('unsaved entry changes', () => {
   const original = { contents: 'secret\nusername: alice\ntoken: existing', revision: 'revision-1', entry: { path: 'work/account', title: 'account', folder: 'work', matched: false }, vaultId: 'vault', receivedAt: Date.now() };
@@ -102,6 +167,18 @@ describe('unsaved entry changes', () => {
 });
 
 describe('entry editor', () => {
+  it('saves multiline notes with literal field-like lines alongside custom fields', async () => {
+    const requests: UIRequest[] = [];
+    const client: Client = { demo: true, openOptions: async () => {}, copy: async () => {}, async request<T>(request: UIRequest) { requests.push(request); return {} as T; } };
+    const original = { contents: 'secret\ntenant: acme\nnote: call support', revision: 'revision-1', entry: { path: 'work/account', title: 'account', folder: 'work', matched: false }, vaultId: 'vault', receivedAt: Date.now() };
+    await act(async () => root.render(createElement(Theme, {}, createElement(EditorForm, { client, value: { vaultId: 'vault', original }, defaultURL: 'https://unrelated.example', close: () => {}, saved: async () => {} }))));
+    const notes = container.querySelector('textarea')!;
+    expect(notes.labels?.[0]?.textContent).toContain('备注');
+    expect(notes.value).toBe('call support');
+    await change(notes, 'Updated\n\ntenant: a literal note');
+    await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(requests).toEqual([expect.objectContaining({ contents: 'secret\ntenant: acme\nnotes: Updated\nnotes: \nnotes: tenant: a literal note' })]);
+  });
   it('preserves surviving custom source lines when an earlier row is removed', async () => {
     const requests: UIRequest[] = [];
     const client: Client = { demo: true, openOptions: async () => {}, copy: async () => {}, async request<T>(request: UIRequest) { requests.push(request); return {} as T; } };
@@ -185,7 +262,7 @@ describe('entry editor', () => {
     const saved = vi.fn(async () => {});
     const original = { contents: 'old-password\r\nlogin: alice\r\ncustom: first\r\nnotes:  keep exact  \nbody note', revision: 'revision-1', entry: { path: 'work/account', title: 'account', folder: 'work', matched: false }, vaultId: 'vault', receivedAt: Date.now() };
     await act(async () => root.render(createElement(Theme, {}, createElement(EditorForm, { client, value: { vaultId: 'vault', original }, defaultURL: '', close: () => {}, saved }))));
-    expect(container.querySelector('textarea')).toBeNull();
+    expect(container.querySelector('textarea')?.value).toBe('keep exact  \nbody note');
     const path = container.querySelector<HTMLInputElement>('input[placeholder^="path/to/entry"]')!;
     await change(path, 'work/renamed');
     await change(container.querySelector<HTMLInputElement>('input[aria-label="字段 1 名称"]')!, 'environment');

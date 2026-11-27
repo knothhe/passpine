@@ -204,14 +204,11 @@ func (a *application) submitSetup() {
 		a.applyTheme()
 		a.notice = a.t("密码库已打开")
 		if req.Action == "create" {
-			a.notice = a.t("密码库与私钥已创建。请在设置的“密码库”中导出恢复私钥并验证备份。")
+			a.page = "backup-guide"
+			a.notice = ""
 		}
 		if d.DeviceUnlockNotice != "" {
-			if req.Action == "create" {
-				a.warn(a.t("密码库与私钥已创建。%s。请在设置的“密码库”中导出恢复私钥并验证备份。", a.t(d.DeviceUnlockNotice)))
-			} else {
-				a.warn(d.DeviceUnlockNotice)
-			}
+			a.warn(d.DeviceUnlockNotice)
 		}
 	})
 }

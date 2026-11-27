@@ -478,6 +478,7 @@ func (a *application) dialogs(c *ui.Context) {
 }
 
 func (a *application) preferencesDialogs(c *ui.Context) {
+	wasVerifying := a.backupOpen
 	a.dialog(c, &a.backupOpen, components.DialogOptions{Label: a.t("验证恢复私钥"), DisableBackdropClose: true}, func(panel ui.Element) {
 		panel.Width(460)
 		components.Text(c, a.t("验证恢复私钥")).Bold()
@@ -489,14 +490,20 @@ func (a *application) preferencesDialogs(c *ui.Context) {
 				a.backupPassphrase = ""
 			}
 			if components.Button(c, a.t("验证备份"), components.ButtonPrimary).Disabled(a.busy).Clicked() || input.Submitted() {
-				a.call(app.Request{Action: "verify-backup", KeyFile: a.backupPath, Passphrase: a.backupPassphrase}, func(app.Data) {
-					a.backupOpen = false
-					a.backupPassphrase = ""
+				current := a.preferencesLease()
+				a.call(app.Request{Action: "verify-backup", VaultID: a.state.VaultID, KeyFile: a.backupPath, Passphrase: a.backupPassphrase}, func(app.Data) {
+					if !current() {
+						return
+					}
+					a.backupOpen, a.backupPath, a.backupPassphrase = false, "", ""
 					a.notice = a.t("恢复备份已通过解密验证")
 				})
 			}
 		})
 	})
+	if wasVerifying && !a.backupOpen {
+		a.backupPath, a.backupPassphrase = "", ""
+	}
 	if a.alertDialog(c, &a.purgeOpen, components.AlertDialogOptions{Title: a.t("永久删除这份恢复副本？"), Message: a.t("此操作无法撤销。密码库中的现有条目不会受影响。"), ConfirmLabel: a.t("永久删除"), CancelLabel: a.t("取消")}) == components.DialogConfirmed {
 		id := a.purgeID
 		a.call(app.Request{Action: "purge", ID: id, Kind: a.recoveryType()}, func(d app.Data) { a.removeRecovery(id); a.notice = a.t("恢复副本已永久删除") })

@@ -1,6 +1,7 @@
 import { useCopy } from './LanguageProvider';
 import { Flex, Heading, IconButton, Text, Tooltip } from '@radix-ui/themes';
-import { ArrowLeft, Copy } from 'lucide-react';
+import { ArrowLeft, Copy, Eye, EyeOff } from 'lucide-react';
+import { useState } from 'react';
 import type { Entry } from '../lib/types';
 import appIconURL from '../assets/app-icon.png';
 import monochromeIconURL from '../assets/app-icon-monochrome.png';
@@ -35,4 +36,19 @@ export function EntryAvatar({ entry, large }: { entry: Entry; large?: boolean })
 export function SecretField({ label, value, onCopy }: { label: string; value: string; onCopy?: () => void }) {
   const copy = useCopy();
   return <div className="credential-field"><div><Text as="div" size="1" color="gray" className="credential-label">{label}</Text><Text as="div" size="2" className="credential-value truncate" title={value}>{value}</Text></div>{onCopy && <ActionIcon label={copy.common.copyField(label)} onClick={onCopy}><Copy size={16}/></ActionIcon>}</div>;
+}
+
+export function CustomDetailField({ label, value, onCopy }: { label: string; value: string; onCopy?: () => void }) {
+  const copy = useCopy();
+  const [revealed, setRevealed] = useState(false);
+  return <div className="credential-field">
+    <div>
+      <Text as="div" size="1" color="gray" className="credential-label truncate" title={label}>{label}</Text>
+      <Text as="div" size="2" className="credential-value secret-text">{value ? (revealed ? value : copy.accounts.maskedPassword) : copy.common.notSet}</Text>
+    </div>
+    {value && <Flex>
+      <ActionIcon label={revealed ? copy.common.hideField(label) : copy.common.showField(label)} onClick={() => setRevealed(!revealed)}>{revealed ? <EyeOff size={16}/> : <Eye size={16}/>}</ActionIcon>
+      {onCopy && <ActionIcon label={copy.common.copyField(label)} onClick={onCopy}><Copy size={16}/></ActionIcon>}
+    </Flex>}
+  </div>;
 }

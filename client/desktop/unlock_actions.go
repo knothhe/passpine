@@ -46,9 +46,13 @@ func (a *application) resumeUnlockAction() bool {
 		}
 	case "batch":
 		return a.resumeBatchAction()
-	case "export":
+	case "export", "verify-backup":
 		if isPreferencesPage(a.page) {
-			a.exportKey()
+			if pending.action == "export" {
+				a.exportKey()
+			} else {
+				a.verifyBackup()
+			}
 			return true
 		}
 	}

@@ -351,6 +351,25 @@ func (s *Service) remember(dir, name string) error {
 	s.prefs.Current = id
 	return s.savePreferences()
 }
+func (s *Service) recordRecoveryKeyStage(stage RecoveryKeyStage) error {
+	for i := range s.prefs.Vaults {
+		info := &s.prefs.Vaults[i]
+		if info.ID == s.prefs.Current {
+			previous := info.RecoveryKeyStage
+			if previous == stage {
+				return nil
+			}
+			info.RecoveryKeyStage = stage
+			if err := s.savePreferences(); err != nil {
+				info.RecoveryKeyStage = previous
+				return err
+			}
+			return nil
+		}
+	}
+	return errors.New("unknown vault")
+}
+
 func (s *Service) savePreferences() error {
 	if s.associationStorageInvalid {
 		return &associationError{"local_storage"}
@@ -387,7 +406,7 @@ func (s *Service) savePreferences() error {
 }
 func (s *Service) snapshot() Data { return s.snapshotWithEntries(true) }
 func (s *Service) snapshotWithEntries(includeEntries bool) Data {
-	d := Data{EntriesVersion: s.entriesVersion, Configured: s.active != nil, Locked: true, Preview: s.preview, Vaults: append([]VaultInfo{}, s.prefs.Vaults...), Entries: []Entry{}, Settings: s.prefs.Settings, Capabilities: []string{"rename", "revision", "trash", "generate", "copy", "copy-generated", "otp", "interactive_fetch", "interactive_copy", "browser-associations-v1", "browser-association-operations-v1"}, VaultID: s.prefs.Current}
+	d := Data{EntriesVersion: s.entriesVersion, Configured: s.active != nil, Locked: true, Preview: s.preview, Vaults: append([]VaultInfo{}, s.prefs.Vaults...), Entries: []Entry{}, Settings: s.prefs.Settings, Capabilities: []string{"rename", "revision", "trash", "generate", "copy", "copy-generated", "copy-custom-field-v1", "otp", "interactive_fetch", "interactive_copy", "browser-associations-v1", "browser-association-operations-v1"}, VaultID: s.prefs.Current}
 	s.configSyncSnapshot(&d)
 	d.DeviceUnlockAvailable = !s.preview && s.device != nil && s.device.Available()
 	d.DeviceUnlockEnrolled = s.deviceEnrolled()
@@ -795,6 +814,13 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 			text = d.Username
 		case "otp":
 			text = d.OTP
+		case "custom":
+			// The index identifies duplicate keys within this exact revision.
+			// Use the native parser's value, preserving whitespace verbatim.
+			if !validCustomCopyRequest(r) || *r.FieldIndex >= len(doc.Fields) || doc.Fields[*r.FieldIndex].Key != r.FieldKey {
+				return Data{}, vault.ErrConflict
+			}
+			text = doc.Fields[*r.FieldIndex].Value
 		case "raw":
 			if source == "browser" {
 				return Data{}, errors.New("invalid field")
@@ -904,14 +930,29 @@ func (s *Service) dispatch(r Request, source string, epoch uint64) (Data, error)
 		if r.Destination == "" {
 			return Data{}, errors.New("请选择恢复私钥的保存路径")
 		}
-		return Data{}, writePrivate(r.Destination, b, true)
+		if e = writePrivate(r.Destination, b, true); e != nil {
+			return Data{}, e
+		}
+		if e = s.recordRecoveryKeyStage(RecoveryKeyExported); e != nil {
+			return Data{}, errors.New("恢复私钥已导出，但未能保存进度。可继续验证已导出的文件。")
+		}
+		return Data{}, nil
 	case "verify-backup":
+		if !s.active.Status().Unlocked {
+			return Data{}, vault.ErrLocked
+		}
 		b, e := readPrivate(r.KeyFile, 16<<20)
 		if e != nil {
 			return Data{}, e
 		}
 		defer clear(b)
-		return Data{}, s.active.VerifyBackup(b, r.Passphrase)
+		if e = s.active.VerifyBackup(b, r.Passphrase); e != nil {
+			return Data{}, e
+		}
+		if e = s.recordRecoveryKeyStage(RecoveryKeyVerified); e != nil {
+			return Data{}, errors.New("恢复私钥已通过验证，但未能保存进度。请稍后重新验证。")
+		}
+		return Data{}, nil
 	}
 	return Data{}, errors.New("unsupported action")
 }
@@ -995,6 +1036,13 @@ func (s *Service) setup(r Request) (Data, error) {
 	}
 	s.active = next
 	s.cancelVault.Store(next)
+	if fingerprint != "" {
+		for i := range s.prefs.Vaults {
+			if s.prefs.Vaults[i].ID == idFor(dir) {
+				s.prefs.Vaults[i].RecoveryKeyStage = ""
+			}
+		}
+	}
 	if e = s.remember(dir, r.Name); e != nil {
 		return Data{}, e
 	}
@@ -1136,6 +1184,11 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 	} else if hasBrowserAssociationFields(raw) {
 		return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})
 	}
+	if r.Field == "custom" || r.FieldIndex != nil || r.FieldKey != "" {
+		if !validCustomCopyRequest(r) {
+			return encode(Response{RequestID: r.RequestID, Protocol: 1, Status: "error", Code: "invalid_request"})
+		}
+	}
 	switch r.Action {
 	case "configure", "status", "list", "unlock", "lock", "generate", "config-sync-browser", "browser-associations":
 	case "touch":
@@ -1205,6 +1258,17 @@ func (s *Service) handleBrowser(raw json.RawMessage) json.RawMessage {
 		}
 	}
 	return encoded
+}
+
+func validCustomCopyRequest(r Request) bool {
+	if r.Action != "copy" || r.Field != "custom" || r.VaultID == "" || r.Entry == "" || r.Revision == "" || r.FieldIndex == nil || *r.FieldIndex < 0 || r.Contents != "" {
+		return false
+	}
+	switch strings.ToLower(r.FieldKey) {
+	case "", "note", "notes", "otp", "totp", "otpauth":
+		return false
+	}
+	return true
 }
 
 func validGeneratedCopyRequest(r Request) bool {

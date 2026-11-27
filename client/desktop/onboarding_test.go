@@ -53,7 +53,7 @@ func TestCreateKeyAndVaultValidatesNewPassphraseAndClearsSecrets(t *testing.T) {
 	if len(requests) != 0 || a.setup || a.passphrase != "" || a.confirmPassphrase != "" || a.setupPrivateKey != "" || a.setupPublicKey != "" {
 		t.Fatal("successful creation submitted twice or retained onboarding secrets")
 	}
-	if a.notice != a.t("密码库与私钥已创建。请在设置的“密码库”中导出恢复私钥并验证备份。") {
+	if a.page != "backup-guide" {
 		t.Fatal("new vault did not explain how to back up the generated key")
 	}
 }
@@ -76,8 +76,8 @@ func TestCreatedVaultBackupGuidanceSurvivesDeviceUnlockNotice(t *testing.T) {
 				})
 				a.submitSetup()
 				awaitMain(t, callbacks)
-				expected := a.t("密码库与私钥已创建。%s。请在设置的“密码库”中导出恢复私钥并验证备份。", a.t(deviceNotice))
-				if a.notice != expected {
+				expected := a.t(deviceNotice)
+				if a.page != "backup-guide" || a.notice != expected {
 					t.Fatalf("device unlock result replaced the new key's backup guidance: %q", a.notice)
 				}
 				view := ui.NewTester(testView(a), 860, 620)

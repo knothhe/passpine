@@ -463,7 +463,7 @@ func (v *Vault) importKeyRing(keys openpgp.EntityList, passphrase string, token 
 			return nil, e
 		}
 	}
-	if e = v.verifyKeys(keys); e != nil {
+	if e = v.verifyKeys(keys, false); e != nil {
 		return nil, e
 	}
 	e = v.install(keys, token, func() error {
@@ -664,7 +664,7 @@ func (v *Vault) VerifyBackup(data []byte, passphrase string) error {
 	if e = decryptKeys(keys, passphrase, true); e != nil {
 		return e
 	}
-	if e = v.verifyKeys(keys); e != nil {
+	if e = v.verifyKeys(keys, true); e != nil {
 		return e
 	}
 	v.session.Lock()
@@ -675,7 +675,8 @@ func (v *Vault) VerifyBackup(data []byte, passphrase string) error {
 	return nil
 }
 
-func (v *Vault) verifyKeys(keys openpgp.EntityList) error {
+func (v *Vault) verifyKeys(keys openpgp.EntityList, verifyEmptyBackup bool) error {
+	decryptedEntry := false
 	e := filepath.WalkDir(v.config.Directory, func(filename string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -717,6 +718,7 @@ func (v *Vault) verifyKeys(keys openpgp.EntityList) error {
 		if e != nil {
 			return fmt.Errorf("backup cannot decrypt %s: %w", strings.TrimSuffix(relative, ".gpg"), e)
 		}
+		decryptedEntry = true
 		return nil
 	})
 	if e != nil {
@@ -742,6 +744,21 @@ func (v *Vault) verifyKeys(keys openpgp.EntityList) error {
 		if e != nil {
 			return fmt.Errorf("backup cannot decrypt recovery record %s: %w", strings.TrimSuffix(file.Name(), ".gpg"), e)
 		}
+		decryptedEntry = true
+	}
+	if verifyEmptyBackup && !decryptedEntry {
+		// A newly created vault has no ciphertext to test. Exercise the root
+		// recipient policy in memory without creating a sample account on disk.
+		names, err := v.recipients("")
+		if err != nil {
+			return err
+		}
+		recipients, err := resolveRecipients(names, keys)
+		if err != nil {
+			return err
+		}
+		_, err = encryptRecoverable([]byte("Passpine recovery check"), recipients, keys)
+		return err
 	}
 	return nil
 }
